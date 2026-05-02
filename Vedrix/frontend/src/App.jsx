@@ -20,6 +20,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import InterviewRoom from './pages/InterviewRoom';
 import AdminDashboard from './pages/AdminDashboard';
+import HRDashboard from './pages/HRDashboard';
 import useAuthStore from './store/useAuthStore';
 
 /* ─────────────────────────────────────────────
@@ -29,6 +30,7 @@ const Navbar = ({ onShowLogin, onShowRegister, onShowDashboard, onShowAdmin, onH
   const [isOpen, setIsOpen] = useState(false);
   const { isAuthenticated, user, logout } = useAuthStore();
   const isAdmin = user?.user_type === 'admin';
+  const isHR = user?.user_type === 'hr';
 
   return (
     <nav className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-100">
@@ -63,7 +65,7 @@ const Navbar = ({ onShowLogin, onShowRegister, onShowDashboard, onShowAdmin, onH
                   className="flex items-center space-x-1 text-sm font-medium text-purple-600 hover:text-purple-800 px-3 py-2"
                 >
                   <LayoutDashboard size={16} />
-                  <span>Dashboard</span>
+                  <span>{isHR ? 'HR Panel' : 'Dashboard'}</span>
                 </button>
                 <span className="text-sm font-medium text-gray-500">|</span>
                 <span className="text-sm font-medium text-gray-700 italic text-xs uppercase tracking-tighter font-bold">
@@ -111,7 +113,7 @@ const Navbar = ({ onShowLogin, onShowRegister, onShowDashboard, onShowAdmin, onH
           {isAdmin && <button onClick={onShowAdmin} className="w-full text-left py-2 text-red-500 font-bold">System Admin</button>}
           {isAuthenticated ? (
             <>
-              <button onClick={onShowDashboard} className="w-full text-left py-2 text-purple-600 font-medium">Dashboard</button>
+              <button onClick={onShowDashboard} className="w-full text-left py-2 text-purple-600 font-medium">{isHR ? 'HR Panel' : 'Dashboard'}</button>
               <button onClick={logout} className="w-full text-left py-2 text-red-500 font-medium">Logout</button>
             </>
           ) : (
@@ -140,11 +142,10 @@ const FeatureCard = ({ icon: Icon, title, description }) => (
 );
 
 /* ─────────────────────────────────────────────
-   DASHBOARD
+   DASHBOARD (STUDENT ONLY)
 ───────────────────────────────────────────── */
 const Dashboard = ({ onStartInterview, onShowAdmin }) => {
   const { user } = useAuthStore();
-  const isStudent = user?.user_type === 'student';
   const isAdmin = user?.user_type === 'admin';
 
   return (
@@ -156,9 +157,7 @@ const Dashboard = ({ onStartInterview, onShowAdmin }) => {
               Welcome back, <span className="text-purple-600">{user?.first_name || 'User'}</span> 👋
             </h1>
             <p className="mt-2 text-gray-500 text-lg">
-              {isAdmin ? "Global system oversight and user governance." : isStudent
-                ? "Your next AI-led technical round is ready."
-                : "Monitor candidate performance and live sessions."}
+              {isAdmin ? "Global system oversight and user governance." : "Your next AI-led technical round is ready."}
             </p>
           </div>
           {isAdmin && (
@@ -175,8 +174,8 @@ const Dashboard = ({ onStartInterview, onShowAdmin }) => {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-10">
           {[
             { label: 'Interviews', value: '0', icon: BookOpen },
-            { label: isStudent ? 'Avg. Score' : 'Active Drives', value: '—', icon: Star },
-            { label: isStudent ? 'Profile Status' : 'Candidates', value: isStudent ? '80%' : '0', icon: isStudent ? UserCheck : Users },
+            { label: 'Avg. Score', value: '—', icon: Star },
+            { label: 'Profile Status', value: '80%', icon: UserCheck },
           ].map(({ label, value, icon: Icon }) => (
             <div key={label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex items-center space-x-4">
               <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center text-purple-600">
@@ -192,13 +191,9 @@ const Dashboard = ({ onStartInterview, onShowAdmin }) => {
 
         <div className="bg-gradient-to-br from-purple-600 to-indigo-600 rounded-3xl p-10 text-white flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="max-w-xl">
-            <h2 className="text-2xl font-bold mb-2">
-              {isStudent ? 'Start Agentic AI Interview' : 'Initiate New Assessment'}
-            </h2>
+            <h2 className="text-2xl font-bold mb-2">Start Agentic AI Interview</h2>
             <p className="text-purple-100">
-              {isStudent
-                ? 'Join a high-fidelity, adaptive interview. The AI will evaluate your technical depth, accuracy, and communication in real-time.'
-                : 'Set up a new hiring drive. Candidates will receive magic links to join our supervised AI room.'}
+              Join a high-fidelity, adaptive interview. The AI will evaluate your technical depth, accuracy, and communication in real-time.
             </p>
           </div>
           <button
@@ -206,7 +201,7 @@ const Dashboard = ({ onStartInterview, onShowAdmin }) => {
             className="flex items-center space-x-2 bg-white text-purple-700 font-bold px-8 py-4 rounded-2xl hover:bg-purple-50 transition-all shadow-xl active:scale-95 whitespace-nowrap"
           >
             <Play size={18} />
-            <span>{isStudent ? 'Join Room' : 'Create Link'}</span>
+            <span>Join Room</span>
           </button>
         </div>
       </div>
@@ -285,9 +280,19 @@ const LandingPage = ({ onRegister }) => (
    ROOT APP
 ───────────────────────────────────────────── */
 function App() {
-  // Views: 'landing' | 'login' | 'register' | 'dashboard' | 'interview' | 'admin'
+  // Views: 'landing' | 'login' | 'register' | 'dashboard' | 'interview' | 'admin' | 'hr_dashboard'
   const [view, setView] = useState('landing');
-  const { checkAuth, isAuthenticated, clearError } = useAuthStore();
+  const { checkAuth, isAuthenticated, user, clearError } = useAuthStore();
+
+  // Check for Magic Link on mount
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const driveId = urlParams.get('drive_id');
+    const token = urlParams.get('token');
+    if (driveId && token) {
+      setView('interview');
+    }
+  }, []);
 
   useEffect(() => {
     checkAuth();
@@ -295,9 +300,11 @@ function App() {
 
   useEffect(() => {
     if (isAuthenticated && (view === 'login' || view === 'register')) {
-      setView('dashboard');
+      if (user?.user_type === 'hr') setView('hr_dashboard');
+      else if (user?.user_type === 'admin') setView('admin');
+      else setView('dashboard');
     }
-  }, [isAuthenticated, view]);
+  }, [isAuthenticated, user, view]);
 
   const switchView = (newView) => {
     clearError();
@@ -307,14 +314,27 @@ function App() {
     }
   };
 
+  const renderDashboard = () => {
+    if (user?.user_type === 'hr') return <HRDashboard />;
+    if (user?.user_type === 'admin') return <AdminDashboard />;
+    return <Dashboard 
+      onStartInterview={() => switchView('interview')} 
+      onShowAdmin={() => switchView('admin')}
+    />;
+  };
+
   return (
     <div className="min-h-screen bg-white text-gray-900">
       {/* Hide navbar during interview for maximum realism/focus */}
-      {view !== 'interview' && view !== 'admin' && (
+      {view !== 'interview' && view !== 'admin' && view !== 'hr_dashboard' && (
         <Navbar
           onShowLogin={() => switchView('login')}
           onShowRegister={() => switchView('register')}
-          onShowDashboard={() => switchView('dashboard')}
+          onShowDashboard={() => {
+            if (user?.user_type === 'hr') switchView('hr_dashboard');
+            else if (user?.user_type === 'admin') switchView('admin');
+            else switchView('dashboard');
+          }}
           onShowAdmin={() => switchView('admin')}
           onHome={() => switchView('landing')}
         />
@@ -323,8 +343,17 @@ function App() {
       <main>
         {view === 'admin' ? (
           <AdminDashboard />
+        ) : view === 'hr_dashboard' ? (
+          <HRDashboard />
         ) : view === 'interview' ? (
-          <InterviewRoom onComplete={() => switchView('dashboard')} />
+          <InterviewRoom onComplete={() => {
+            if (isAuthenticated) {
+               if (user?.user_type === 'hr') switchView('hr_dashboard');
+               else switchView('dashboard');
+            } else {
+               switchView('landing');
+            }
+          }} />
         ) : view === 'dashboard' ? (
           <Dashboard 
             onStartInterview={() => switchView('interview')} 
@@ -339,7 +368,10 @@ function App() {
             {view === 'login' ? (
               <Login
                 onToggleMode={() => switchView('register')}
-                onSuccess={() => switchView('dashboard')}
+                onSuccess={() => {
+                   if (user?.user_type === 'hr') switchView('hr_dashboard');
+                   else switchView('dashboard');
+                }}
               />
             ) : (
               <Register
@@ -360,5 +392,3 @@ function App() {
     </div>
   );
 }
-
-export default App;

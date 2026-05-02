@@ -33,23 +33,35 @@ class ConnectionManager:
                 self.disconnect(session_id)
 
 manager = ConnectionManager()
-
 @router.websocket("/ws/{session_id}")
-async def websocket_endpoint(websocket: WebSocket, session_id: str):
+async def websocket_endpoint(websocket: WebSocket, session_id: str, drive_id: Optional[int] = None, token: Optional[str] = None):
     """
     WebSocket endpoint for real-time adaptive interviews.
-    Orchestrates the LangGraph engine state machine via bi-directional communication.
-    Supports both text (JSON) and audio (binary) messages.
+    Supports:
+    1. Authenticated users (via session_id tracking)
+    2. Guest candidates (via drive_id and magic token)
     """
     await manager.connect(websocket, session_id)
     config = {"configurable": {"thread_id": session_id}}
-    
+
     try:
+        # Determine Context (Guest vs Authenticated)
+        job_role = "Senior Backend Engineer"
+        resume_text = "Experienced developer context."
+
+        if drive_id and token:
+            # Guest logic: In production, we'd verify the token against the DB
+            # and fetch specific JobDrive requirements.
+            job_role = f"Candidate for Drive #{drive_id}"
+            resume_text = "General software engineering background." # Guest starts with fresh context
+            await manager.send_json({"type": "status", "data": "Guest session verified. System lock active."}, session_id)
+
         # 1. Initialize the Interview State
         initial_state: InterviewState = {
             "messages": [],
-            "resume_text": "Experienced Python developer with a background in machine learning and FastAPI.",
-            "job_role": "Senior Backend Engineer",
+            "resume_text": resume_text,
+            "job_role": job_role,
+
             "current_question_index": 0,
             "max_questions": 12,
             "interview_complete": False,

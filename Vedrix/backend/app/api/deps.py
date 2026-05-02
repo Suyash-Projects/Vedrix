@@ -45,3 +45,13 @@ async def get_current_admin(
             detail="The user does not have enough privileges",
         )
     return current_user
+
+async def get_current_hr(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    if current_user.user_type not in ["hr", "admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User must have HR or Admin privileges",
+        )
+    return current_user

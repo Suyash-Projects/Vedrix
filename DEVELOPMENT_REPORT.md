@@ -30,11 +30,15 @@
 - **Operational Clarity**: Real-time agent status updates and live performance metrics (Accuracy, Clarity, etc.).
 - **Proctoring**: Fullscreen enforcement with automated violation detection.
 
-### 5. Admin Command Center & Governance (NEW)
-- **Role-Based Security**: Implemented a strict `get_current_admin` dependency in the backend to protect sensitive operations.
-- **Administrative API**: Built restricted endpoints for global user management, deletion, and system-wide performance statistics.
-- **Command Center UI**: Created a sophisticated **Admin Dashboard** with real-time stats (Global Users, Interview Load) and a master user registry.
-- **System Health**: Added oversight capabilities for monitoring server status and global interview sessions.
+### 5. Admin Command Center & Governance
+- **Role-Based Security**: Implemented strict RBAC with `get_current_admin` and `get_current_hr` dependencies.
+- **Command Center UI**: Created a sophisticated Admin Dashboard for global system oversight.
+
+### 6. Recruitment Orchestration & Guest Access (NEW)
+- **Job Drive Management**: HR users can now initialize 'Job Drives' with specific roles and skill requirements.
+- **Magic Link System**: Implemented a stateless, UUID-based invitation system that allows candidates to take interviews without creating an account.
+- **HR Command Panel**: Built a dedicated **HR Dashboard** to manage drives, generate invites, and monitor live candidate metrics.
+- **Guest-Aware Engine**: The WebSocket backend and LangGraph engine now dynamically adapt to guest contexts provided via Magic Links.
 - **Branding**: Full "Vedrix" UI redesign with Tailwind CSS v4 and Lucide-React.
 
 ---

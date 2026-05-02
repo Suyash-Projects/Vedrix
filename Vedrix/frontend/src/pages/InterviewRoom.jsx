@@ -145,8 +145,17 @@ const InterviewRoom = ({ sessionId = "test_session", onComplete }) => {
   useEffect(() => {
     if (!ready) return;
 
+    const urlParams = new URLSearchParams(window.location.search);
+    const driveId = urlParams.get('drive_id');
+    const token = urlParams.get('token');
+
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const socketUrl = `${protocol}://localhost:8000/api/v1/interview/ws/${sessionId}`;
+    let socketUrl = `${protocol}://localhost:8000/api/v1/interview/ws/${sessionId}`;
+    
+    // Append guest parameters if present
+    if (driveId && token) {
+      socketUrl += `?drive_id=${driveId}&token=${token}`;
+    }
     
     ws.current = new WebSocket(socketUrl);
     ws.current.onopen = () => {
