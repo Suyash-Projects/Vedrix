@@ -17,19 +17,18 @@
 - **Database Migration:** Ported all legacy models (`User`, `StudentProfile`, `HRProfile`, `JobDrive`, `InterviewSession`) to `SQLModel`.
 - **Async Database:** Full asynchronous I/O with automatic table creation on startup.
 
-### 3. Agentic AI Engine & WebSocket Room (NEW)
-- **Agent Roles**: Implemented specialized logic for **Interviewer**, **Evaluator**, **Decision**, and **Memory** agents.
-- **Adaptive 5-Phase Logic**:
-    - Built state management for transitions: `Warmup` -> `Technical` -> `Stress` -> `Behavioral` -> `Closing`.
-- **Granular Evaluation**: Switched to a **0-10 scoring scale** assessing **Accuracy, Clarity, Depth, and Communication**.
-- **Real-time Live Room**:
-    - Established bidirectional **WebSocket** communication.
-    - Integrated **LangGraph MemorySaver** and `interrupt_before` logic to allow real-time AI pausing/resuming based on candidate input.
-- **Human-Supervised Modes**: Scaffolded support for `ai`, `human`, and `suggestion` modes for HR intervention.
+### 3. Agentic AI Engine & WebSocket Room
+- **Agent Roles**: Specialized logic for Interviewer, Evaluator, Decision, and Memory agents.
+- **Real-time Live Room**: Established bidirectional WebSocket communication with async streaming.
+- **Voice Intelligence (STT)**: Integrated **Groq Whisper Large V3** for near-instant vocal transcription.
+- **Voice Intelligence (TTS)**: Integrated **Browser SpeechSynthesis** for zero-latency AI vocalization.
+- **Robustness**: Implemented `aget_state` and `aupdate_state` for perfect engine-websocket synchronization.
 
-### 4. Professional UI & Realism
-- **Interview Room**: Built a high-focus candidate interface with a **Live Timer**, **Recording indicators**, and **Proctoring status**.
-- **Dashboard Integration**: Wired the `Start Interview` CTA to launch the live agentic room.
+### 4. Best-in-Class UI & Realism
+- **Ready-Check Wizard**: Professional pre-interview gateway for hardware validation and proctoring consent.
+- **AI Core Orb**: Futuristic, animated AI representation using `framer-motion` with dynamic waveform visualization.
+- **Operational Clarity**: Real-time agent status updates and live performance metrics (Accuracy, Clarity, etc.).
+- **Proctoring**: Fullscreen enforcement with automated violation detection.
 - **Branding**: Full "Vedrix" UI redesign with Tailwind CSS v4 and Lucide-React.
 
 ---
