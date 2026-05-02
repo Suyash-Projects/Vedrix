@@ -29,6 +29,12 @@
 - **AI Core Orb**: Futuristic, animated AI representation using `framer-motion` with dynamic waveform visualization.
 - **Operational Clarity**: Real-time agent status updates and live performance metrics (Accuracy, Clarity, etc.).
 - **Proctoring**: Fullscreen enforcement with automated violation detection.
+
+### 5. Admin Command Center & Governance (NEW)
+- **Role-Based Security**: Implemented a strict `get_current_admin` dependency in the backend to protect sensitive operations.
+- **Administrative API**: Built restricted endpoints for global user management, deletion, and system-wide performance statistics.
+- **Command Center UI**: Created a sophisticated **Admin Dashboard** with real-time stats (Global Users, Interview Load) and a master user registry.
+- **System Health**: Added oversight capabilities for monitoring server status and global interview sessions.
 - **Branding**: Full "Vedrix" UI redesign with Tailwind CSS v4 and Lucide-React.
 
 ---

@@ -19,14 +19,16 @@ import {
 import Login from './pages/Login';
 import Register from './pages/Register';
 import InterviewRoom from './pages/InterviewRoom';
+import AdminDashboard from './pages/AdminDashboard';
 import useAuthStore from './store/useAuthStore';
 
 /* ─────────────────────────────────────────────
    NAVBAR
 ───────────────────────────────────────────── */
-const Navbar = ({ onShowLogin, onShowRegister, onShowDashboard, onHome }) => {
+const Navbar = ({ onShowLogin, onShowRegister, onShowDashboard, onShowAdmin, onHome }) => {
   const [isOpen, setIsOpen] = useState(false);
   const { isAuthenticated, user, logout } = useAuthStore();
+  const isAdmin = user?.user_type === 'admin';
 
   return (
     <nav className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-100">
@@ -45,7 +47,11 @@ const Navbar = ({ onShowLogin, onShowRegister, onShowDashboard, onHome }) => {
             <div className="ml-10 flex items-baseline space-x-8 text-sm font-medium text-gray-600">
               <a href="#how-it-works" className="hover:text-purple-600 transition-colors">How it Works</a>
               <a href="#features" className="hover:text-purple-600 transition-colors">Features</a>
-              <a href="#" className="hover:text-purple-600 transition-colors">Pricing</a>
+              {isAdmin && (
+                <button onClick={onShowAdmin} className="text-red-500 font-bold hover:text-red-700 transition-colors">
+                  System Admin
+                </button>
+              )}
             </div>
           </div>
 
@@ -60,7 +66,9 @@ const Navbar = ({ onShowLogin, onShowRegister, onShowDashboard, onHome }) => {
                   <span>Dashboard</span>
                 </button>
                 <span className="text-sm font-medium text-gray-500">|</span>
-                <span className="text-sm font-medium text-gray-700 italic">Hi, {user?.first_name || 'User'}</span>
+                <span className="text-sm font-medium text-gray-700 italic text-xs uppercase tracking-tighter font-bold">
+                  {user?.user_type}: {user?.first_name}
+                </span>
                 <button
                   onClick={logout}
                   className="flex items-center space-x-1 text-sm font-medium text-red-500 hover:text-red-700 px-3 py-2"
@@ -100,6 +108,7 @@ const Navbar = ({ onShowLogin, onShowRegister, onShowDashboard, onHome }) => {
         <div className="md:hidden bg-white border-b border-gray-100 p-4 space-y-4 shadow-xl">
           <a href="#how-it-works" className="block text-base font-medium text-gray-700">How it Works</a>
           <a href="#features" className="block text-base font-medium text-gray-700">Features</a>
+          {isAdmin && <button onClick={onShowAdmin} className="w-full text-left py-2 text-red-500 font-bold">System Admin</button>}
           {isAuthenticated ? (
             <>
               <button onClick={onShowDashboard} className="w-full text-left py-2 text-purple-600 font-medium">Dashboard</button>
@@ -133,22 +142,34 @@ const FeatureCard = ({ icon: Icon, title, description }) => (
 /* ─────────────────────────────────────────────
    DASHBOARD
 ───────────────────────────────────────────── */
-const Dashboard = ({ onStartInterview }) => {
+const Dashboard = ({ onStartInterview, onShowAdmin }) => {
   const { user } = useAuthStore();
   const isStudent = user?.user_type === 'student';
+  const isAdmin = user?.user_type === 'admin';
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-5xl mx-auto">
-        <div className="mb-10">
-          <h1 className="text-4xl font-extrabold text-gray-900">
-            Welcome back, <span className="text-purple-600">{user?.first_name || 'User'}</span> 👋
-          </h1>
-          <p className="mt-2 text-gray-500 text-lg">
-            {isStudent
-              ? "Your next AI-led technical round is ready."
-              : "Monitor candidate performance and live sessions."}
-          </p>
+        <div className="mb-10 flex justify-between items-start">
+          <div>
+            <h1 className="text-4xl font-extrabold text-gray-900">
+              Welcome back, <span className="text-purple-600">{user?.first_name || 'User'}</span> 👋
+            </h1>
+            <p className="mt-2 text-gray-500 text-lg">
+              {isAdmin ? "Global system oversight and user governance." : isStudent
+                ? "Your next AI-led technical round is ready."
+                : "Monitor candidate performance and live sessions."}
+            </p>
+          </div>
+          {isAdmin && (
+            <button 
+              onClick={onShowAdmin}
+              className="flex items-center space-x-2 bg-slate-900 text-white px-6 py-3 rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl active:scale-95"
+            >
+              <ShieldAlert size={18} />
+              <span>Admin Panel</span>
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-10">
@@ -264,7 +285,7 @@ const LandingPage = ({ onRegister }) => (
    ROOT APP
 ───────────────────────────────────────────── */
 function App() {
-  // Views: 'landing' | 'login' | 'register' | 'dashboard' | 'interview'
+  // Views: 'landing' | 'login' | 'register' | 'dashboard' | 'interview' | 'admin'
   const [view, setView] = useState('landing');
   const { checkAuth, isAuthenticated, clearError } = useAuthStore();
 
@@ -289,20 +310,26 @@ function App() {
   return (
     <div className="min-h-screen bg-white text-gray-900">
       {/* Hide navbar during interview for maximum realism/focus */}
-      {view !== 'interview' && (
+      {view !== 'interview' && view !== 'admin' && (
         <Navbar
           onShowLogin={() => switchView('login')}
           onShowRegister={() => switchView('register')}
           onShowDashboard={() => switchView('dashboard')}
+          onShowAdmin={() => switchView('admin')}
           onHome={() => switchView('landing')}
         />
       )}
 
       <main>
-        {view === 'interview' ? (
+        {view === 'admin' ? (
+          <AdminDashboard />
+        ) : view === 'interview' ? (
           <InterviewRoom onComplete={() => switchView('dashboard')} />
         ) : view === 'dashboard' ? (
-          <Dashboard onStartInterview={() => switchView('interview')} />
+          <Dashboard 
+            onStartInterview={() => switchView('interview')} 
+            onShowAdmin={() => switchView('admin')}
+          />
         ) : view === 'landing' ? (
           <div className="max-w-7xl mx-auto">
             <LandingPage onRegister={() => switchView('register')} />
@@ -324,7 +351,7 @@ function App() {
         )}
       </main>
 
-      {view === 'landing' && (
+      {(view === 'landing' || view === 'login' || view === 'register') && (
         <footer className="bg-white py-12 border-t border-gray-100 text-center">
           <div className="text-2xl font-bold text-purple-600 mb-4">Vedrix</div>
           <p className="text-gray-500 text-sm">© 2026 Vedrix AI System. All rights reserved.</p>
