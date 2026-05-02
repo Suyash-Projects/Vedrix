@@ -12,16 +12,19 @@ import {
   BookOpen,
   Briefcase,
   Play,
-  Star
+  Star,
+  Settings as SettingsIcon,
+  Users
 } from 'lucide-react';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import InterviewRoom from './pages/InterviewRoom';
 import useAuthStore from './store/useAuthStore';
 
 /* ─────────────────────────────────────────────
    NAVBAR
 ───────────────────────────────────────────── */
-const Navbar = ({ onShowLogin, onShowRegister, onShowDashboard }) => {
+const Navbar = ({ onShowLogin, onShowRegister, onShowDashboard, onHome }) => {
   const [isOpen, setIsOpen] = useState(false);
   const { isAuthenticated, user, logout } = useAuthStore();
 
@@ -32,7 +35,7 @@ const Navbar = ({ onShowLogin, onShowRegister, onShowDashboard }) => {
           <div className="flex items-center">
             <div
               className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent cursor-pointer"
-              onClick={() => window.location.reload()}
+              onClick={onHome}
             >
               Vedrix
             </div>
@@ -128,7 +131,7 @@ const FeatureCard = ({ icon: Icon, title, description }) => (
 );
 
 /* ─────────────────────────────────────────────
-   DASHBOARD (Placeholder — Phase 3 target)
+   DASHBOARD
 ───────────────────────────────────────────── */
 const Dashboard = ({ onStartInterview }) => {
   const { user } = useAuthStore();
@@ -137,24 +140,22 @@ const Dashboard = ({ onStartInterview }) => {
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-5xl mx-auto">
-        {/* Header */}
         <div className="mb-10">
           <h1 className="text-4xl font-extrabold text-gray-900">
             Welcome back, <span className="text-purple-600">{user?.first_name || 'User'}</span> 👋
           </h1>
           <p className="mt-2 text-gray-500 text-lg">
             {isStudent
-              ? "Ready to practice your next adaptive interview?"
-              : "Manage your job drives and review candidate results."}
+              ? "Your next AI-led technical round is ready."
+              : "Monitor candidate performance and live sessions."}
           </p>
         </div>
 
-        {/* Quick Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-10">
           {[
-            { label: 'Interviews Completed', value: '0', icon: BookOpen },
+            { label: 'Interviews', value: '0', icon: BookOpen },
             { label: isStudent ? 'Avg. Score' : 'Active Drives', value: '—', icon: Star },
-            { label: isStudent ? 'Skills Assessed' : 'Candidates Reviewed', value: '0', icon: isStudent ? Cpu : Briefcase },
+            { label: isStudent ? 'Profile Status' : 'Candidates', value: isStudent ? '80%' : '0', icon: isStudent ? UserCheck : Users },
           ].map(({ label, value, icon: Icon }) => (
             <div key={label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex items-center space-x-4">
               <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center text-purple-600">
@@ -168,16 +169,15 @@ const Dashboard = ({ onStartInterview }) => {
           ))}
         </div>
 
-        {/* CTA Card */}
         <div className="bg-gradient-to-br from-purple-600 to-indigo-600 rounded-3xl p-10 text-white flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div>
+          <div className="max-w-xl">
             <h2 className="text-2xl font-bold mb-2">
-              {isStudent ? 'Start a Practice Interview' : 'Create a New Job Drive'}
+              {isStudent ? 'Start Agentic AI Interview' : 'Initiate New Assessment'}
             </h2>
             <p className="text-purple-100">
               {isStudent
-                ? 'Our adaptive AI will personalise every question to your resume and skill level.'
-                : 'Set up a screener round and let the AI rank candidates automatically.'}
+                ? 'Join a high-fidelity, adaptive interview. The AI will evaluate your technical depth, accuracy, and communication in real-time.'
+                : 'Set up a new hiring drive. Candidates will receive magic links to join our supervised AI room.'}
             </p>
           </div>
           <button
@@ -185,13 +185,8 @@ const Dashboard = ({ onStartInterview }) => {
             className="flex items-center space-x-2 bg-white text-purple-700 font-bold px-8 py-4 rounded-2xl hover:bg-purple-50 transition-all shadow-xl active:scale-95 whitespace-nowrap"
           >
             <Play size={18} />
-            <span>{isStudent ? 'Start Interview' : 'Create Drive'}</span>
+            <span>{isStudent ? 'Join Room' : 'Create Link'}</span>
           </button>
-        </div>
-
-        {/* Coming Soon notice */}
-        <div className="mt-8 p-5 bg-amber-50 border border-amber-200 rounded-2xl text-amber-700 text-sm">
-          <strong>Phase 3 in progress:</strong> The live interview room with WebSocket streaming, resume upload, and detailed analytics are being built next.
         </div>
       </div>
     </div>
@@ -203,7 +198,6 @@ const Dashboard = ({ onStartInterview }) => {
 ───────────────────────────────────────────── */
 const LandingPage = ({ onRegister }) => (
   <>
-    {/* Hero Section */}
     <section id="how-it-works" className="relative pt-20 pb-32 overflow-hidden">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-full -z-10">
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-purple-200/20 blur-[120px] rounded-full" />
@@ -213,19 +207,18 @@ const LandingPage = ({ onRegister }) => (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <div className="inline-flex items-center space-x-2 bg-purple-50 text-purple-700 px-4 py-2 rounded-full text-sm font-semibold mb-8 border border-purple-100">
           <Zap size={16} />
-          <span>Next-Gen Adaptive AI Interviewing</span>
+          <span>Agentic & Adaptive Interviewing</span>
         </div>
 
         <h1 className="text-6xl md:text-7xl font-extrabold tracking-tight text-gray-900 mb-6 leading-tight">
-          Master Your Next Job with <br />
+          Building the Future of <br />
           <span className="bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 bg-[length:200%_auto] animate-gradient bg-clip-text text-transparent">
-            Vedrix Intelligence
+            Agentic Evaluation
           </span>
         </h1>
 
         <p className="max-w-2xl mx-auto text-xl text-gray-600 mb-10 leading-relaxed">
-          The only adaptive interview platform that thinks like a senior engineer.
-          Personalized technical rounds powered by Groq &amp; NVIDIA's 405B models.
+          The only platform where AI interviewer agents conduct deep technical rounds, supervised in real-time by HR experts.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
@@ -233,52 +226,33 @@ const LandingPage = ({ onRegister }) => (
             onClick={onRegister}
             className="w-full sm:w-auto bg-purple-600 text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-purple-700 shadow-xl shadow-purple-500/20 flex items-center justify-center group transition-all"
           >
-            Start Free Interview
+            Start Free Assessment
             <ChevronRight className="ml-2 group-hover:translate-x-1 transition-transform" />
           </button>
           <button className="w-full sm:w-auto bg-white text-gray-900 border-2 border-gray-100 px-8 py-4 rounded-full font-bold text-lg hover:bg-gray-50 transition-all">
-            Request HR Demo
+            HR Dashboard Demo
           </button>
-        </div>
-
-        <div className="mt-20 pt-10 border-t border-gray-100">
-          <p className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-8">Trusted by candidates from</p>
-          <div className="flex flex-wrap justify-center gap-12 opacity-40 grayscale pointer-events-none">
-            <span className="text-2xl font-bold">Google</span>
-            <span className="text-2xl font-bold">Meta</span>
-            <span className="text-2xl font-bold">Amazon</span>
-            <span className="text-2xl font-bold">Netflix</span>
-          </div>
         </div>
       </div>
     </section>
 
-    {/* Features Section */}
     <section id="features" className="py-24 bg-gray-50/50 border-y border-gray-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center max-w-3xl mx-auto mb-20">
-          <h2 className="text-4xl font-bold mb-6">Built for Scaling Talent</h2>
-          <p className="text-lg text-gray-600">
-            We've combined the latest in Large Language Models with a stateful adaptive engine
-            to provide an interview experience that is indistinguishable from a human expert.
-          </p>
-        </div>
-
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <FeatureCard
             icon={Cpu}
-            title="Stateful Adaptive Graph"
-            description="Powered by LangGraph, our engine remembers your strengths and pivots difficulty in real-time based on your depth of answer."
+            title="Agentic Reasoning"
+            description="Four specialized AI agents manage dialogue, evaluation, and adaptive state transitions during the interview."
+          />
+          <FeatureCard
+            icon={Users}
+            title="HR Live Takeover"
+            description="Observe interviews in real-time. Pause AI execution or take direct control of the conversation at any moment."
           />
           <FeatureCard
             icon={ShieldCheck}
-            title="Bias-Free Screening"
-            description="Eliminate human bias in the first round. Our AI evaluates technical accuracy and behavioral logic with clinical precision."
-          />
-          <FeatureCard
-            icon={UserCheck}
-            title="Expert Feedback"
-            description="Get detailed radar charts and improvement plans. Know exactly where you stand against industry benchmarks."
+            title="Secure Magic Links"
+            description="One-time candidate access with built-in tab-switch detection and fullscreen proctoring requirements."
           />
         </div>
       </div>
@@ -290,7 +264,7 @@ const LandingPage = ({ onRegister }) => (
    ROOT APP
 ───────────────────────────────────────────── */
 function App() {
-  // Views: 'landing' | 'login' | 'register' | 'dashboard'
+  // Views: 'landing' | 'login' | 'register' | 'dashboard' | 'interview'
   const [view, setView] = useState('landing');
   const { checkAuth, isAuthenticated, clearError } = useAuthStore();
 
@@ -298,34 +272,37 @@ function App() {
     checkAuth();
   }, [checkAuth]);
 
-  // After successful auth, redirect to dashboard
   useEffect(() => {
     if (isAuthenticated && (view === 'login' || view === 'register')) {
       setView('dashboard');
     }
-    // If a token exists on load and user hits landing, show dashboard shortcut
-    if (isAuthenticated && view === 'landing') {
-      // Don't auto-redirect from landing — let them explore the page first
-    }
   }, [isAuthenticated, view]);
 
-  // Always clear errors when navigating between views
   const switchView = (newView) => {
     clearError();
     setView(newView);
+    if (newView === 'landing') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   return (
     <div className="min-h-screen bg-white text-gray-900">
-      <Navbar
-        onShowLogin={() => switchView('login')}
-        onShowRegister={() => switchView('register')}
-        onShowDashboard={() => switchView('dashboard')}
-      />
+      {/* Hide navbar during interview for maximum realism/focus */}
+      {view !== 'interview' && (
+        <Navbar
+          onShowLogin={() => switchView('login')}
+          onShowRegister={() => switchView('register')}
+          onShowDashboard={() => switchView('dashboard')}
+          onHome={() => switchView('landing')}
+        />
+      )}
 
       <main>
-        {view === 'dashboard' ? (
-          <Dashboard onStartInterview={() => alert('Interview room coming in Phase 3!')} />
+        {view === 'interview' ? (
+          <InterviewRoom onComplete={() => switchView('dashboard')} />
+        ) : view === 'dashboard' ? (
+          <Dashboard onStartInterview={() => switchView('interview')} />
         ) : view === 'landing' ? (
           <div className="max-w-7xl mx-auto">
             <LandingPage onRegister={() => switchView('register')} />
@@ -347,7 +324,6 @@ function App() {
         )}
       </main>
 
-      {/* Footer — only show on landing */}
       {view === 'landing' && (
         <footer className="bg-white py-12 border-t border-gray-100 text-center">
           <div className="text-2xl font-bold text-purple-600 mb-4">Vedrix</div>

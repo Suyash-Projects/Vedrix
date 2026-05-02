@@ -1,10 +1,11 @@
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import MemorySaver
 from .state import InterviewState
 from .nodes import generate_question_node, evaluate_answer_node, update_memory_node
 
 def should_continue(state: InterviewState):
-    if state['current_question_index'] >= state['max_questions']:
-        return "end"
+    if state.get('interview_complete'):
+        return END
     return "continue"
 
 def create_interview_graph():
@@ -16,14 +17,11 @@ def create_interview_graph():
     workflow.add_node("evaluate_answer", evaluate_answer_node)
     workflow.add_node("update_memory", update_memory_node)
     
-    # Define the flow
     # Starting the interview
     workflow.set_entry_point("generate_question")
     
-    # Logic: After generating a question, we wait for user answer (External to graph usually)
-    # But for a fully autonomous loop (like a test or auto-interview), it looks like this:
+    # Define the flow
     # generate -> evaluate -> update -> should_continue -> generate OR end
-    
     workflow.add_edge("generate_question", "evaluate_answer")
     workflow.add_edge("evaluate_answer", "update_memory")
     
@@ -32,15 +30,17 @@ def create_interview_graph():
         should_continue,
         {
             "continue": "generate_question",
-            "end": END
+            END: END
         }
     )
     
-    # In a real API-driven flow, the graph will be called in segments:
-    # 1. API calls graph to get first question.
-    # 2. User answers, API calls graph starting at 'evaluate_answer' node.
-    
-    return workflow.compile()
+    # Compile with memory to allow pausing for user input
+    # 'interrupt_before' ensures execution halts before evaluation
+    memory = MemorySaver()
+    return workflow.compile(
+        checkpointer=memory,
+        interrupt_before=["evaluate_answer"]
+    )
 
 # Compile the graph
 interview_graph = create_interview_graph()

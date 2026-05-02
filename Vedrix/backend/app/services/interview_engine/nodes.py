@@ -16,7 +16,8 @@ class QuestionSchema(BaseModel):
     difficulty: str = Field(description="The difficulty level targeted")
 
 class EvaluationSchema(BaseModel):
-    score: float = Field(description="Score between 0.0 and 1.0")
+    score: float = Field(description="Overall score between 0.0 and 10.0")
+    metrics: Dict[str, float] = Field(description="Scores for accuracy, clarity, depth, and communication (all 0-10)")
     feedback: str = Field(description="Constructive feedback for the candidate")
     topic: str = Field(description="The specific skill or topic being evaluated")
     should_deep_dive: bool = Field(description="Whether to ask a follow-up on this same topic")
@@ -25,60 +26,61 @@ class EvaluationSchema(BaseModel):
 
 def generate_question_node(state: InterviewState) -> Dict[str, Any]:
     """
-    Node: Generate Question
-    Goal: Create the next interview question based on current state.
+    Node: Interviewer Agent
+    Goal: Create the next interview question based on current phase and performance.
     
     Logic:
     - Consults the resume text for context.
-    - Adjusts question difficulty based on 'state[difficulty]'.
-    - Uses Groq for low-latency response to keep the interview fluid.
+    - Tailors tone and question to the current phase (Warmup, Technical, Stress, etc.).
+    - Uses Groq for low-latency response.
     """
     llm = get_fast_llm()
-    # ... rest of function
     parser = JsonOutputParser(pydantic_object=QuestionSchema)
     
-    # Construct conversation history for context
+    # Construct conversation history
     history = ""
     for msg in state.get('messages', []):
         role = "Interviewer" if msg['role'] == 'assistant' else "Candidate"
         history += f"{role}: {msg['content']}\n"
 
     system_prompt = f"""You are an expert technical interviewer for the role of {state['job_role']}.
-    Your goal is to conduct an adaptive interview that assesses the candidate's depth of knowledge.
+    Conduct a realistic interview using a professional, slightly strict tone.
+    
+    CURRENT PHASE: {state['current_phase']}
+    CURRENT DIFFICULTY: {state['difficulty']}
+    TOPIC STRENGTHS: {state['topic_strengths']}
+    
+    PHASE GUIDELINES:
+    - warmup: Friendly but professional, verify resume experience.
+    - technical: Deep dive into core skills mentioned in resume.
+    - stress: Ask high-pressure logic or deep architectural questions.
+    - behavioral: Evaluate communication and problem-solving mindset.
     
     CONTEXT:
-    - Candidate Resume: {state['resume_text'][:2000]}
-    - Current Difficulty: {state['difficulty']}
-    - Topic Strengths/Weaknesses: {state['topic_strengths']}
-    - Questions Asked So Far: {state['current_question_index']}
+    - Resume: {state['resume_text'][:2000]}
     
     INSTRUCTIONS:
-    1. Review the conversation history to avoid repeating questions.
-    2. Focus on skills mentioned in the resume that align with the job role.
-    3. Generate a {state['difficulty']} level question.
-    4. {parser.get_format_instructions()}
+    1. Do not repeat questions.
+    2. Adapt based on history.
+    3. {parser.get_format_instructions()}
     """
     
-    human_msg = f"Conversation History:\n{history}\n\nGenerate the next question."
+    human_msg = f"Conversation History:\n{history}\n\nGenerate the next question for the {state['current_phase']} phase."
     
     try:
         response = llm.invoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content=human_msg)
         ])
-        
-        # Parse the JSON output
         parsed_q = parser.parse(response.content)
-        
         return {
             "next_question": parsed_q,
             "messages": [{"role": "assistant", "content": parsed_q['question']}]
         }
-    except Exception as e:
-        # Fallback logic if LLM fails or returns invalid JSON
+    except Exception:
         fallback_q = {
             "id": state['current_question_index'] + 1,
-            "question": f"Can you tell me about your experience working as a {state['job_role']} and some technical challenges you faced?",
+            "question": "Can you elaborate more on your most recent project and the technical stack used?",
             "category": "technical",
             "difficulty": state['difficulty']
         }
@@ -89,23 +91,30 @@ def generate_question_node(state: InterviewState) -> Dict[str, Any]:
 
 def evaluate_answer_node(state: InterviewState) -> Dict[str, Any]:
     """
-    Evaluates the candidate's last answer using a strong model (NVIDIA 405B).
-    Provides detailed scoring and logic for the adaptive engine.
+    Node: Evaluator Agent
+    Goal: Deep analysis of candidate's response using NVIDIA 405B.
+    
+    Scoring: 0-10 scale across Accuracy, Clarity, Depth, and Communication.
     """
     llm = get_strong_llm()
     parser = JsonOutputParser(pydantic_object=EvaluationSchema)
     
     last_question = state['next_question']['question']
     last_answer = state['messages'][-1]['content']
+    hr_guidance = state.get('hr_instructions', "None")
     
-    system_prompt = f"""You are a senior hiring manager evaluating a candidate's answer for a {state['job_role']} position.
-    Grade the answer based on:
-    1. Technical accuracy.
-    2. Clarity and communication.
-    3. Completeness relative to the {state['difficulty']} level.
+    system_prompt = f"""You are a senior hiring manager. Grade the candidate's answer for a {state['job_role']} position.
+    
+    SCORING (0.0 to 10.0):
+    - Accuracy: Technical correctness.
+    - Clarity: Communication ease.
+    - Depth: Senior-level insight.
+    - Communication: Professionalism.
+    
+    HR INTERVENTION GUIDANCE: {hr_guidance}
     
     QUESTION: {last_question}
-    CANDIDATE ANSWER: {last_answer}
+    ANSWER: {last_answer}
     
     {parser.get_format_instructions()}
     """
@@ -113,49 +122,58 @@ def evaluate_answer_node(state: InterviewState) -> Dict[str, Any]:
     try:
         response = llm.invoke([SystemMessage(content=system_prompt)])
         parsed_eval = parser.parse(response.content)
-        return {"last_evaluation": parsed_eval}
-    except Exception as e:
-        # Graceful fallback evaluation
-        fallback_eval = {
-            "score": 0.5,
-            "feedback": "Answer received and acknowledged.",
-            "topic": state['next_question'].get('category', 'general'),
-            "should_deep_dive": False
+        return {
+            "last_evaluation": parsed_eval,
+            "latest_score": parsed_eval['score'],
+            "metrics": parsed_eval['metrics']
         }
-        return {"last_evaluation": fallback_eval}
+    except Exception:
+        return {
+            "last_evaluation": {"score": 5.0, "metrics": {"accuracy": 5, "clarity": 5, "depth": 5, "communication": 5}},
+            "latest_score": 5.0,
+            "metrics": {"accuracy": 5, "clarity": 5, "depth": 5, "communication": 5}
+        }
 
 def update_memory_node(state: InterviewState) -> Dict[str, Any]:
     """
-    Updates the topic scores and decides the difficulty of the next round.
-    Implements the core adaptive logic: weak -> easier, strong -> harder.
+    Node: Decision & Memory Agent
+    Goal: Update state, manage adaptive difficulty, and handle phase transitions.
     """
     eval_result = state['last_evaluation']
-    topic = eval_result['topic']
-    score = eval_result['score']
+    topic = eval_result.get('topic', 'general')
+    score = eval_result.get('score', 5.0)
     
-    # 1. Update Topic Strengths
+    # 1. Update Memory
     new_strengths = state.get('topic_strengths', {}).copy()
-    if score >= 0.75:
-        new_strengths[topic] = "strong"
-    elif score >= 0.4:
-        new_strengths[topic] = "improving"
-    else:
-        new_strengths[topic] = "weak"
+    if score >= 7.5: new_strengths[topic] = "strong"
+    elif score >= 4.5: new_strengths[topic] = "improving"
+    else: new_strengths[topic] = "weak"
         
-    # 2. Determine Next Difficulty
-    current_difficulty = state['difficulty']
-    new_difficulty = current_difficulty
+    # 2. Adaptive Difficulty Logic
+    current_diff = state['difficulty']
+    new_diff = current_diff
+    if score > 7.0:
+        if current_diff == "easy": new_diff = "medium"
+        elif current_diff == "medium": new_diff = "hard"
+    elif score < 4.0:
+        if current_diff == "hard": new_diff = "medium"
+        elif current_diff == "medium": new_diff = "easy"
+        
+    # 3. Phase Transitions
+    curr_phase = state['current_phase']
+    new_phase = curr_phase
+    idx = state['current_question_index'] + 1
     
-    if score > 0.8:
-        if current_difficulty == "easy": new_difficulty = "medium"
-        elif current_difficulty == "medium": new_difficulty = "hard"
-    elif score < 0.4:
-        if current_difficulty == "hard": new_difficulty = "medium"
-        elif current_difficulty == "medium": new_difficulty = "easy"
+    if curr_phase == "warmup" and idx >= 2: new_phase = "technical"
+    elif curr_phase == "technical" and idx >= 6:
+        new_phase = "stress" if score > 8.0 else "behavioral"
+    elif curr_phase == "stress" and idx >= 9: new_phase = "behavioral"
+    elif curr_phase == "behavioral" and idx >= 11: new_phase = "closing"
         
     return {
-        "difficulty": new_difficulty,
+        "difficulty": new_diff,
         "topic_strengths": new_strengths,
-        "current_question_index": state['current_question_index'] + 1,
-        "interview_complete": state['current_question_index'] + 1 >= state['max_questions']
+        "current_phase": new_phase,
+        "current_question_index": idx,
+        "interview_complete": idx >= state['max_questions'] or new_phase == "closing"
     }
