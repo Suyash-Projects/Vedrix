@@ -76,6 +76,7 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+.github
 
 # IPython
 profile_default/
@@ -174,3 +175,5 @@ local_config.py
 # Production files
 static/css/*.min.css
 static/js/*.min.js
+.gemini/
+gha-creds-*.json

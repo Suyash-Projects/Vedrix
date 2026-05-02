@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=vedrix
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  backend:
+    build: ./backend
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/vedrix
+      - REDIS_URL=redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    stdin_open: true
+    tty: true
+
+volumes:
+  postgres_data:
