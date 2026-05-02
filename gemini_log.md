@@ -51,7 +51,9 @@
     - Proposed **FastAPI** backend for asynchronous AI processing and scalability.
     - Planned for **JWT Auth** and **PostgreSQL** migration.
 
-### Planned Next Steps:
-- Build `StudentProfile` and `HRProfile` CRUD endpoints.
-- Implement file upload service for resumes.
-- Connect LangGraph engine to API endpoints.
+### [2026-05-01] - Development Milestone reached
+- **Git Commit**: Successfully committed all changes to branch `main`.
+- **Project Rebranding**: Full migration to **Vedrix** naming and UI.
+- **Functional State**: Login and Register views are integrated into the main App with a state-driven router.
+- **Environment Fix**: Downgraded `bcrypt` to `4.0.1` to resolve a `Passlib` compatibility error (`AttributeError: module 'bcrypt' has no attribute '__about__'`).
+- **Database Fix**: Switched to `SQLite` (`aiosqlite`) for zero-config local development and added auto-table creation on startup.

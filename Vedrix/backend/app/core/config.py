@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 import os
 
 class Settings(BaseSettings):
@@ -7,24 +7,32 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Vedrix"
     
     # Security
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-for-dev")
+    SECRET_KEY: str = "change-me-in-production-use-env-file"
+    ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
     
     # Database
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost/vedrix")
+    DATABASE_URL: str = "sqlite+aiosqlite:///./vedrix.db"
     
     # AI API Keys
-    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-    NVIDIA_API_KEY: str = os.getenv("NVIDIA_API_KEY", "")
-    OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
-    APIFREE_API_KEY: str = os.getenv("APIFREE_API_KEY", "")
+    GROQ_API_KEY: str = ""
+    NVIDIA_API_KEY: str = ""
+    OPENROUTER_API_KEY: str = ""
+    APIFREE_API_KEY: str = ""
     
     # OpenRouter Base URLs
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
     NVIDIA_BASE_URL: str = "https://integrate.api.nvidia.com/v1"
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    APIFREE_BASE_URL: str = "https://apifreellm.com/api/v1"
 
     class Config:
+        env_file = ".env"
         case_sensitive = True
+        extra = "ignore"
 
 settings = Settings()
+
+# Bulletproof fix: Ensure SQLite URL uses aiosqlite for async support
+if settings.DATABASE_URL.startswith("sqlite://"):
+    settings.DATABASE_URL = settings.DATABASE_URL.replace("sqlite://", "sqlite+aiosqlite://", 1)

@@ -8,15 +8,17 @@ const useAuthStore = create((set) => ({
   isLoading: false,
   error: null,
 
+  clearError: () => set({ error: null }),
+
   login: async (username, password) => {
     set({ isLoading: true, error: null });
     try {
-      const formData = new FormData();
-      formData.append('username', username);
-      formData.append('password', password);
+      const params = new URLSearchParams();
+      params.append('username', username);
+      params.append('password', password);
 
-      const response = await apiClient.post('/auth/login', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      const response = await apiClient.post('/auth/login', params, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
       });
 
       const { access_token } = response.data;
@@ -58,7 +60,7 @@ const useAuthStore = create((set) => ({
 
   logout: () => {
     localStorage.removeItem('token');
-    set({ user: null, token: null, isAuthenticated: false });
+    set({ user: null, token: null, isAuthenticated: false, error: null });
   },
 
   checkAuth: async () => {

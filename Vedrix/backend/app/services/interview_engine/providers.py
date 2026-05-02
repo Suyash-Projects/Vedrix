@@ -6,7 +6,7 @@ def get_fast_llm():
     """Returns Groq LLM for fast real-time interaction."""
     return ChatGroq(
         api_key=settings.GROQ_API_KEY,
-        model_name="llama-3.1-8b-instant",
+        model="llama-3.1-8b-instant",
         temperature=0.7
     )
 
@@ -15,15 +15,15 @@ def get_strong_llm():
     return ChatOpenAI(
         api_key=settings.NVIDIA_API_KEY,
         base_url=settings.NVIDIA_BASE_URL,
-        model_name="meta/llama-3.1-405b-instruct",
+        model="meta/llama-3.1-405b-instruct",
         temperature=0.1
     )
 
 def get_fallback_llm():
-    """Returns OpenRouter/APIFree LLM for fallback."""
+    """Returns OpenRouter LLM as fallback."""
     return ChatOpenAI(
         api_key=settings.OPENROUTER_API_KEY,
         base_url=settings.OPENROUTER_BASE_URL,
-        model_name="openrouter/auto-free",
+        model="openai/gpt-3.5-turbo",
         temperature=0.7
     )

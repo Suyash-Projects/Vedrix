@@ -24,6 +24,7 @@ def create_interview_graph():
     # But for a fully autonomous loop (like a test or auto-interview), it looks like this:
     # generate -> evaluate -> update -> should_continue -> generate OR end
     
+    workflow.add_edge("generate_question", "evaluate_answer")
     workflow.add_edge("evaluate_answer", "update_memory")
     
     workflow.add_conditional_edges(
