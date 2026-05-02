@@ -20,7 +20,7 @@ async_session = sessionmaker(
 async def init_db():
     async with engine.begin() as conn:
         # Import all models to ensure they are registered
-        from app.models import User, StudentProfile, HRProfile, JobDrive, InterviewSession
+        from app.models import User, StudentProfile, HRProfile, JobDrive, InterviewSession, DriveInviteToken
         await conn.run_sync(SQLModel.metadata.create_all)
 
 async def get_session() -> AsyncSession:

@@ -27,14 +27,14 @@ const Register = ({ onToggleMode, onSuccess }) => {
   };
 
   return (
-    <div className="w-full max-w-lg mx-auto p-8 bg-white rounded-3xl shadow-2xl border border-gray-100">
+    <div className="w-full max-w-lg mx-auto p-8 bg-white/5 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/10">
       <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">Create Account</h2>
-        <p className="text-gray-500">Join Vedrix and master your interview skills</p>
+        <h2 className="text-3xl font-bold text-white mb-2">Create Account</h2>
+        <p className="text-slate-400">Join Vedrix and master your interview skills</p>
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm">
+        <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-xl">
           {error}
         </div>
       )}
@@ -42,134 +42,77 @@ const Register = ({ onToggleMode, onSuccess }) => {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
-            <input
-              name="first_name"
-              type="text"
-              required
-              className="block w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all outline-none"
-              placeholder="John"
-              onChange={handleChange}
-            />
+            <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">First Name</label>
+            <input name="first_name" type="text" required
+              className="block w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+              placeholder="John" onChange={handleChange} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
-            <input
-              name="last_name"
-              type="text"
-              required
-              className="block w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all outline-none"
-              placeholder="Doe"
-              onChange={handleChange}
-            />
+            <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Last Name</label>
+            <input name="last_name" type="text" required
+              className="block w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+              placeholder="Doe" onChange={handleChange} />
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+          <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Email Address</label>
           <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-              <Mail size={18} />
-            </div>
-            <input
-              name="email"
-              type="email"
-              required
-              className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all outline-none"
-              placeholder="john@example.com"
-              onChange={handleChange}
-            />
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500"><Mail size={18} /></div>
+            <input name="email" type="email" required
+              className="block w-full pl-10 pr-3 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+              placeholder="john@example.com" onChange={handleChange} />
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+          <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Username</label>
           <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-              <User size={18} />
-            </div>
-            <input
-              name="username"
-              type="text"
-              required
-              className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all outline-none"
-              placeholder="johndoe"
-              onChange={handleChange}
-            />
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500"><User size={18} /></div>
+            <input name="username" type="text" required
+              className="block w-full pl-10 pr-3 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+              placeholder="johndoe" onChange={handleChange} />
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+          <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Password</label>
           <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-              <Lock size={18} />
-            </div>
-            <input
-              name="password"
-              type="password"
-              required
-              className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all outline-none"
-              placeholder="••••••••"
-              onChange={handleChange}
-            />
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500"><Lock size={18} /></div>
+            <input name="password" type="password" required
+              className="block w-full pl-10 pr-3 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+              placeholder="••••••••" onChange={handleChange} />
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">I am a...</label>
+          <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">I am a...</label>
           <div className="grid grid-cols-2 gap-4 mt-2">
-            <button
-              type="button"
-              onClick={() => setFormData({...formData, user_type: 'student'})}
-              className={`py-3 px-4 rounded-xl border-2 transition-all flex items-center justify-center space-x-2 ${
-                formData.user_type === 'student' 
-                ? 'border-purple-600 bg-purple-50 text-purple-600' 
-                : 'border-gray-100 bg-gray-50 text-gray-500 hover:border-gray-200'
-              }`}
-            >
-              <User size={18} />
-              <span className="font-bold">Student</span>
+            <button type="button" onClick={() => setFormData({...formData, user_type: 'student'})}
+              className={`py-3 px-4 rounded-xl border-2 transition-all flex items-center justify-center space-x-2 font-bold text-sm ${
+                formData.user_type === 'student' ? 'border-purple-500 bg-purple-500/10 text-purple-400' : 'border-white/10 bg-white/5 text-slate-500 hover:border-white/20'
+              }`}>
+              <User size={18} /><span>Student</span>
             </button>
-            <button
-              type="button"
-              onClick={() => setFormData({...formData, user_type: 'hr'})}
-              className={`py-3 px-4 rounded-xl border-2 transition-all flex items-center justify-center space-x-2 ${
-                formData.user_type === 'hr' 
-                ? 'border-indigo-600 bg-indigo-50 text-indigo-600' 
-                : 'border-gray-100 bg-gray-50 text-gray-500 hover:border-gray-200'
-              }`}
-            >
-              <Briefcase size={18} />
-              <span className="font-bold">HR Expert</span>
+            <button type="button" onClick={() => setFormData({...formData, user_type: 'hr'})}
+              className={`py-3 px-4 rounded-xl border-2 transition-all flex items-center justify-center space-x-2 font-bold text-sm ${
+                formData.user_type === 'hr' ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400' : 'border-white/10 bg-white/5 text-slate-500 hover:border-white/20'
+              }`}>
+              <Briefcase size={18} /><span>HR Expert</span>
             </button>
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="w-full bg-purple-600 text-white py-4 px-4 rounded-xl font-bold text-lg hover:bg-purple-700 shadow-lg shadow-purple-500/30 transition-all flex items-center justify-center space-x-2 active:scale-95 disabled:opacity-70 mt-6"
+        <button type="submit" disabled={isLoading}
+          className="w-full bg-purple-600 text-white py-4 px-4 rounded-xl font-black uppercase tracking-widest text-sm hover:bg-purple-500 shadow-[0_0_40px_rgba(147,51,234,0.3)] transition-all flex items-center justify-center space-x-2 active:scale-95 disabled:opacity-70 mt-6"
         >
-          {isLoading ? (
-            <Loader2 className="animate-spin" size={20} />
-          ) : (
-            <>
-              <span>Get Started</span>
-              <ArrowRight size={20} />
-            </>
-          )}
+          {isLoading ? <Loader2 className="animate-spin" size={20} /> : <><span>Get Started</span><ArrowRight size={20} /></>}
         </button>
       </form>
 
-      <div className="mt-8 text-center text-sm text-gray-600">
+      <div className="mt-8 text-center text-sm text-slate-500">
         Already have an account?{' '}
-        <button 
-          onClick={onToggleMode}
-          className="text-purple-600 font-bold hover:underline"
-        >
-          Sign In
-        </button>
+        <button onClick={onToggleMode} className="text-purple-400 font-bold hover:text-purple-300">Sign In</button>
       </div>
     </div>
   );

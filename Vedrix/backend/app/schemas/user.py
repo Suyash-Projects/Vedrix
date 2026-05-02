@@ -15,12 +15,19 @@ class UserCreate(UserBase):
     first_name: str
     last_name: str
     user_type: str
+    company_name: Optional[str] = None  # used for HR auto-profile creation
 
 class UserUpdate(UserBase):
     password: Optional[str] = None
 
 class UserRead(UserBase):
     id: int
+    first_name: str
+    last_name: str
+    user_type: str
+    email: str
+    username: str
+    is_active: Optional[bool] = True
 
     class Config:
         from_attributes = True

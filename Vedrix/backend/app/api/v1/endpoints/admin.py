@@ -59,4 +59,17 @@ async def list_all_interviews(
 ) -> Any:
     """List all interview sessions across the platform."""
     result = await db.execute(select(InterviewSession))
-    return result.scalars().all()
+    sessions = result.scalars().all()
+    return [
+        {
+            "id": s.id,
+            "candidate_id": s.candidate_id,
+            "job_drive_id": s.job_drive_id,
+            "status": s.status,
+            "overall_score": s.overall_score,
+            "start_time": s.start_time,
+            "end_time": s.end_time,
+            "created_at": s.created_at,
+        }
+        for s in sessions
+    ]

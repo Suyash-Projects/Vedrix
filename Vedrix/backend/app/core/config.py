@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     NVIDIA_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
     APIFREE_API_KEY: str = ""
     
     # OpenRouter Base URLs
@@ -25,6 +26,14 @@ class Settings(BaseSettings):
     NVIDIA_BASE_URL: str = "https://integrate.api.nvidia.com/v1"
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     APIFREE_BASE_URL: str = "https://apifreellm.com/api/v1"
+
+    # Email
+    MAIL_SERVER: str = "smtp.gmail.com"
+    MAIL_PORT: int = 587
+    MAIL_USERNAME: str = ""
+    MAIL_PASSWORD: str = ""
+    MAIL_FROM_NAME: str = "Vedrix AI"
+    FRONTEND_URL: str = "http://localhost:5173"
 
     class Config:
         env_file = ".env"

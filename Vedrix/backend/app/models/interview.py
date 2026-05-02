@@ -6,6 +6,18 @@ if TYPE_CHECKING:
     from .user import User
     from .profile import HRProfile
 
+
+class DriveInviteToken(SQLModel, table=True):
+    __tablename__ = "drive_invite_token"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    drive_id: int = Field(foreign_key="job_drive.id", nullable=False)
+    token: str = Field(unique=True, index=True, nullable=False)
+    candidate_email: Optional[str] = None
+    is_used: bool = Field(default=False)
+    expires_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
 class JobDrive(SQLModel, table=True):
     __tablename__ = "job_drive"
     

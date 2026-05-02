@@ -6,10 +6,9 @@
   line-height: 1.5;
   font-weight: 400;
 
-  /* Use light scheme — the Tailwind UI is white-based */
-  color-scheme: light;
-  color: #111827;
-  background-color: #ffffff;
+  color-scheme: dark;
+  color: #F8FAFC;
+  background-color: #020617; /* Deep slate background */
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -21,15 +20,41 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background-color: #020617;
+  color: #F8FAFC;
 }
 
-/* Animated gradient utility used in hero heading */
+/* Custom Scrollbar for premium dark theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 @keyframes gradient {
-  0% { background-position: 0% center; }
-  50% { background-position: 100% center; }
-  100% { background-position: 0% center; }
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
 .animate-gradient {
-  animation: gradient 4s linear infinite;
+  background-size: 200% auto;
+  animation: gradient 3s linear infinite;
+}
+
+/* Glassmorphism utility */
+.glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }

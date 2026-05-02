@@ -39,3 +39,8 @@ class InterviewState(TypedDict):
     
     # Next question to be asked
     next_question: Optional[Dict]
+
+    # Technical Coding Sandbox
+    code_snippet: Optional[str]
+    code_language: Optional[str]
+    is_coding_mode: Optional[bool]

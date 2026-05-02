@@ -1,5 +1,5 @@
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from datetime import datetime
 
 class JobDriveBase(BaseModel):
@@ -29,3 +29,11 @@ class JobDriveRead(JobDriveBase):
 class MagicLinkResponse(BaseModel):
     link: str
     token: str
+
+class BulkInviteRequest(BaseModel):
+    emails: List[str]
+    expires_in_hours: int = 72
+
+class BulkInviteResponse(BaseModel):
+    invited: int
+    links: List[MagicLinkResponse]
