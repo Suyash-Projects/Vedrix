@@ -3,11 +3,18 @@ from typing import Optional, List
 
 
 class ResumeParser:
-    """Service to handle resume text extraction and initial parsing."""
+    """
+    Service: Resume Parser
+    Utility for extracting structured and raw data from candidate resumes.
+    Currently utilizes PyMuPDF (fitz) for text extraction.
+    """
 
     @staticmethod
     def extract_text(file_path: str) -> str:
-        """Extracts plain text from a PDF file using PyMuPDF (fitz)."""
+        """
+        Extracts plain text from a PDF file using PyMuPDF (fitz).
+        Used to provide background context to the adaptive LLM interviewer.
+        """
         text = ""
         try:
             with fitz.open(file_path) as doc:
