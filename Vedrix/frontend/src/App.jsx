@@ -105,7 +105,7 @@ const LandingPage = ({ onRegister }) => (
 
         <div className="flex flex-col sm:flex-row gap-6">
           <button onClick={onRegister} className="bg-purple-600 text-white px-12 py-5 rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-purple-500 shadow-[0_0_50px_rgba(147,51,234,0.3)] transition-all flex items-center justify-center space-x-3 active:scale-95">
-            <span>Start Evaluaton</span>
+            <span>Start Evaluation</span>
             <ChevronRight size={20} />
           </button>
           <div className="flex items-center space-x-4 px-6 border-l border-white/10">
@@ -240,12 +240,9 @@ function App() {
            }} />
          ) :
          view === 'dashboard' ? (
-           <StudentDashboard 
-             onStartInterview={() => switchView('interview')} 
-             onViewReport={(id) => {
-               setSelectedSession(id);
-               switchView('report');
-             }} 
+           <StudentDashboard
+             onStartInterview={() => switchView('interview')}
+             onViewReport={(id) => { setSelectedSession(id); switchView('report'); }}
            />
          ) :
          view === 'landing' ? <LandingPage onRegister={() => switchView('register')} /> : (
@@ -254,10 +251,7 @@ function App() {
               {view === 'login' ? (
                 <Login 
                   onToggleMode={() => switchView('register')} 
-                  onSuccess={(u) => {
-                    const target = u?.user_type === 'hr' ? 'hr_dashboard' : 'dashboard';
-                    setView(target);
-                  }} 
+                  onSuccess={() => switchView('login')} 
                 />
               ) : (
                 <Register 

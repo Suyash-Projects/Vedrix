@@ -78,3 +78,6 @@ watchfiles==1.1.1
 websockets==16.0
 xxhash==3.7.0
 zstandard==0.25.0
+
+fpdf2==2.7.9
+slowapi==0.1.9

@@ -1,65 +1,88 @@
 import os
+import asyncio
 import tempfile
 import base64
+import logging
 from groq import Groq
-from openai import OpenAI
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
+
 class VoiceService:
-    """Service for Speech-to-Text and Text-to-Speech operations."""
-    
+    """
+    Speech-to-Text : Groq Whisper Large V3   (~300ms, fastest available)
+    Text-to-Speech : Groq PlayAI TTS         (uses same GROQ_API_KEY)
+
+    Both SDK calls are synchronous — run in a thread executor so they
+    never block the async event loop.
+    """
+
     def __init__(self):
-        self.groq_client = Groq(api_key=settings.GROQ_API_KEY)
-        self.openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        if settings.GROQ_API_KEY:
+            self._groq = Groq(api_key=settings.GROQ_API_KEY)
+        else:
+            self._groq = None
+            logger.warning("VoiceService: GROQ_API_KEY not set — STT and TTS disabled")
+
+    # ── STT ──────────────────────────────────────────────────────────────────
 
     async def transcribe_audio(self, audio_bytes: bytes) -> str:
-        """
-        Transcribes audio bytes to text using Groq's Whisper Large V3.
-        """
-        # 1. Create a temporary file to store the audio
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_audio:
-            temp_audio.write(audio_bytes)
-            temp_path = temp_audio.name
-
-        try:
-            # 2. Open and transcribe
-            with open(temp_path, "rb") as file:
-                transcription = self.groq_client.audio.transcriptions.create(
-                    file=(temp_path, file.read()),
-                    model="whisper-large-v3",
-                    response_format="json",
-                    language="en",
-                    temperature=0.0
-                )
-            return transcription.text
-        except Exception as e:
-            print(f"STT Error: {e}")
+        """Transcribe audio bytes → text via Groq Whisper Large V3."""
+        if not self._groq:
             return ""
-        finally:
-            # 3. Cleanup
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+
+        def _run():
+            tmp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as f:
+                    f.write(audio_bytes)
+                    tmp_path = f.name
+                with open(tmp_path, "rb") as f:
+                    result = self._groq.audio.transcriptions.create(
+                        file=(os.path.basename(tmp_path), f.read()),
+                        model="whisper-large-v3",
+                        response_format="json",
+                        language="en",
+                        temperature=0.0,
+                    )
+                return result.text or ""
+            except Exception as e:
+                logger.error(f"STT error: {e}")
+                return ""
+            finally:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _run)
+
+    # ── TTS ──────────────────────────────────────────────────────────────────
 
     async def speak_text(self, text: str) -> str:
         """
-        Converts text to speech using OpenAI TTS and returns base64 encoded audio.
+        Convert text → base64-encoded WAV audio via Groq PlayAI TTS.
+        Returns empty string if Groq key is not set (silent fallback).
         """
-        if not settings.OPENAI_API_KEY:
+        if not self._groq or not text.strip():
             return ""
 
-        try:
-            response = self.openai_client.audio.speech.create(
-                model="tts-1",
-                voice="alloy",
-                input=text,
-                response_format="opus"
-            )
-            
-            # Convert binary response to base64 string
-            audio_base64 = base64.b64encode(response.content).decode('utf-8')
-            return audio_base64
-        except Exception as e:
-            print(f"TTS Error: {e}")
-            return ""
+        def _run():
+            try:
+                response = self._groq.audio.speech.create(
+                    model="playai-tts",
+                    voice="Celeste-PlayAI",   # clear, professional female voice
+                    input=text[:4096],
+                    response_format="wav",
+                )
+                # response.content is raw bytes
+                return base64.b64encode(response.content).decode("utf-8")
+            except Exception as e:
+                logger.error(f"TTS error: {e}")
+                return ""
+
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _run)
+
 
 voice_service = VoiceService()

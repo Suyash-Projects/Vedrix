@@ -1,9 +1,13 @@
 import json
+import logging
 from typing import List, Dict, Any
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from pydantic import BaseModel, Field
-from app.core.config import settings
+
+from .interview_engine.providers import get_strong_llm
+
+logger = logging.getLogger(__name__)
+
 
 class DetailedEvaluationSchema(BaseModel):
     overall_score: float = Field(description="Final overall score out of 10.0")
@@ -15,58 +19,38 @@ class DetailedEvaluationSchema(BaseModel):
     weaknesses: List[str] = Field(description="Key areas for improvement")
     summary: str = Field(description="A concise executive summary for HR")
 
+
 class EvaluationService:
-    """Service for deep post-interview analysis using high-capacity LLMs."""
-    
+
     def __init__(self):
-        # Using DeepSeek via OpenRouter for deep reasoning
-        self.llm = ChatOpenAI(
-            api_key=settings.OPENROUTER_API_KEY,
-            base_url=settings.OPENROUTER_BASE_URL,
-            model="deepseek/deepseek-chat-v3.1:free",
-            temperature=0.1
+        self.llm = get_strong_llm()
+
+    async def generate_final_report(
+        self, job_role: str, history: List[Dict[str, str]]
+    ) -> DetailedEvaluationSchema:
+        transcript = "\n".join(
+            f"{'Interviewer' if m['role'] == 'assistant' else 'Candidate'}: {m['content']}"
+            for m in history
         )
-
-    async def generate_final_report(self, job_role: str, history: List[Dict[str, str]]) -> DetailedEvaluationSchema:
-        """
-        Analyzes the full conversation transcript and returns a structured report.
-        """
-        transcript = ""
-        for msg in history:
-            role = "Interviewer" if msg['role'] == 'assistant' else "Candidate"
-            transcript += f"{role}: {msg['content']}\n"
-
-        system_prompt = f"""You are a principal engineer and expert hiring manager.
-        You are reviewing the transcript of an AI-led interview for the role of {job_role}.
-        
-        TASK:
-        Provide a deep, clinical analysis of the candidate's performance.
-        Be extremely objective. If technical answers were vague, score 'Depth' low.
-        If accuracy was high but communication poor, reflect that in 'Communication'.
-        
-        OUTPUT FORMAT:
-        You must return a valid JSON object matching the requested schema.
-        """
-        
-        human_prompt = f"Transcript:\n{transcript}\n\nGenerate the final evaluation report."
-        
+        system_prompt = (
+            f"You are a principal engineer and expert hiring manager reviewing an AI-led interview "
+            f"for the role of {job_role}.\n\n"
+            "Provide a deep, clinical analysis. Be objective.\n"
+            "OUTPUT FORMAT: Return a valid JSON object matching the requested schema exactly."
+        )
         try:
-            response = self.llm.invoke([
+            response = await self.llm.ainvoke([
                 SystemMessage(content=system_prompt),
-                HumanMessage(content=human_prompt)
+                HumanMessage(content=f"Transcript:\n{transcript}\n\nGenerate the final evaluation report."),
             ])
-            
-            # Extract JSON from response content (handling potential markdown blocks)
             content = response.content
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
-            
-            parsed = json.loads(content)
-            return DetailedEvaluationSchema(**parsed)
-            
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+            return DetailedEvaluationSchema(**json.loads(content))
         except Exception as e:
-            print(f"Deep Evaluation Error: {e}")
-            # Robust fallback
+            logger.error(f"Final report generation failed: {e}")
             return DetailedEvaluationSchema(
                 overall_score=5.0,
                 hire_recommendation="Maybe",
@@ -74,8 +58,9 @@ class EvaluationService:
                 communication_clarity=5.0,
                 depth_of_knowledge=5.0,
                 strengths=["Completed the session"],
-                weaknesses=["Technical depth analysis failed"],
-                summary="AI Evaluation failed to generate a deep report. Manual review of transcript required."
+                weaknesses=["Evaluation engine failed — manual review required"],
+                summary="AI evaluation failed. Manual review of transcript required.",
             )
+
 
 evaluation_service = EvaluationService()

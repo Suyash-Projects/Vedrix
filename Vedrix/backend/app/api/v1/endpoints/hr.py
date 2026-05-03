@@ -1,27 +1,29 @@
 from typing import Any, List, Optional
 import uuid
-import json
-from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from datetime import datetime, timezone, timedelta
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.api import deps
+from app.core.config import settings
 from app.db.session import get_session
 from app.models.user import User
 from app.models.interview import JobDrive, InterviewSession, DriveInviteToken
 from app.models.profile import HRProfile
 from app.schemas.hr import (
-    JobDriveCreate, JobDriveRead, MagicLinkResponse,
+    JobDriveCreate, JobDriveRead, MagicLinkRequest, MagicLinkResponse,
     BulkInviteRequest, BulkInviteResponse
 )
 from app.services.email_service import send_invite_email
 from app.services.pdf_service import generate_interview_pdf
+from app.core.rate_limit import limiter
 
 router = APIRouter()
 
-FRONTEND_BASE_URL = "http://localhost:5173"
+# Audit #15: use settings instead of hardcoded localhost
+FRONTEND_BASE_URL = settings.FRONTEND_URL
 
 
 async def _get_hr_profile(db: AsyncSession, user_id: int) -> HRProfile:
@@ -52,7 +54,9 @@ async def create_job_drive(
 
 
 @router.get("/drives")
+@limiter.limit("20/minute")
 async def list_job_drives(
+    request: Request,
     db: AsyncSession = Depends(get_session),
     current_hr: User = Depends(deps.get_current_hr)
 ) -> Any:
@@ -115,8 +119,11 @@ async def delete_drive(
 # ── INVITE LINKS ─────────────────────────────────────────────────────────────
 
 @router.post("/drives/{drive_id}/magic-link", response_model=MagicLinkResponse)
+@limiter.limit("10/minute")
 async def generate_magic_link(
+    request: Request,
     drive_id: int,
+    magic_request: MagicLinkRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_session),
     current_hr: User = Depends(deps.get_current_hr)
@@ -133,17 +140,33 @@ async def generate_magic_link(
     invite = DriveInviteToken(
         drive_id=drive_id,
         token=token,
-        expires_at=datetime.utcnow() + timedelta(hours=72)
+        candidate_email=magic_request.candidate_email,  # audit #26
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=magic_request.expires_in_hours)
     )
     db.add(invite)
     await db.commit()
 
     link = f"{FRONTEND_BASE_URL}?drive_id={drive_id}&token={token}"
+
+    # Send invite email if email provided
+    if magic_request.candidate_email:
+        background_tasks.add_task(
+            send_invite_email,
+            magic_request.candidate_email,
+            drive.job_role,
+            drive.title,
+            link,
+            magic_request.expires_in_hours,
+            drive.skills_required,
+        )
+
     return {"link": link, "token": token}
 
 
 @router.post("/drives/{drive_id}/bulk-invite", response_model=BulkInviteResponse)
+@limiter.limit("10/minute")
 async def bulk_invite_candidates(
+    request: Request,
     drive_id: int,
     invite_in: BulkInviteRequest,
     background_tasks: BackgroundTasks,
@@ -158,7 +181,7 @@ async def bulk_invite_candidates(
     if not drive:
         raise HTTPException(status_code=404, detail="Job Drive not found")
 
-    expires_at = datetime.utcnow() + timedelta(hours=invite_in.expires_in_hours)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=invite_in.expires_in_hours)
     links = []
     for email in invite_in.emails:
         token = str(uuid.uuid4())
@@ -241,28 +264,33 @@ async def list_hr_interviews(
     db: AsyncSession = Depends(get_session),
     current_hr: User = Depends(deps.get_current_hr)
 ) -> Any:
-    hr_profile = await _get_hr_profile(db, current_hr.id)
-    # Join with JobDrive to get metadata for the table (Issue #7)
+    result = await db.execute(select(HRProfile).where(HRProfile.user_id == current_hr.id))
+    hr_profile = result.scalars().first()
+    if not hr_profile:
+        return []
     query = (
-        select(InterviewSession, JobDrive.title, JobDrive.job_role)
+        select(InterviewSession, JobDrive.title, JobDrive.job_role, User.email, User.first_name, User.last_name)
         .join(JobDrive, InterviewSession.job_drive_id == JobDrive.id)
+        .join(User, InterviewSession.candidate_id == User.id)
         .where(JobDrive.hr_id == hr_profile.id)
     )
     result = await db.execute(query)
     rows = result.all()
-    
     return [
         {
-            "id": s.id,
-            "candidate_id": s.candidate_id,
-            "job_drive_id": s.job_drive_id,
-            "status": s.status,
-            "overall_score": s.overall_score,
-            "created_at": s.created_at,
-            "drive_title": title,
-            "job_role": job_role,
+            "id": row[0].id,
+            "candidate_id": row[0].candidate_id,
+            "candidate_email": row[3],
+            "candidate_name": f"{row[4]} {row[5]}".strip(),
+            "job_drive_id": row[0].job_drive_id,
+            "status": row[0].status,
+            "overall_score": row[0].overall_score,
+            "ai_feedback": row[0].ai_feedback,
+            "created_at": row[0].created_at,
+            "drive_title": row[1],
+            "job_role": row[2],
         }
-        for s, title, job_role in rows
+        for row in rows
     ]
 
 
@@ -326,9 +354,9 @@ async def export_interview_pdf(
     
     session, candidate, drive = row
     
-    # Parse transcript and feedback
-    transcript = json.loads(session.responses) if isinstance(session.responses, str) else (session.responses or [])
-    report = json.loads(session.ai_feedback) if isinstance(session.ai_feedback, str) else (session.ai_feedback or {})
+    # Native JSON columns — no loads needed
+    transcript = session.responses or []
+    report = session.ai_feedback or {}
     
     # Use real PDF service (Issue #8)
     pdf_bytes = generate_interview_pdf(
@@ -342,6 +370,6 @@ async def export_interview_pdf(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f"attachment; filename=Vedrix_Report_{candidate.last_name}.pdf"
+            "Content-Disposition": f"attachment; filename=Vedrix_Report_{session.id}.pdf"
         }
     )

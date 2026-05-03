@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Mic, MicOff, Video, Send, Loader2, Maximize,
+  Mic, MicOff, Video, VideoOff, Send, Loader2, Maximize,
   CheckCircle2, Camera, User, PhoneOff, BrainCircuit, SignalHigh,
-  Play, Terminal, VideoOff, Volume2
+  Play, Terminal
 } from 'lucide-react';
 import useAuthStore from '../store/useAuthStore';
 import Editor from '@monaco-editor/react';
@@ -131,30 +131,134 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [agentStatus, setAgentStatus] = useState('Initializing...');
-  const [timeLeft, setTimeLeft] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(0); // Overall session timer
+  const [questionTimeLeft, setQuestionTimeLeft] = useState(0); // Per-question countdown
+
+  // ... (rest of states)
+
   const [currentQuestion, setCurrentQuestion] = useState(null);
+  
+  // Keep refs in sync with state for useEffect closures
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
+
+  useEffect(() => {
+    toggleRecordingRef.current = toggleRecording;
+  }, [toggleRecording]);
+
+  useEffect(() => {
+    let qTimer;
+    if (currentQuestion?.time_limit) {
+      setQuestionTimeLeft(currentQuestion.time_limit);
+      qTimer = setInterval(() => {
+        setQuestionTimeLeft(prev => {
+          if (prev <= 1) {
+            clearInterval(qTimer);
+            if (isRecordingRef.current) {
+              // Auto-submit logic when timer hits zero - use ref to avoid stale closure
+              toggleRecordingRef.current?.();
+              setAgentStatus('Time up! Auto-submitting response...');
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(qTimer);
+  }, [currentQuestion]);
   const [jobRole, setJobRole] = useState('AI Interview');
   const [completedSessionId, setCompletedSessionId] = useState(null);
+  const [showTextInput, setShowTextInput] = useState(false);
+  const [manualText, setManualText] = useState('');
+  const [codeResult, setCodeResult] = useState(null);
   
   // Coding State
   const [code, setCode] = useState("# Write your solution here...\n");
   const [isCodingMode, setIsCodingMode] = useState(false);
   const [codeLanguage, setCodeLanguage] = useState("python");
 
+  // Use refs for values needed inside setInterval closure
+  const isRecordingRef = useRef(false);
+  const toggleRecordingRef = useRef(null);
+
   const ws = useRef(null);
   const mediaRecorder = useRef(null);
   const audioChunks = useRef([]);
+  const reconnectAttempts = useRef(0);
+  const reconnectTimer = useRef(null);
+  const socketUrlRef = useRef('');
+  const isIntentionalClose = useRef(false);
 
   const playAudio = (base64) => {
     try {
       setIsSpeaking(true);
-      const audio = new Audio(`data:audio/opus;base64,${base64}`);
+      // Try to detect format, default to opus if detection fails
+      let mime = 'audio/opus';
+      try {
+        const binary = atob(base64.slice(0, 12));
+        // Check for WAV RIFF header ('R' = 0x52)
+        const isWav = binary.charCodeAt(0) === 0x52;
+        mime = isWav ? 'audio/wav' : 'audio/opus';
+      } catch (e) {
+        // Default to opus if detection fails
+        mime = 'audio/opus';
+      }
+      const audio = new Audio(`data:${mime};base64,${base64}`);
       audio.onended = () => setIsSpeaking(false);
-      audio.onerror = () => setIsSpeaking(false);
-      audio.play();
-    } catch {
+      audio.onerror = (e) => { console.error('Audio playback error:', e); setIsSpeaking(false); };
+      audio.play().catch(e => { console.error('Audio play() failed:', e); setIsSpeaking(false); });
+    } catch (e) {
+      console.error('playAudio error:', e);
       setIsSpeaking(false);
     }
+  };
+
+  const connectWebSocket = (url) => {
+    if (ws.current) ws.current.close();
+    ws.current = new WebSocket(url);
+
+    ws.current.onopen = () => {
+      setIsConnected(true);
+      reconnectAttempts.current = 0;
+      setAgentStatus('Connected — AI Interviewer ready');
+    };
+
+    ws.current.onclose = (e) => {
+      setIsConnected(false);
+      if (isIntentionalClose.current) return;
+      // Exponential back-off: 1s, 2s, 4s, 8s, max 16s
+      const delay = Math.min(1000 * 2 ** reconnectAttempts.current, 16000);
+      reconnectAttempts.current += 1;
+      setAgentStatus(`Connection lost. Reconnecting in ${delay / 1000}s...`);
+      reconnectTimer.current = setTimeout(() => connectWebSocket(url), delay);
+    };
+
+    ws.current.onmessage = (event) => {
+      const payload = JSON.parse(event.data);
+      if (payload.type === 'question') {
+        setCurrentQuestion(payload.data);
+        if (payload.job_role) setJobRole(payload.job_role);
+        setIsCodingMode(payload.is_coding || false);
+        if (payload.language) setCodeLanguage(payload.language);
+        setAgentStatus('AI Interviewer: Waiting for your response');
+        if (payload.audio) playAudio(payload.audio);
+      } else if (payload.type === 'status') {
+        setAgentStatus(payload.data);
+      } else if (payload.type === 'execution_result') {
+        setCodeResult(payload.data);
+        setAgentStatus('Code executed. AI is evaluating...');
+      } else if (payload.type === 'complete') {
+        setAgentStatus('Interview complete. Generating report...');
+        const sid = payload.session_id ?? null;
+        setCompletedSessionId(sid);
+        isIntentionalClose.current = true;
+        setTimeout(() => onComplete?.(sid), 3000);
+      } else if (payload.type === 'error') {
+        setAgentStatus(`⚠ ${payload.data}`);
+      }
+    };
   };
 
   useEffect(() => {
@@ -165,53 +269,33 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
     const token = urlParams.get('token');
 
     const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
-    const wsBase = apiBase.replace(/^http/, 'ws');
+    let wsBase = apiBase;
+    if (apiBase.startsWith('https://')) {
+      wsBase = 'wss://' + apiBase.substring(8);
+    } else if (apiBase.startsWith('http://')) {
+      wsBase = 'ws://' + apiBase.substring(7);
+    }
     let socketUrl = `${wsBase}/interview/ws/${resolvedSessionId}`;
-    
     const queryParams = [];
     if (driveId && token) {
       queryParams.push(`drive_id=${driveId}`);
       queryParams.push(`token=${token}`);
+    } else {
+      const jwt = localStorage.getItem('token');
+      if (jwt) queryParams.push(`auth_token=${encodeURIComponent(jwt)}`);
     }
-    if (user?.id) {
-      queryParams.push(`user_id=${user.id}`);
-    }
-    
-    if (queryParams.length > 0) {
-      socketUrl += `?${queryParams.join('&')}`;
-    }
-
-    ws.current = new WebSocket(socketUrl);
-    ws.current.onopen = () => setIsConnected(true);
-    ws.current.onclose = () => setIsConnected(false);
-    ws.current.onmessage = (event) => {
-      const payload = JSON.parse(event.data);
-      if (payload.type === 'question') {
-        setCurrentQuestion(payload.data);
-        // Fix Issue #5: Update job role from initial payload
-        if (payload.job_role) setJobRole(payload.job_role);
-        
-        // Handle Coding Mode Trigger
-        setIsCodingMode(payload.is_coding || false);
-        if (payload.language) setCodeLanguage(payload.language);
-
-        setAgentStatus('AI Interviewer: Waiting for your response');
-        if (payload.audio) playAudio(payload.audio);
-      } else if (payload.type === 'status') {
-        setAgentStatus(payload.data);
-      } else if (payload.type === 'complete') {
-        setAgentStatus('Interview complete. Generating report...');
-        // Fix Issue #2: Get session_id from backend
-        const sid = payload.session_id ?? null;
-        setCompletedSessionId(sid);
-        setTimeout(() => onComplete?.(sid), 3000);
-      } else if (payload.type === 'error') {
-        setAgentStatus(`⚠ ${payload.data}`);
-      }
-    };
+    if (queryParams.length > 0) socketUrl += `?${queryParams.join('&')}`;
+    socketUrlRef.current = socketUrl;
+    isIntentionalClose.current = false;
+    connectWebSocket(socketUrl);
 
     const timer = setInterval(() => setTimeLeft(p => p + 1), 1000);
-    return () => { ws.current?.close(); clearInterval(timer); };
+    return () => {
+      isIntentionalClose.current = true;
+      clearTimeout(reconnectTimer.current);
+      ws.current?.close();
+      clearInterval(timer);
+    };
   }, [ready, resolvedSessionId]);
 
   const toggleRecording = async () => {
@@ -245,16 +329,18 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
   };
 
   const submitTextAnswer = () => {
-    const textInput = prompt("Type your answer here:");
-    if (textInput && ws.current?.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify({ type: 'answer', data: textInput }));
+    if (manualText.trim() && ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: 'answer', data: manualText }));
       setAgentStatus('AI Interviewer: Processing text answer...');
+      setManualText('');
+      setShowTextInput(false);
     }
   };
 
   const handleEndInterview = () => {
+    isIntentionalClose.current = true;
+    clearTimeout(reconnectTimer.current);
     ws.current?.close();
-    // Fix Issue #6: Pass the actual session ID
     onComplete?.(completedSessionId);
   };
 
@@ -387,7 +473,14 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
                    backgroundColor: 'transparent'
                  }}
                />
-               <div className="absolute bottom-6 right-6">
+               <div className="absolute bottom-6 right-6 flex items-center space-x-3">
+                 {codeResult && (
+                   <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
+                     codeResult.status === 'Accepted' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'
+                   }`}>
+                     {codeResult.status} {codeResult.time ? `· ${codeResult.time}ms` : ''}
+                   </div>
+                 )}
                  <button 
                    onClick={submitCode}
                    className="bg-purple-600 hover:bg-purple-500 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-xl flex items-center space-x-2 transition-all active:scale-95"
@@ -426,6 +519,11 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
                 <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${isRecording ? 'bg-red-400' : 'bg-emerald-500'}`} />
                 <span>{isRecording ? 'Recording...' : 'Voice Ready'}</span>
               </div>
+              {currentQuestion?.time_limit && (
+                <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${questionTimeLeft < 10 ? 'bg-red-500/10 text-red-400 border-red-500/20 animate-pulse' : 'bg-white/5 text-slate-400 border-white/10'}`}>
+                   <span>Time Remaining: {questionTimeLeft}s</span>
+                </div>
+              )}
               <span className="text-xs text-slate-500 font-bold uppercase tracking-widest">{agentStatus}</span>
             </div>
             <div className="text-xl font-mono font-bold tracking-tight text-white opacity-60">
@@ -441,14 +539,34 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
               {isRecording ? 'Stop & Send' : 'Start Responding'}
             </button>
             
-            {/* Fix Issue #10: Dead Submit button */}
-            <button 
-              onClick={submitTextAnswer}
-              className="flex items-center space-x-2 text-slate-500 font-black uppercase tracking-widest text-[10px] hover:text-white transition-colors"
-            >
-               <Send size={16} className="text-purple-500" />
-               <span>Submit Text Answer</span>
-            </button>
+            <div className="flex flex-col items-end space-y-2">
+              <AnimatePresence>
+                {showTextInput && (
+                  <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+                    className="absolute bottom-32 right-12 w-96 bg-[#0a0f1e] border border-white/10 p-6 rounded-3xl shadow-2xl z-[60]">
+                    <textarea
+                      autoFocus
+                      className="w-full h-32 bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none resize-none mb-4"
+                      placeholder="Type your answer here..."
+                      value={manualText}
+                      onChange={(e) => setManualText(e.target.value)}
+                    />
+                    <div className="flex justify-end space-x-3">
+                      <button onClick={() => setShowTextInput(false)} className="px-4 py-2 text-[10px] font-black uppercase text-slate-500 hover:text-white transition-colors">Cancel</button>
+                      <button onClick={submitTextAnswer} className="bg-purple-600 hover:bg-purple-500 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl">Submit</button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <button 
+                onClick={() => setShowTextInput(!showTextInput)}
+                className="flex items-center space-x-2 text-slate-500 font-black uppercase tracking-widest text-[10px] hover:text-white transition-colors"
+              >
+                 <Send size={16} className="text-purple-500" />
+                 <span>{showTextInput ? 'Close Text Entry' : 'Manual Text Answer'}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

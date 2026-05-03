@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     MAIL_FROM_NAME: str = "Vedrix AI"
     FRONTEND_URL: str = "http://localhost:5173"
 
+    # Judge0 Code Execution
+    JUDGE0_URL: str = "https://judge0-ce.p.rapidapi.com"
+    JUDGE0_API_KEY: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = True
@@ -44,4 +48,10 @@ settings = Settings()
 
 # Bulletproof fix: Ensure SQLite URL uses aiosqlite for async support
 if settings.DATABASE_URL.startswith("sqlite://"):
+    import logging
+    logging.warning(
+        f"config.py: Detected 'sqlite://' in DATABASE_URL. "
+        f"Auto-fixing to 'sqlite+aiosqlite://' for async support. "
+        f"Use 'sqlite+aiosqlite://' in your .env to silence this warning."
+    )
     settings.DATABASE_URL = settings.DATABASE_URL.replace("sqlite://", "sqlite+aiosqlite://", 1)

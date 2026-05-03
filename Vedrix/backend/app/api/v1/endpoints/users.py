@@ -1,5 +1,4 @@
 from typing import Any
-import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -26,10 +25,7 @@ async def get_session_report(
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(deps.get_current_user),
 ) -> Any:
-    """
-    Fetch report for a session. Accessible by the candidate who took it
-    or any HR/admin user.
-    """
+    """Fetch report for a session — accessible by the candidate or any HR/admin."""
     result = await db.execute(
         select(InterviewSession).where(InterviewSession.id == session_id)
     )
@@ -37,23 +33,12 @@ async def get_session_report(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Only allow access to own session or HR/admin
     if current_user.user_type == "student" and session.candidate_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    ai_feedback = {}
-    if session.ai_feedback:
-        try:
-            ai_feedback = json.loads(session.ai_feedback)
-        except Exception:
-            ai_feedback = {}
-
-    responses = []
-    if session.responses:
-        try:
-            responses = json.loads(session.responses)
-        except Exception:
-            responses = []
+    # Native JSON columns — no json.loads needed
+    ai_feedback = session.ai_feedback or {}
+    responses = session.responses or []
 
     return {
         "id": session.id,

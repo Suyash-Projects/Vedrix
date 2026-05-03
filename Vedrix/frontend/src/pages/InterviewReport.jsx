@@ -44,13 +44,20 @@ const InterviewReport = ({ sessionId, onBack }) => {
     if (!sessionId) return;
     const fetchReport = async () => {
       try {
-        // Unified report fetching (HR dashboard usually uses /hr/interviews/{id})
-        const res = await apiClient.get(`/hr/interviews/${sessionId}`);
-        const data = res.data;
-        
-        // Parse feedback if it's a string
-        const aiFeedback = typeof data.ai_feedback === 'string' ? JSON.parse(data.ai_feedback) : data.ai_feedback;
-        const transcript = typeof data.responses === 'string' ? JSON.parse(data.responses) : data.responses;
+        // Try HR endpoint first, fall back to student endpoint
+        let data, aiFeedback, transcript;
+        try {
+          const res = await apiClient.get(`/hr/interviews/${sessionId}`);
+          data = res.data;
+          aiFeedback = typeof data.ai_feedback === 'string' ? JSON.parse(data.ai_feedback) : data.ai_feedback;
+          transcript = typeof data.responses === 'string' ? JSON.parse(data.responses) : data.responses;
+        } catch {
+          // Student fallback
+          const res = await apiClient.get(`/users/sessions/${sessionId}/report`);
+          data = res.data;
+          aiFeedback = data;
+          transcript = data.transcript || [];
+        }
 
         setReport({
           overall_score: data.overall_score ?? 0,
@@ -62,8 +69,7 @@ const InterviewReport = ({ sessionId, onBack }) => {
             { subject: 'Accuracy', A: (aiFeedback?.technical_accuracy ?? 0) * 10, fullMark: 100 },
             { subject: 'Clarity', A: (aiFeedback?.communication_clarity ?? 0) * 10, fullMark: 100 },
             { subject: 'Depth', A: (aiFeedback?.depth_of_knowledge ?? 0) * 10, fullMark: 100 },
-            { subject: 'Comms', A: (aiFeedback?.communication_clarity ?? 0) * 10, fullMark: 100 },
-            { subject: 'Logic', A: (data.overall_score ?? 0) * 10, fullMark: 100 },
+            { subject: 'Overall', A: (data.overall_score ?? 0) * 10, fullMark: 100 },
           ],
           strengths: aiFeedback?.strengths || [],
           weaknesses: aiFeedback?.weaknesses || [],
@@ -244,26 +250,20 @@ const InterviewReport = ({ sessionId, onBack }) => {
               </div>
             </div>
 
-            {/* SYSTEM INTEGRITY */}
+            {/* PROCTORING — Coming Soon */}
             <div className="bg-white/2 border border-white/5 rounded-[2.5rem] p-10">
-              <div className="flex items-center space-x-3 mb-8">
+              <div className="flex items-center space-x-3 mb-4">
                 <div className="w-10 h-10 bg-purple-600/10 border border-purple-500/20 rounded-2xl flex items-center justify-center">
                   <ShieldCheck size={20} className="text-purple-400" />
                 </div>
-                <h3 className="font-bold text-white text-lg tracking-tight">System Integrity</h3>
+                <div>
+                  <h3 className="font-bold text-white text-lg tracking-tight">System Integrity</h3>
+                  <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest">Coming Soon</span>
+                </div>
               </div>
-              <div className="space-y-4">
-                {[
-                  { label: 'Tab Switches', val: '0', color: 'text-emerald-400' },
-                  { label: 'Eye Tracking', val: '98%', color: 'text-purple-400' },
-                  { label: 'Audio Quality', val: 'Excellent', color: 'text-blue-400' }
-                ].map(s => (
-                  <div key={s.label} className="flex justify-between items-center bg-white/5 p-4 rounded-2xl border border-white/5">
-                    <span className="text-slate-500 text-xs font-bold uppercase tracking-widest">{s.label}</span>
-                    <span className={`font-mono text-sm font-black ${s.color}`}>{s.val}</span>
-                  </div>
-                ))}
-              </div>
+              <p className="text-slate-500 text-xs leading-relaxed">
+                Real-time proctoring metrics (tab switches, focus tracking, audio quality) will be available in a future update.
+              </p>
             </div>
           </div>
         </div>

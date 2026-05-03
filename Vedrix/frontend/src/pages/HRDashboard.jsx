@@ -4,7 +4,7 @@ import {
   Briefcase, Plus, Link as LinkIcon, Users, Activity,
   ChevronRight, Copy, CheckCircle2, Clock, LayoutDashboard,
   LogOut, Settings, MoreVertical, X, Loader2, Mail, Send,
-  Calendar, ChevronDown
+  Calendar, ChevronDown, Radio, MessageSquareText
 } from 'lucide-react';
 import apiClient from '../services/api';
 import useAuthStore from '../store/useAuthStore';
@@ -157,16 +157,67 @@ const BulkInviteModal = ({ drive, onClose }) => {
   );
 };
 
+/* ── TAKEOVER MODAL ── */
+const TakeoverModal = ({ session, onClose }) => {
+  const [instruction, setInstruction] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSend = async () => {
+    if (!instruction.trim()) return;
+    setLoading(true);
+    try {
+      await apiClient.post(`/interview/sessions/${session.id}/hr-instruction`, {
+        text: instruction
+      });
+      setInstruction('');
+      alert("Instruction sent to AI engine!");
+      onClose();
+    } catch {
+      alert("Failed to send instruction.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-6">
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+        className="bg-[#0f172a] border border-white/10 rounded-[2rem] w-full max-w-xl overflow-hidden shadow-2xl">
+        <div className="px-8 py-6 border-b border-white/5 flex justify-between items-center">
+          <div>
+            <h2 className="text-xl font-bold text-white">Live AI Takeover</h2>
+            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-0.5">Session #{session.id}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors"><X size={20} /></button>
+        </div>
+        <div className="p-8 space-y-5">
+          <p className="text-sm text-slate-400">
+            Inject a custom instruction directly into the AI's contextual state. The AI will adapt its next question or follow-up based on your input.
+          </p>
+          <textarea rows={4} value={instruction} onChange={e => setInstruction(e.target.value)}
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all resize-none"
+            placeholder="e.g. Ask the candidate to explain their experience with React Hooks in more depth." />
+          <button onClick={handleSend} disabled={loading || !instruction.trim()}
+            className="w-full bg-red-600 text-white py-4 rounded-2xl font-bold hover:bg-red-500 shadow-xl shadow-red-900/30 transition-all flex items-center justify-center space-x-2">
+            {loading ? <Loader2 className="animate-spin" size={20} /> : <><MessageSquareText size={18} /><span>Push to Engine</span></>}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 /* ── MAIN HR DASHBOARD ── */
 const HRDashboard = ({ onViewReport }) => {
   const { user, logout } = useAuthStore();
   const [drives, setDrives] = useState([]);
-  const [driveMap, setDriveMap] = useState({});
   const [interviews, setInterviews] = useState([]);
+  const [liveSessions, setLiveSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('Active Drives');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [bulkInviteDrive, setBulkInviteDrive] = useState(null);
+  const [takeoverSession, setTakeoverSession] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
 
   const fetchData = async () => {
@@ -177,11 +228,8 @@ const HRDashboard = ({ onViewReport }) => {
         apiClient.get('/hr/interviews')
       ]);
       setDrives(drivesRes.data);
-      // Build a drive lookup map for the reports table
-      const driveMap = {};
-      drivesRes.data.forEach(d => { driveMap[d.id] = d; });
-      setDriveMap(driveMap);
       setInterviews(interviewsRes.data.filter(i => i.status === 'completed'));
+      setLiveSessions(interviewsRes.data.filter(i => i.status === 'in_progress'));
     } catch (err) {
       console.error(err);
     } finally {
@@ -189,11 +237,16 @@ const HRDashboard = ({ onViewReport }) => {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { 
+    fetchData(); 
+    // Basic polling for live sessions could be added here
+    const interval = setInterval(fetchData, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleGenerateLink = async (driveId) => {
     try {
-      const res = await apiClient.post(`/hr/drives/${driveId}/magic-link`);
+      const res = await apiClient.post(`/hr/drives/${driveId}/magic-link`, {});
       await navigator.clipboard.writeText(res.data.link);
       setCopiedId(driveId);
       setTimeout(() => setCopiedId(null), 2000);
@@ -202,11 +255,40 @@ const HRDashboard = ({ onViewReport }) => {
     }
   };
 
+  const [sortConfig, setSortConfig] = useState({ key: 'overall_score', direction: 'desc' });
+
+  const sortedInterviews = React.useMemo(() => {
+    let sortableInterviews = [...interviews];
+    sortableInterviews.sort((a, b) => {
+      let aValue = a[sortConfig.key];
+      let bValue = b[sortConfig.key];
+      
+      if (['technical_accuracy', 'communication_clarity', 'depth_of_knowledge'].includes(sortConfig.key)) {
+        aValue = a.ai_feedback?.[sortConfig.key] || 0;
+        bValue = b.ai_feedback?.[sortConfig.key] || 0;
+      }
+      
+      if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return sortableInterviews;
+  }, [interviews, sortConfig]);
+
+  const requestSort = (key) => {
+    let direction = 'desc';
+    if (sortConfig.key === key && sortConfig.direction === 'desc') {
+      direction = 'asc';
+    }
+    setSortConfig({ key, direction });
+  };
+
   return (
     <div className="min-h-screen bg-[#020617] flex font-sans">
       <AnimatePresence>
         {showCreateModal && <CreateDriveModal onClose={() => setShowCreateModal(false)} onCreated={fetchData} />}
         {bulkInviteDrive && <BulkInviteModal drive={bulkInviteDrive} onClose={() => setBulkInviteDrive(null)} />}
+        {takeoverSession && <TakeoverModal session={takeoverSession} onClose={() => setTakeoverSession(null)} />}
       </AnimatePresence>
 
       {/* Sidebar */}
@@ -221,6 +303,7 @@ const HRDashboard = ({ onViewReport }) => {
         <nav className="flex-1 space-y-2">
           {[
             { label: 'Active Drives', icon: LayoutDashboard },
+            { label: 'Live Monitoring', icon: Radio },
             { label: 'Evaluation Reports', icon: Activity },
             { label: 'Drive Settings', icon: Settings },
           ].map(item => (
@@ -231,6 +314,11 @@ const HRDashboard = ({ onViewReport }) => {
               }`}>
               <item.icon size={18} />
               <span>{item.label}</span>
+              {item.label === 'Live Monitoring' && liveSessions.length > 0 && (
+                <span className="ml-auto bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
+                  {liveSessions.length}
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -250,7 +338,8 @@ const HRDashboard = ({ onViewReport }) => {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6 relative">
           <div>
             <h1 className="text-4xl font-extrabold text-white tracking-tight">
-              {activeTab === 'Active Drives' ? 'Recruitment Orchestration' : 'Assessment Insights'}
+              {activeTab === 'Active Drives' ? 'Recruitment Orchestration' : 
+               activeTab === 'Live Monitoring' ? 'Live Session Oversight' : 'Assessment Insights'}
             </h1>
             <p className="text-slate-500 text-lg mt-1 font-medium italic">Welcome back, {user?.first_name}</p>
           </div>
@@ -263,7 +352,7 @@ const HRDashboard = ({ onViewReport }) => {
           )}
         </header>
 
-        {loading ? (
+        {loading && !drives.length ? (
           <div className="flex justify-center items-center h-64">
             <Loader2 className="animate-spin text-purple-500" size={48} />
           </div>
@@ -311,7 +400,6 @@ const HRDashboard = ({ onViewReport }) => {
                   </div>
 
                   <div className="flex items-center space-x-3">
-                    {/* Single magic link */}
                     <button onClick={() => handleGenerateLink(drive.id)}
                       className={`flex-1 flex items-center justify-center space-x-2 py-4 rounded-2xl font-bold transition-all text-sm ${
                         copiedId === drive.id ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'bg-purple-600 text-white hover:bg-purple-500 shadow-lg shadow-purple-900/20'
@@ -320,7 +408,6 @@ const HRDashboard = ({ onViewReport }) => {
                       <span>{copiedId === drive.id ? 'Link Copied' : 'Invite Candidate'}</span>
                     </button>
 
-                    {/* Bulk invite */}
                     <button onClick={() => setBulkInviteDrive(drive)}
                       className="flex items-center space-x-2 bg-white/5 border border-white/10 text-slate-300 px-5 py-4 rounded-2xl font-bold hover:bg-white/10 hover:text-white transition-all text-sm">
                       <Mail size={16} />
@@ -337,54 +424,113 @@ const HRDashboard = ({ onViewReport }) => {
               ))}
             </div>
           )
-        ) : activeTab === 'Evaluation Reports' ? (
+        ) : activeTab === 'Live Monitoring' ? (
           <div className="bg-white/2 border border-white/5 rounded-[2.5rem] overflow-hidden">
             <div className="px-10 py-6 border-b border-white/5 bg-white/2">
               <div className="grid grid-cols-12 gap-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
-                <div className="col-span-4">Candidate</div>
-                <div className="col-span-3">Role / Drive</div>
-                <div className="col-span-2 text-center">Overall Score</div>
-                <div className="col-span-2 text-center">Date</div>
+                <div className="col-span-4">Candidate / Session</div>
+                <div className="col-span-4">Role / Drive</div>
+                <div className="col-span-2 text-center">Status</div>
+                <div className="col-span-2 text-right">Actions</div>
+              </div>
+            </div>
+            <div className="divide-y divide-white/5">
+              {liveSessions.length === 0 ? (
+                <div className="p-20 text-center">
+                  <Radio size={48} className="mx-auto text-slate-700 mb-6" />
+                  <p className="text-slate-500 font-medium">No live sessions currently in progress.</p>
+                </div>
+              ) : (
+                liveSessions.map(session => (
+                  <div key={session.id} className="px-10 py-8 grid grid-cols-12 gap-4 items-center hover:bg-white/5 transition-all group">
+                    <div className="col-span-4 flex items-center space-x-4">
+                      <div className="w-12 h-12 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-center text-red-400 font-black relative">
+                        <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-[#0a0f1e] -mt-1 -mr-1 animate-ping" />
+                        <Radio size={20} />
+                      </div>
+                      <div>
+                        <p className="text-white font-bold">Session #{session.id}</p>
+                        <p className="text-xs text-slate-500 font-medium">Candidate #{session.candidate_id}</p>
+                      </div>
+                    </div>
+                    <div className="col-span-4">
+                      <p className="text-slate-300 font-bold text-sm">{session.job_role || 'Unknown Role'}</p>
+                      <p className="text-[10px] text-slate-600 font-bold uppercase tracking-widest mt-0.5">{session.drive_title || 'Unknown Drive'}</p>
+                    </div>
+                    <div className="col-span-2 text-center">
+                      <span className="text-red-400 text-xs font-black uppercase tracking-widest px-3 py-1 bg-red-500/10 rounded-full border border-red-500/20 inline-block">
+                        Active Now
+                      </span>
+                    </div>
+                    <div className="col-span-2 text-right flex justify-end">
+                      <button 
+                        onClick={() => setTakeoverSession(session)}
+                        className="bg-red-600 hover:bg-red-500 text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl transition-all shadow-lg shadow-red-900/30 flex items-center space-x-2">
+                        <MessageSquareText size={14} />
+                        <span>Takeover</span>
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        ) : activeTab === 'Evaluation Reports' ? (
+          <div className="bg-white/2 border border-white/5 rounded-[2.5rem] overflow-hidden">
+            <div className="px-8 py-6 border-b border-white/5 bg-white/2">
+              <div className="grid grid-cols-12 gap-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 items-center">
+                <div className="col-span-3">Candidate</div>
+                <div className="col-span-2">Role / Drive</div>
+                <div className="col-span-2 text-center cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('overall_score')}>Overall Score {sortConfig.key === 'overall_score' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                <div className="col-span-2 text-center cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('technical_accuracy')}>Technical {sortConfig.key === 'technical_accuracy' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                <div className="col-span-2 text-center cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('communication_clarity')}>Comm. {sortConfig.key === 'communication_clarity' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
                 <div className="col-span-1"></div>
               </div>
             </div>
             <div className="divide-y divide-white/5">
-              {interviews.length === 0 ? (
+              {sortedInterviews.length === 0 ? (
                 <div className="p-20 text-center">
                   <p className="text-slate-500 font-medium">No evaluation reports generated yet.</p>
                 </div>
               ) : (
-                interviews.map(interview => (
-                  <div key={interview.id} className="px-10 py-8 grid grid-cols-12 gap-4 items-center hover:bg-white/5 transition-all group">
-                    <div className="col-span-4 flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-purple-600/10 border border-purple-500/20 rounded-2xl flex items-center justify-center text-purple-400 font-black">
-                        {interview.candidate_id}
+                sortedInterviews.map(interview => (
+                  <div key={interview.id} className="px-8 py-6 grid grid-cols-12 gap-4 items-center hover:bg-white/5 transition-all group">
+                    <div className="col-span-3 flex items-center space-x-4">
+                      <div className="w-10 h-10 bg-purple-600/10 border border-purple-500/20 rounded-2xl flex items-center justify-center text-purple-400 font-black text-sm shrink-0">
+                        {(interview.candidate_name || interview.candidate_email || '#').charAt(0).toUpperCase()}
                       </div>
-                      <div>
-                        <p className="text-white font-bold">Candidate #{interview.candidate_id}</p>
-                        <p className="text-xs text-slate-500 font-medium">Actual Assessment</p>
+                      <div className="truncate">
+                        <p className="text-white font-bold text-sm truncate">{interview.candidate_name || 'Guest Candidate'}</p>
+                        <p className="text-[10px] text-slate-500 font-medium truncate">{interview.candidate_email || `ID #${interview.candidate_id}`}</p>
                       </div>
                     </div>
-                    <div className="col-span-3">
-                      <p className="text-slate-300 font-bold text-sm">{driveMap[interview.job_drive_id]?.job_role || 'Unknown Role'}</p>
-                      <p className="text-[10px] text-slate-600 font-bold uppercase tracking-widest mt-0.5">{driveMap[interview.job_drive_id]?.title || 'Unknown Drive'}</p>
+                    <div className="col-span-2 truncate">
+                      <p className="text-slate-300 font-bold text-xs truncate">{interview.job_role || 'Unknown Role'}</p>
+                      <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest mt-0.5 truncate">{interview.drive_title || 'Unknown Drive'}</p>
                     </div>
                     <div className="col-span-2 text-center">
-                      <span className={`text-xl font-black ${
+                      <span className={`text-lg font-black ${
                         interview.overall_score >= 8 ? 'text-emerald-400' : 
                         interview.overall_score >= 5 ? 'text-purple-400' : 'text-amber-400'
                       }`}>
                         {interview.overall_score?.toFixed(1) || '—'}
                       </span>
                     </div>
-                    <div className="col-span-2 text-center text-slate-500 text-xs font-bold uppercase tracking-widest">
-                      {new Date(interview.created_at).toLocaleDateString()}
+                    <div className="col-span-2 text-center">
+                      <span className="text-sm font-bold text-slate-300">
+                        {interview.ai_feedback?.technical_accuracy?.toFixed(1) || '—'}
+                      </span>
+                    </div>
+                    <div className="col-span-2 text-center">
+                      <span className="text-sm font-bold text-slate-300">
+                        {interview.ai_feedback?.communication_clarity?.toFixed(1) || '—'}
+                      </span>
                     </div>
                     <div className="col-span-1 text-right">
                       <button 
                         onClick={() => onViewReport(interview.id)}
-                        className="p-3 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white hover:bg-purple-600 transition-all group-hover:scale-110">
-                        <ChevronRight size={18} />
+                        className="p-2 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white hover:bg-purple-600 transition-all group-hover:scale-110">
+                        <ChevronRight size={16} />
                       </button>
                     </div>
                   </div>

@@ -391,11 +391,25 @@ def _send_sync(to: str, subject: str, html: str) -> None:
     msg["To"] = to
     msg.attach(MIMEText(html, "html"))
 
-    with smtplib.SMTP(settings.MAIL_SERVER, settings.MAIL_PORT) as server:
-        server.ehlo()
-        server.starttls()
-        server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
-        server.sendmail(settings.MAIL_USERNAME, to, msg.as_string())
+    mail_server = settings.MAIL_SERVER
+    mail_port = settings.MAIL_PORT
+    
+    # Handle SSL (port 465) vs TLS (port 587)
+    if mail_port == 465:
+        with smtplib.SMTP_SSL(mail_server, mail_port) as server:
+            server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
+            server.sendmail(settings.MAIL_USERNAME, to, msg.as_string())
+    else:
+        with smtplib.SMTP(mail_server, mail_port) as server:
+            server.ehlo()
+            try:
+                server.starttls()
+                server.ehlo()
+            except smtplib.SMTPNotSupportedError:
+                # Server doesn't support STARTTLS, continue without encryption
+                pass
+            server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
+            server.sendmail(settings.MAIL_USERNAME, to, msg.as_string())
 
 
 async def _send(to: str, subject: str, html: str) -> None:

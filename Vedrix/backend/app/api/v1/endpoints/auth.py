@@ -23,7 +23,9 @@ async def login(
     result = await db.execute(select(User).where(User.username == form_data.username))
     user = result.scalars().first()
     
-    if not user or not security.verify_password(form_data.password, user.password_hash):
+    if not user:
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+    if not security.verify_password(form_data.password, user.password_hash):
         raise HTTPException(status_code=400, detail="Incorrect username or password")
     elif not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
@@ -44,6 +46,7 @@ async def register(
     background_tasks: BackgroundTasks
 ) -> Any:
     """Create new user."""
+    # Check email and username first (warn user before attempting insert)
     result = await db.execute(select(User).where(User.email == user_in.email))
     if result.scalars().first():
         raise HTTPException(status_code=400, detail="The user with this email already exists in the system.")
@@ -61,7 +64,19 @@ async def register(
         user_type=user_in.user_type,
     )
     db.add(user)
-    await db.flush()  # get user.id before commit
+    
+    try:
+        await db.flush()  # get user.id before commit
+    except Exception as e:
+        await db.rollback()
+        # Re-check which constraint failed
+        result = await db.execute(select(User).where(User.email == user_in.email))
+        if result.scalars().first():
+            raise HTTPException(status_code=400, detail="The user with this email already exists in the system.")
+        result = await db.execute(select(User).where(User.username == user_in.username))
+        if result.scalars().first():
+            raise HTTPException(status_code=400, detail="The username already exists.")
+        raise HTTPException(status_code=500, detail="Registration failed. Please try again.")
 
     # Auto-create profile based on user type
     if user_in.user_type == 'hr':

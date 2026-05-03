@@ -1,6 +1,7 @@
-from datetime import datetime
-from typing import Optional, List, TYPE_CHECKING
+from datetime import datetime, timezone
+from typing import Optional, List, Any, TYPE_CHECKING
 from sqlmodel import SQLModel, Field, Relationship
+from sqlalchemy import Column, JSON, Text
 
 if TYPE_CHECKING:
     from .user import User
@@ -16,44 +17,46 @@ class DriveInviteToken(SQLModel, table=True):
     candidate_email: Optional[str] = None
     is_used: bool = Field(default=False)
     expires_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 
 class JobDrive(SQLModel, table=True):
     __tablename__ = "job_drive"
-    
+
     id: Optional[int] = Field(default=None, primary_key=True)
     hr_id: int = Field(foreign_key="hr_profile.id", nullable=False)
     title: str = Field(nullable=False)
     description: Optional[str] = None
     job_role: str = Field(nullable=False)
     experience_required: Optional[str] = None
-    skills_required: Optional[str] = None  # JSON string
+    skills_required: Optional[str] = None
     is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    # Relationships
     hr: "HRProfile" = Relationship(back_populates="job_drives")
     interview_sessions: List["InterviewSession"] = Relationship(back_populates="job_drive")
 
+
 class InterviewSession(SQLModel, table=True):
     __tablename__ = "interview_session"
-    
+
     id: Optional[int] = Field(default=None, primary_key=True)
     candidate_id: int = Field(foreign_key="user.id", nullable=False)
     job_drive_id: Optional[int] = Field(default=None, foreign_key="job_drive.id")
-    session_type: str = Field(nullable=False)  # 'practice', 'actual'
+    session_type: str = Field(nullable=False)
     status: str = Field(default="scheduled")
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     duration: Optional[int] = None
-    questions: Optional[str] = None  # JSON
-    responses: Optional[str] = None  # JSON
-    ai_feedback: Optional[str] = None  # JSON
     overall_score: Optional[float] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    # Relationships
+    # Native JSON columns — no more manual json.dumps/loads
+    questions: Optional[Any] = Field(default=None, sa_column=Column(JSON))
+    responses: Optional[Any] = Field(default=None, sa_column=Column(JSON))
+    ai_feedback: Optional[Any] = Field(default=None, sa_column=Column(JSON))
+
     candidate: "User" = Relationship(back_populates="interview_sessions")
     job_drive: Optional["JobDrive"] = Relationship(back_populates="interview_sessions")

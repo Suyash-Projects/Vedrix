@@ -26,6 +26,10 @@ class JobDriveRead(JobDriveBase):
     class Config:
         from_attributes = True
 
+class MagicLinkRequest(BaseModel):
+    candidate_email: Optional[str] = None  # audit #26: associate email with single link
+    expires_in_hours: int = 72
+
 class MagicLinkResponse(BaseModel):
     link: str
     token: str
