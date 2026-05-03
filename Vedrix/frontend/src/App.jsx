@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect } from 'react';
 import { 
-  ShieldCheck, Cpu, UserCheck, Zap, ChevronRight, Menu, X, LogOut,
-  LayoutDashboard, BookOpen, Briefcase, Play, Award, Activity
+  ShieldCheck, Cpu, Zap, ChevronRight, Menu, X, LogOut,
+  Activity
 } from 'lucide-react';
 
 import Login from './pages/Login';
