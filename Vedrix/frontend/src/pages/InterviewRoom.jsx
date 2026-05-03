@@ -179,7 +179,57 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
   const [isCodingMode, setIsCodingMode] = useState(false);
   const [codeLanguage, setCodeLanguage] = useState("python");
 
-  // Use refs for values needed inside setInterval closure
+  // Video state
+  const [isVideoOn, setIsVideoOn] = useState(true);
+  const [videoStream, setVideoStream] = useState(null);
+  const videoRef = useRef(null);
+
+  // Attach video stream to video element
+  useEffect(() => {
+    if (videoRef.current && videoStream) {
+      videoRef.current.srcObject = videoStream;
+    }
+  }, [videoStream]);
+
+  // Initialize video on mount
+  useEffect(() => {
+    const initVideo = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        setVideoStream(stream);
+      } catch (err) {
+        console.log('Camera not available, continuing without video');
+        setIsVideoOn(false);
+      }
+    };
+    if (ready) initVideo();
+    return () => {
+      if (videoStream) {
+        videoStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [ready]);
+
+  // Toggle video function
+  const toggleVideo = async () => {
+    if (isVideoOn) {
+      // Turn off video
+      if (videoStream) {
+        videoStream.getTracks().forEach(track => track.stop());
+      }
+      setVideoStream(null);
+      setIsVideoOn(false);
+    } else {
+      // Turn on video
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        setVideoStream(stream);
+        setIsVideoOn(true);
+      } catch (err) {
+        console.error('Camera access failed:', err);
+      }
+    }
+  };
   const isRecordingRef = useRef(false);
   const toggleRecordingRef = useRef(null);
 
@@ -402,6 +452,19 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
           <SignalHigh size={14} className={isConnected ? 'text-emerald-500' : 'text-slate-500'} />
         </div>
 
+        {/* Video Preview */}
+        {isVideoOn && videoStream && (
+          <div className="absolute top-20 right-6 w-32 h-24 rounded-xl overflow-hidden border-2 border-purple-500/30 z-20">
+            <video
+              ref={videoRef}
+              autoPlay
+              muted
+              playsInline
+              className="w-full h-full object-cover"
+            />
+          </div>
+        )}
+
         <div className="relative z-10 w-full max-w-5xl flex flex-col items-center">
           
           {/* Toggle between AI Avatar and Coding Sandbox */}
@@ -494,8 +557,9 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
 
           {/* Control bar */}
           <div className={`flex items-center space-x-6 z-30 ${isCodingMode ? 'pt-8' : 'pt-20'}`}>
-            <button className="w-14 h-14 bg-white/5 border border-white/10 rounded-full flex items-center justify-center text-slate-400 hover:bg-white/10 transition-all">
-              <VideoOff size={20} />
+            <button onClick={toggleVideo}
+              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isVideoOn ? 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10' : 'bg-red-500 text-white'}`}>
+              {isVideoOn ? <Video size={20} /> : <VideoOff size={20} />}
             </button>
             <button onClick={toggleRecording}
               className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-500 text-white shadow-xl shadow-red-500/30' : 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10'}`}>

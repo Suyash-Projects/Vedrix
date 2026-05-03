@@ -389,3 +389,90 @@ async def send_hr_instruction(
     config = {"configurable": {"thread_id": session_id}}
     await interview_graph.aupdate_state(config, {"hr_instructions": instruction.get("text", "")})
     return {"status": "ok", "message": "Instruction queued for next AI turn."}
+
+
+# ── Video Interview WebRTC Signaling ─────────────────────────────────────────
+class VideoRoomManager:
+    """Manages WebRTC video connections for live interviews."""
+    def __init__(self):
+        self.rooms: Dict[str, Dict[str, WebSocket]] = {}  # room_id -> {candidate: ws, hr: ws}
+    
+    async def join_room(self, room_id: str, role: str, websocket: WebSocket):
+        await websocket.accept()
+        if room_id not in self.rooms:
+            self.rooms[room_id] = {}
+        self.rooms[room_id][role] = websocket
+    
+    def leave_room(self, room_id: str, role: str):
+        if room_id in self.rooms:
+            self.rooms[room_id].pop(role, None)
+            if not self.rooms[room_id]:
+                self.rooms.pop(room_id, None)
+    
+    async def broadcast(self, room_id: str, message: Dict[str, Any], exclude: str = None):
+        if room_id in self.rooms:
+            for role, ws in self.rooms[room_id].items():
+                if role != exclude:
+                    try:
+                        await ws.send_json(message)
+                    except Exception:
+                        pass
+
+video_manager = VideoRoomManager()
+
+
+@router.websocket("/video/{room_id}")
+async def video_websocket(
+    websocket: WebSocket,
+    room_id: str,
+    role: str = "candidate",  # "candidate" or "hr"
+    token: Optional[str] = None,
+):
+    """WebRTC signaling endpoint for video interviews."""
+    await video_manager.join_room(room_id, role, websocket)
+    
+    try:
+        # Notify others in room about new participant
+        await video_manager.broadcast(room_id, {
+            "type": "peer_joined",
+            "role": role
+        }, exclude=role)
+        
+        # Handle signaling messages
+        while True:
+            message = await websocket.receive()
+            
+            if message.get("type") == "websocket.disconnect":
+                break
+            
+            if "text" in message:
+                try:
+                    payload = json.loads(message["text"])
+                    msg_type = payload.get("type")
+                    
+                    # Forward signaling messages to other participant
+                    if msg_type in ("offer", "answer", "ice_candidate"):
+                        await video_manager.broadcast(room_id, payload, exclude=role)
+                    
+                    elif msg_type == "toggle_video":
+                        await video_manager.broadcast(room_id, {
+                            "type": "peer_video_toggled",
+                            "role": role,
+                            "enabled": payload.get("enabled", True)
+                        }, exclude=role)
+                    
+                    elif msg_type == "toggle_audio":
+                        await video_manager.broadcast(room_id, {
+                            "type": "peer_audio_toggled",
+                            "role": role,
+                            "enabled": payload.get("enabled", True)
+                        }, exclude=role)
+                        
+                except (json.JSONDecodeError, ValueError):
+                    pass
+                    
+    except Exception as e:
+        logger.error(f"Video room error [{room_id}]: {e}")
+    finally:
+        video_manager.leave_room(room_id, role)
+        await video_manager.broadcast(room_id, {"type": "peer_left", "role": role})
