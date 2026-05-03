@@ -304,7 +304,25 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
         const sid = payload.session_id ?? null;
         setCompletedSessionId(sid);
         isIntentionalClose.current = true;
-        setTimeout(() => onComplete?.(sid), 3000);
+        // Exit fullscreen on interview complete
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+        }
+        // Check if this is a practice session (no drive_id/token) - skip showing report
+        const urlParams = new URLSearchParams(window.location.search);
+        const isPractice = !urlParams.get('drive_id') && !urlParams.get('token');
+        if (isPractice) {
+          // For practice, exit immediately without showing report
+          onComplete?.(null);
+        } else {
+          // For scheduled interviews, show report after delay
+          setTimeout(() => {
+            if (document.fullscreenElement) {
+              document.exitFullscreen();
+            }
+            onComplete?.(sid);
+          }, 3000);
+        }
       } else if (payload.type === 'error') {
         setAgentStatus(`⚠ ${payload.data}`);
       }
@@ -391,7 +409,18 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
     isIntentionalClose.current = true;
     clearTimeout(reconnectTimer.current);
     ws.current?.close();
+    // Exit fullscreen on interview end
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    }
     onComplete?.(completedSessionId);
+  };
+
+  // Exit fullscreen helper
+  const exitFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    }
   };
 
   const formatTimer = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
