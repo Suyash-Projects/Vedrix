@@ -62,7 +62,7 @@ def run_dev():
         cwd=frontend_dir
     )
 
-    print(f"\n✅ SUCCESS: Vedrix is booting up.")
+    print(f"\n[SUCCESS] Vedrix is booting up.")
     print(f"   - API: http://localhost:{backend_port}")
     print(f"   - Web: http://localhost:{frontend_port}")
     print(f"--- Press CTRL+C to shutdown both services ---\n")
