@@ -1,19 +1,25 @@
 import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, Cell
 } from 'recharts';
 import { 
   ChevronLeft, Download, Share2, Award, AlertTriangle, 
-  CheckCircle2, Target, MessageSquare, BookOpen, User, 
-  BrainCircuit, TrendingUp, ShieldCheck, Loader2
+  CheckCircle2, Target, MessageSquare, BookOpen, ShieldCheck, Loader2
 } from 'lucide-react';
 import apiClient from '../services/api';
 
-const InterviewReport = ({ sessionId, onBack }) => {
+const InterviewReport = () => {
+  const { sessionId } = useParams();
+  const navigate = useNavigate();
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+
+  const handleBack = () => {
+    navigate(-1); // Go back to previous page
+  };
 
   const handleExportPDF = async () => {
     setExporting(true);
@@ -90,7 +96,7 @@ const InterviewReport = ({ sessionId, onBack }) => {
       <div className="min-h-screen bg-[#020617] flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-purple-400 font-bold tracking-widest uppercase text-xs">Synthesizing Final Analysis...</p>
+          <p className="text-purple-400 font-bold tracking-widest uppercase text-xs">Preparing Interview Report...</p>
         </div>
       </div>
     );
@@ -101,7 +107,7 @@ const InterviewReport = ({ sessionId, onBack }) => {
       <div className="min-h-screen bg-[#020617] flex items-center justify-center">
         <div className="text-center space-y-4">
           <p className="text-red-400 font-bold tracking-widest uppercase text-xs">Failed to load report.</p>
-          <button onClick={onBack} className="text-purple-400 underline text-sm">Go Back</button>
+          <button onClick={handleBack} className="text-purple-400 underline text-sm">Go Back</button>
         </div>
       </div>
     );
@@ -113,7 +119,7 @@ const InterviewReport = ({ sessionId, onBack }) => {
       <header className="bg-[#0a0f1e] border-b border-white/5 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <button onClick={onBack} className="p-2 hover:bg-white/5 rounded-xl transition-colors text-slate-500 hover:text-white">
+            <button onClick={handleBack} className="p-2 hover:bg-white/5 rounded-xl transition-colors text-slate-500 hover:text-white">
               <ChevronLeft size={24} />
             </button>
             <div className="h-8 w-px bg-white/5" />
@@ -160,11 +166,8 @@ const InterviewReport = ({ sessionId, onBack }) => {
                       <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border border-emerald-500/20">
                         {report.hire_recommendation}
                       </span>
-                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest flex items-center">
-                        <TrendingUp size={12} className="mr-1" /> percentile: 92nd
-                      </span>
                     </div>
-                    <h2 className="text-3xl font-extrabold text-white leading-tight">Expert Analysis Complete</h2>
+                    <h2 className="text-3xl font-extrabold text-white leading-tight">Interview Summary</h2>
                   </div>
                 </div>
               </div>
@@ -184,7 +187,7 @@ const InterviewReport = ({ sessionId, onBack }) => {
                     <CheckCircle2 size={14} className="mr-2" /> Key Strengths
                   </h3>
                   <ul className="space-y-3">
-                    {report.strengths.map((s, i) => (
+                    {(report.strengths.length ? report.strengths : ['No strengths were captured for this session yet.']).map((s, i) => (
                       <li key={i} className="flex items-start text-sm text-slate-400 bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/10">
                         <Award size={16} className="mr-3 text-emerald-400 shrink-0 mt-0.5" />{s}
                       </li>
@@ -196,7 +199,7 @@ const InterviewReport = ({ sessionId, onBack }) => {
                     <AlertTriangle size={14} className="mr-2" /> Improvement Areas
                   </h3>
                   <ul className="space-y-3">
-                    {report.weaknesses.map((w, i) => (
+                    {(report.weaknesses.length ? report.weaknesses : ['No improvement areas were captured for this session yet.']).map((w, i) => (
                       <li key={i} className="flex items-start text-sm text-slate-400 bg-amber-500/5 p-3 rounded-xl border border-amber-500/10">
                         <Target size={16} className="mr-3 text-amber-400 shrink-0 mt-0.5" />{w}
                       </li>
@@ -214,7 +217,11 @@ const InterviewReport = ({ sessionId, onBack }) => {
                 </h2>
               </div>
               <div className="p-10 space-y-6">
-                {report.transcript.map((msg, i) => (
+                {report.transcript.length === 0 ? (
+                  <div className="bg-white/5 border border-white/5 rounded-3xl p-6 text-sm text-slate-400">
+                    A transcript is not available for this session.
+                  </div>
+                ) : report.transcript.map((msg, i) => (
                   <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[80%] p-6 rounded-3xl ${
                       msg.role === 'user'
@@ -222,7 +229,7 @@ const InterviewReport = ({ sessionId, onBack }) => {
                         : 'bg-white/5 border border-white/5 text-slate-300 rounded-tl-none'
                     }`}>
                       <p className="text-[9px] font-black uppercase tracking-widest opacity-50 mb-2">
-                        {msg.role === 'user' ? 'Candidate' : 'Interviewer Agent'}
+                        {msg.role === 'user' ? 'Candidate' : 'Interviewer'}
                       </p>
                       <p className="text-base leading-relaxed font-medium">{msg.content}</p>
                     </div>
@@ -262,7 +269,7 @@ const InterviewReport = ({ sessionId, onBack }) => {
                 </div>
               </div>
               <p className="text-slate-500 text-xs leading-relaxed">
-                Real-time proctoring metrics (tab switches, focus tracking, audio quality) will be available in a future update.
+                Additional session integrity signals will appear here once they are implemented and validated.
               </p>
             </div>
           </div>

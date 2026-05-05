@@ -1,4 +1,7 @@
+import logging
+from sqlalchemy.exc import IntegrityError
 from typing import Any, List, Optional
+from pydantic import BaseModel
 import uuid
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
@@ -19,11 +22,33 @@ from app.schemas.hr import (
 from app.services.email_service import send_invite_email
 from app.services.pdf_service import generate_interview_pdf
 from app.core.rate_limit import limiter
+from app.db.supabase_client import supabase_client
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Audit #15: use settings instead of hardcoded localhost
 FRONTEND_BASE_URL = settings.FRONTEND_URL
+
+
+async def _sync_drive_to_supabase(drive_data: dict) -> None:
+    """Fire-and-forget: mirror a job drive record to Supabase Postgres."""
+    if not supabase_client:
+        return
+    try:
+        supabase_client.table("job_drive").upsert(drive_data).execute()
+    except Exception as exc:
+        logger.warning("Supabase drive sync failed (non-fatal): %s", exc)
+
+
+async def _sync_session_to_supabase(session_data: dict) -> None:
+    """Fire-and-forget: mirror an interview session record to Supabase Postgres."""
+    if not supabase_client:
+        return
+    try:
+        supabase_client.table("interview_session").upsert(session_data).execute()
+    except Exception as exc:
+        logger.warning("Supabase session sync failed (non-fatal): %s", exc)
 
 
 async def _get_hr_profile(db: AsyncSession, user_id: int) -> HRProfile:
@@ -33,6 +58,12 @@ async def _get_hr_profile(db: AsyncSession, user_id: int) -> HRProfile:
         raise HTTPException(
             status_code=400,
             detail="HR Profile not found. Please complete your profile setup."
+        )
+    # Additional guard: ensure required HR profile fields are present
+    if not getattr(profile, 'company_name', None) or str(profile.company_name).strip() == "":
+        raise HTTPException(
+            status_code=400,
+            detail="HR Profile incomplete: please provide the company_name in your profile."
         )
     return profile
 
@@ -46,11 +77,104 @@ async def create_job_drive(
     current_hr: User = Depends(deps.get_current_hr)
 ) -> Any:
     hr_profile = await _get_hr_profile(db, current_hr.id)
-    drive = JobDrive(**drive_in.model_dump(), hr_id=hr_profile.id)
-    db.add(drive)
+    if not hr_profile:
+        # Should be handled by _get_hr_profile, but guard just in case
+        raise HTTPException(
+            status_code=400,
+            detail="HR Profile not found. Please complete your profile setup."
+        )
+    try:
+        # Debug: inspect payload before DB write
+        payload_fields = drive_in.model_dump()
+        logger.debug("HR Drive create payload: %s", payload_fields)
+        drive = JobDrive(**payload_fields, hr_id=hr_profile.id)
+        db.add(drive)
+        await db.commit()
+        await db.refresh(drive)
+        return drive
+    except IntegrityError as e:
+        await db.rollback()
+        logger.error(f"IntegrityError while creating JobDrive (hr_id={hr_profile.id}): {e}")
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to create Job Drive due to a database constraint. Please review the payload and HR profile."
+        )
+    except Exception as e:
+        await db.rollback()
+        logger.exception("Failed to create JobDrive")
+        raise HTTPException(status_code=500, detail="Failed to create Job Drive. Please try again.")
+
+
+@router.get("/profile-check")
+async def profile_check(
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr),
+) -> Any:
+    """Lightweight endpoint to verify HR profile existence for the current HR user."""
+    result = await db.execute(select(HRProfile).where(HRProfile.user_id == current_hr.id))
+    profile = result.scalars().first()
+    return {
+        "has_profile": bool(profile),
+        "hr_profile_id": profile.id if profile else None,
+    }
+
+
+@router.get("/profile")
+async def get_hr_profile(
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr),
+) -> Any:
+    """Return full HR profile data for the settings tab."""
+    result = await db.execute(select(HRProfile).where(HRProfile.user_id == current_hr.id))
+    profile = result.scalars().first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="HR Profile not found")
+    return {
+        "id": profile.id,
+        "company_name": profile.company_name,
+        "department": profile.department,
+        "position": profile.position,
+        "hr_code": profile.hr_code,
+        "created_at": profile.created_at,
+        "updated_at": profile.updated_at,
+    }
+
+
+class HRProfileUpdate(BaseModel):
+    company_name: Optional[str] = None
+    department: Optional[str] = None
+    position: Optional[str] = None
+
+    class Config:
+        extra = "ignore"
+
+
+@router.put("/profile")
+async def update_hr_profile(
+    profile_in: HRProfileUpdate,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr),
+) -> Any:
+    """Update HR profile details from the Drive Settings tab."""
+    result = await db.execute(select(HRProfile).where(HRProfile.user_id == current_hr.id))
+    profile = result.scalars().first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="HR Profile not found. Please re-register.")
+    for field, value in profile_in.model_dump(exclude_unset=True).items():
+        if value is not None:
+            setattr(profile, field, value)
+    from datetime import datetime, timezone as tz
+    profile.updated_at = datetime.now(tz.utc)
+    db.add(profile)
     await db.commit()
-    await db.refresh(drive)
-    return drive
+    await db.refresh(profile)
+    return {
+        "id": profile.id,
+        "company_name": profile.company_name,
+        "department": profile.department,
+        "position": profile.position,
+        "updated_at": profile.updated_at,
+    }
 
 
 @router.get("/drives")

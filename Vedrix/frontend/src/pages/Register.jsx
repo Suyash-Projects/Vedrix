@@ -1,18 +1,21 @@
 import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import useAuthStore from '../store/useAuthStore';
 import { Mail, Lock, User, Briefcase, Loader2, ArrowRight } from 'lucide-react';
 
-const Register = ({ onToggleMode, onSuccess }) => {
+const Register = () => {
   const [formData, setFormData] = useState({
     email: '',
     username: '',
     password: '',
     first_name: '',
     last_name: '',
-    user_type: 'student'
+    user_type: 'student',
+    company_name: '',
   });
   
   const { register, isLoading, error } = useAuthStore();
+  const navigate = useNavigate();
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -22,7 +25,7 @@ const Register = ({ onToggleMode, onSuccess }) => {
     e.preventDefault();
     const success = await register(formData);
     if (success) {
-      onSuccess?.();
+      navigate('/login');
     }
   };
 
@@ -103,6 +106,18 @@ const Register = ({ onToggleMode, onSuccess }) => {
           </div>
         </div>
 
+        {formData.user_type === 'hr' && (
+          <div>
+            <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Company Name</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500"><Briefcase size={18} /></div>
+              <input name="company_name" type="text" required
+                className="block w-full pl-10 pr-3 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-600 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                placeholder="e.g. Acme Corp" onChange={handleChange} />
+            </div>
+          </div>
+        )}
+
         <button type="submit" disabled={isLoading}
           className="w-full bg-purple-600 text-white py-4 px-4 rounded-xl font-black uppercase tracking-widest text-sm hover:bg-purple-500 shadow-[0_0_40px_rgba(147,51,234,0.3)] transition-all flex items-center justify-center space-x-2 active:scale-95 disabled:opacity-70 mt-6"
         >
@@ -112,7 +127,7 @@ const Register = ({ onToggleMode, onSuccess }) => {
 
       <div className="mt-8 text-center text-sm text-slate-500">
         Already have an account?{' '}
-        <button onClick={onToggleMode} className="text-purple-400 font-bold hover:text-purple-300">Sign In</button>
+        <Link to="/login" className="text-purple-400 font-bold hover:text-purple-300">Sign In</Link>
       </div>
     </div>
   );

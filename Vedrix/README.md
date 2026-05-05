@@ -13,9 +13,18 @@ Vedrix provides a dual-sided experience:
 - **Database:** PostgreSQL (SQLAlchemy)
 - **AI Integration:** OpenRouter (Groq, NVIDIA, DeepSeek)
 
-## 📁 Project Structure
-- `backend/`: FastAPI application.
-- `frontend/`: React application.
+## 🧪 Testing
 
-## ⚡ Getting Started
-(Instructions to be added as implementation progresses)
+### Backend Tests
+Run the backend test suite using `pytest`:
+```bash
+cd backend
+.\venv\Scripts\python.exe -m pytest
+```
+
+### Frontend Tests
+Run the frontend test suite using `vitest`:
+```bash
+cd frontend
+npm test
+```

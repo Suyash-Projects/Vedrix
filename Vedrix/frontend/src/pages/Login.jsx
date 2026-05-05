@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import useAuthStore from '../store/useAuthStore';
 import { Mail, Lock, Loader2, ArrowRight } from 'lucide-react';
 
-const Login = ({ onToggleMode, onSuccess }) => {
+const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const { login, isLoading, error } = useAuthStore();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     const success = await login(username, password);
     if (success) {
-      onSuccess?.();
+      navigate('/'); // App.jsx will handle redirection based on user type
     }
   };
 
@@ -89,9 +91,9 @@ const Login = ({ onToggleMode, onSuccess }) => {
 
       <div className="mt-8 text-center text-sm text-slate-500">
         Don't have an account?{' '}
-        <button onClick={onToggleMode} className="text-purple-400 font-bold hover:text-purple-300">
+        <Link to="/register" className="text-purple-400 font-bold hover:text-purple-300">
           Create account
-        </button>
+        </Link>
       </div>
     </div>
   );

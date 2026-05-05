@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Briefcase, Plus, Link as LinkIcon, Users, Activity,
@@ -104,7 +105,7 @@ const BulkInviteModal = ({ drive, onClose }) => {
               <CheckCircle2 size={28} />
               <div>
                 <p className="font-black text-lg text-white">{result.invited} Invites Generated</p>
-                <p className="text-xs text-slate-500 uppercase tracking-widest font-bold">Links are ready to share</p>
+                <p className="text-xs text-slate-500 uppercase tracking-widest font-bold">Invitation links are ready to share</p>
               </div>
             </div>
             <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
@@ -185,21 +186,21 @@ const TakeoverModal = ({ session, onClose }) => {
         className="bg-[#0f172a] border border-white/10 rounded-[2rem] w-full max-w-xl overflow-hidden shadow-2xl">
         <div className="px-8 py-6 border-b border-white/5 flex justify-between items-center">
           <div>
-            <h2 className="text-xl font-bold text-white">Live AI Takeover</h2>
+            <h2 className="text-xl font-bold text-white">Reviewer Guidance</h2>
             <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-0.5">Session #{session.id}</p>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors"><X size={20} /></button>
         </div>
         <div className="p-8 space-y-5">
           <p className="text-sm text-slate-400">
-            Inject a custom instruction directly into the AI's contextual state. The AI will adapt its next question or follow-up based on your input.
+            Send a private note to guide the next follow-up question or steer the interview toward a topic you want reviewed.
           </p>
           <textarea rows={4} value={instruction} onChange={e => setInstruction(e.target.value)}
             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all resize-none"
             placeholder="e.g. Ask the candidate to explain their experience with React Hooks in more depth." />
           <button onClick={handleSend} disabled={loading || !instruction.trim()}
             className="w-full bg-red-600 text-white py-4 rounded-2xl font-bold hover:bg-red-500 shadow-xl shadow-red-900/30 transition-all flex items-center justify-center space-x-2">
-            {loading ? <Loader2 className="animate-spin" size={20} /> : <><MessageSquareText size={18} /><span>Push to Engine</span></>}
+            {loading ? <Loader2 className="animate-spin" size={20} /> : <><MessageSquareText size={18} /><span>Send Guidance</span></>}
           </button>
         </div>
       </motion.div>
@@ -207,18 +208,83 @@ const TakeoverModal = ({ session, onClose }) => {
   );
 };
 
+/* ── DRIVE SETTINGS TAB ── */
+const DriveSettingsTab = () => {
+  const [profile, setProfile] = useState({ company_name: '', department: '', position: '' });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    apiClient.get('/hr/profile')
+      .then(r => setProfile({ company_name: r.data.company_name || '', department: r.data.department || '', position: r.data.position || '' }))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await apiClient.put('/hr/profile', profile);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch { alert('Failed to save profile.'); }
+    finally { setSaving(false); }
+  };
+
+  if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-purple-500" size={36} /></div>;
+
+  return (
+    <div className="max-w-xl">
+      <h2 className="text-2xl font-black text-white mb-2">HR Profile Settings</h2>
+      <p className="text-slate-500 mb-8 text-sm">Update your company and role information.</p>
+      <form onSubmit={handleSave} className="space-y-5">
+        {[
+          { label: 'Company Name', key: 'company_name', placeholder: 'e.g. Acme Corp' },
+          { label: 'Department', key: 'department', placeholder: 'e.g. Engineering' },
+          { label: 'Your Position', key: 'position', placeholder: 'e.g. Senior Recruiter' },
+        ].map(({ label, key, placeholder }) => (
+          <div key={key}>
+            <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">{label}</label>
+            <input
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+              placeholder={placeholder}
+              value={profile[key]}
+              onChange={e => setProfile({ ...profile, [key]: e.target.value })}
+            />
+          </div>
+        ))}
+        <button type="submit" disabled={saving}
+          className={`flex items-center space-x-2 px-8 py-4 rounded-2xl font-bold text-sm transition-all ${
+            saved ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'bg-purple-600 text-white hover:bg-purple-500 shadow-xl shadow-purple-900/30'
+          } disabled:opacity-50`}>
+          {saving ? <Loader2 className="animate-spin" size={16} /> : saved ? <CheckCircle2 size={16} /> : null}
+          <span>{saving ? 'Saving...' : saved ? 'Saved!' : 'Save Changes'}</span>
+        </button>
+      </form>
+    </div>
+  );
+};
+
 /* ── MAIN HR DASHBOARD ── */
-const HRDashboard = ({ onViewReport }) => {
+const HRDashboard = () => {
+  const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const [drives, setDrives] = useState([]);
   const [interviews, setInterviews] = useState([]);
   const [liveSessions, setLiveSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [hasProfile, setHasProfile] = useState(true);
   const [activeTab, setActiveTab] = useState('Active Drives');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [bulkInviteDrive, setBulkInviteDrive] = useState(null);
   const [takeoverSession, setTakeoverSession] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+
+  const handleViewReport = (sessionId) => {
+    navigate(`/report/${sessionId}`);
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -236,6 +302,21 @@ const HRDashboard = ({ onViewReport }) => {
       setLoading(false);
     }
   };
+
+  // Preflight HR profile check
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await apiClient.get('/hr/profile-check');
+        if (mounted) setHasProfile(res.data?.has_profile !== false);
+      } catch {
+        // Default to true — profile is auto-created on registration
+        if (mounted) setHasProfile(true);
+      }
+    })();
+    return () => { mounted = false };
+  }, []);
 
   useEffect(() => { 
     fetchData(); 
@@ -343,13 +424,17 @@ const HRDashboard = ({ onViewReport }) => {
             </h1>
             <p className="text-slate-500 text-lg mt-1 font-medium italic">Welcome back, {user?.first_name}</p>
           </div>
-          {activeTab === 'Active Drives' && (
+        {activeTab === 'Active Drives' && (
             <button onClick={() => setShowCreateModal(true)}
-              className="bg-purple-600 text-white px-8 py-4 rounded-2xl font-bold hover:bg-purple-500 transition-all shadow-xl shadow-purple-900/30 flex items-center space-x-2 active:scale-95">
+              className={`bg-purple-600 text-white px-8 py-4 rounded-2xl font-bold hover:bg-purple-500 transition-all shadow-xl shadow-purple-900/30 flex items-center space-x-2 active:scale-95 ${hasProfile ? '' : 'opacity-50 cursor-not-allowed'}`} 
+              disabled={!hasProfile}>
               <Plus size={20} />
               <span>Launch Drive</span>
             </button>
           )}
+        {activeTab === 'Active Drives' && !hasProfile && (
+          <div className="mt-2 text-sm text-slate-400">Please complete your HR profile to enable drive creation.</div>
+        )}
         </header>
 
         {loading && !drives.length ? (
@@ -364,7 +449,7 @@ const HRDashboard = ({ onViewReport }) => {
               </div>
               <div>
                 <h2 className="text-2xl font-bold text-white">No active drives detected</h2>
-                <p className="text-slate-500 mt-2">Initialize your first job drive to start inviting candidates for agentic evaluation.</p>
+                <p className="text-slate-500 mt-2">Create your first hiring drive to start inviting candidates and collecting interview results.</p>
               </div>
             </div>
           ) : (
@@ -377,7 +462,7 @@ const HRDashboard = ({ onViewReport }) => {
                   <div className="flex justify-between items-start mb-8 relative">
                     <div>
                       <div className="flex items-center space-x-3 mb-2">
-                        <span className="bg-purple-500/10 text-purple-400 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border border-purple-500/20">AI Enabled</span>
+                        <span className="bg-purple-500/10 text-purple-400 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border border-purple-500/20">Interview Workflow</span>
                         <span className="flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                           <Clock size={12} className="mr-1" /> {new Date(drive.created_at).toLocaleDateString()}
                         </span>
@@ -405,7 +490,7 @@ const HRDashboard = ({ onViewReport }) => {
                         copiedId === drive.id ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'bg-purple-600 text-white hover:bg-purple-500 shadow-lg shadow-purple-900/20'
                       }`}>
                       {copiedId === drive.id ? <CheckCircle2 size={18} /> : <LinkIcon size={18} />}
-                      <span>{copiedId === drive.id ? 'Link Copied' : 'Invite Candidate'}</span>
+                      <span>{copiedId === drive.id ? 'Link Copied' : 'Copy Invite Link'}</span>
                     </button>
 
                     <button onClick={() => setBulkInviteDrive(drive)}
@@ -450,7 +535,7 @@ const HRDashboard = ({ onViewReport }) => {
                       </div>
                       <div>
                         <p className="text-white font-bold">Session #{session.id}</p>
-                        <p className="text-xs text-slate-500 font-medium">Candidate #{session.candidate_id}</p>
+                        <p className="text-xs text-slate-500 font-medium">{session.candidate_name || session.candidate_email || `Candidate #${session.candidate_id}`}</p>
                       </div>
                     </div>
                     <div className="col-span-4">
@@ -467,7 +552,7 @@ const HRDashboard = ({ onViewReport }) => {
                         onClick={() => setTakeoverSession(session)}
                         className="bg-red-600 hover:bg-red-500 text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl transition-all shadow-lg shadow-red-900/30 flex items-center space-x-2">
                         <MessageSquareText size={14} />
-                        <span>Takeover</span>
+                        <span>Guide</span>
                       </button>
                     </div>
                   </div>
@@ -528,7 +613,7 @@ const HRDashboard = ({ onViewReport }) => {
                     </div>
                     <div className="col-span-1 text-right">
                       <button 
-                        onClick={() => onViewReport(interview.id)}
+                        onClick={() => handleViewReport(interview.id)}
                         className="p-2 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white hover:bg-purple-600 transition-all group-hover:scale-110">
                         <ChevronRight size={16} />
                       </button>
@@ -539,10 +624,14 @@ const HRDashboard = ({ onViewReport }) => {
             </div>
           </div>
         ) : (
+          activeTab === 'Drive Settings' ? (
+            <DriveSettingsTab />
+          ) : (
           <div className="p-20 text-center">
             <h2 className="text-2xl font-bold text-white">{activeTab}</h2>
             <p className="text-slate-500 mt-2">This module is coming soon in the next update.</p>
           </div>
+          )
         )}
       </div>
     </div>

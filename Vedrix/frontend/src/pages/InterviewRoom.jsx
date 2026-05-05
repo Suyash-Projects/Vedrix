@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Mic, MicOff, Video, VideoOff, Send, Loader2, Maximize,
@@ -6,6 +7,7 @@ import {
   Play, Terminal
 } from 'lucide-react';
 import useAuthStore from '../store/useAuthStore';
+import apiClient from '../services/api';
 import Editor from '@monaco-editor/react';
 
 /* ── READY CHECK WIZARD ─────────────────────────────────────────────────── */
@@ -59,18 +61,18 @@ const ReadyCheckWizard = ({ onReady }) => {
             <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
               <h1 className="text-5xl font-black text-white mb-6 leading-tight tracking-tighter">Hardware <br />Validation</h1>
               <p className="text-slate-400 text-lg mb-10 leading-relaxed font-medium">
-                This assessment uses high-fidelity <strong className="text-white">Voice Analysis</strong> and <strong className="text-white">Identity Monitoring</strong>. Please authorize your devices.
+                We will quickly check your microphone and camera so the interview can run smoothly.
               </p>
               <div className="grid grid-cols-2 gap-4 mb-10">
                 <div className={`p-8 rounded-3xl border-2 transition-all ${permissions.mic ? 'bg-purple-600 border-purple-400 text-white' : 'bg-white/5 border-white/10 text-slate-500'}`}>
                   <Mic size={32} className="mb-4" />
                   <span className="font-black text-xs uppercase tracking-widest block">Microphone</span>
-                  <span className="text-xs font-bold opacity-60 uppercase">{permissions.mic ? 'READY' : 'WAITING'}</span>
+                  <span className="text-xs font-bold opacity-60 uppercase">{permissions.mic ? 'READY' : 'CHECK REQUIRED'}</span>
                 </div>
                 <div className={`p-8 rounded-3xl border-2 transition-all ${permissions.cam ? 'bg-purple-600 border-purple-400 text-white' : 'bg-white/5 border-white/10 text-slate-500'}`}>
                   <Camera size={32} className="mb-4" />
                   <span className="font-black text-xs uppercase tracking-widest block">Camera</span>
-                  <span className="text-xs font-bold opacity-60 uppercase">{permissions.cam ? 'READY' : 'WAITING'}</span>
+                  <span className="text-xs font-bold opacity-60 uppercase">{permissions.cam ? 'READY' : 'CHECK REQUIRED'}</span>
                 </div>
               </div>
               <button onClick={checkHardware} disabled={loading}
@@ -80,10 +82,10 @@ const ReadyCheckWizard = ({ onReady }) => {
             </motion.div>
           ) : (
             <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-              <h1 className="text-5xl font-black text-white mb-6 leading-tight tracking-tighter">System <br />Lockdown</h1>
-              <p className="text-slate-400 text-lg mb-10 leading-relaxed font-medium">Fullscreen mode and voice recording will remain active for the duration of the interview.</p>
+              <h1 className="text-5xl font-black text-white mb-6 leading-tight tracking-tighter">Pre-Interview <br />Checklist</h1>
+              <p className="text-slate-400 text-lg mb-10 leading-relaxed font-medium">Before you begin, review the setup and switch to fullscreen for a focused interview experience.</p>
               <ul className="space-y-4 mb-10">
-                {['Fullscreen mode enforced', 'Biometric monitoring active', 'Live voice transcription', 'Identity verified'].map((rule, i) => (
+                {['Fullscreen recommended', 'Microphone and camera checked', 'Voice responses supported', 'Typed answers available when needed'].map((rule, i) => (
                   <li key={i} className="flex items-center text-slate-300 font-bold uppercase tracking-widest text-[10px]">
                     <CheckCircle2 size={16} className="mr-3 text-purple-500 shrink-0" />{rule}
                   </li>
@@ -91,7 +93,7 @@ const ReadyCheckWizard = ({ onReady }) => {
               </ul>
               <button onClick={handleStart}
                 className="w-full bg-purple-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-purple-500 transition-all shadow-[0_0_50px_rgba(147,51,234,0.4)] flex items-center justify-center space-x-3">
-                <span>Engage Assessment</span>
+                <span>Begin Interview</span>
                 <Maximize size={20} />
               </button>
             </motion.div>
@@ -120,10 +122,13 @@ const Waveform = ({ isRecording }) => {
 };
 
 /* ── MAIN INTERVIEW ROOM ────────────────────────────────────────────────── */
-const InterviewRoom = ({ sessionId, onComplete }) => {
+const InterviewRoom = () => {
   const { user } = useAuthStore();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
   const resolvedSessionId = useRef(
-    sessionId || `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
   ).current;
 
   const [ready, setReady] = useState(false);
@@ -132,6 +137,7 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [agentStatus, setAgentStatus] = useState('Initializing...');
   const [timeLeft, setTimeLeft] = useState(0); // Overall session timer
+  const [voiceAvailable, setVoiceAvailable] = useState(false);
   const [questionTimeLeft, setQuestionTimeLeft] = useState(0); // Per-question countdown
 
   // ... (rest of states)
@@ -144,10 +150,6 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
   }, [isRecording]);
 
   useEffect(() => {
-    toggleRecordingRef.current = toggleRecording;
-  }, [toggleRecording]);
-
-  useEffect(() => {
     let qTimer;
     if (currentQuestion?.time_limit) {
       setQuestionTimeLeft(currentQuestion.time_limit);
@@ -156,7 +158,7 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
           if (prev <= 1) {
             clearInterval(qTimer);
             if (isRecordingRef.current) {
-              // Auto-submit logic when timer hits zero - use ref to avoid stale closure
+              // Auto-submit when timer hits zero
               toggleRecordingRef.current?.();
               setAgentStatus('Time up! Auto-submitting response...');
             }
@@ -272,7 +274,7 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
     ws.current.onopen = () => {
       setIsConnected(true);
       reconnectAttempts.current = 0;
-      setAgentStatus('Connected — AI Interviewer ready');
+      setAgentStatus('Connected. Your interviewer is ready.');
     };
 
     ws.current.onclose = (e) => {
@@ -292,15 +294,15 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
         if (payload.job_role) setJobRole(payload.job_role);
         setIsCodingMode(payload.is_coding || false);
         if (payload.language) setCodeLanguage(payload.language);
-        setAgentStatus('AI Interviewer: Waiting for your response');
+        setAgentStatus('Question ready. We are waiting for your response.');
         if (payload.audio) playAudio(payload.audio);
       } else if (payload.type === 'status') {
         setAgentStatus(payload.data);
       } else if (payload.type === 'execution_result') {
         setCodeResult(payload.data);
-        setAgentStatus('Code executed. AI is evaluating...');
+        setAgentStatus('Code submitted. Reviewing your solution now.');
       } else if (payload.type === 'complete') {
-        setAgentStatus('Interview complete. Generating report...');
+        setAgentStatus('Interview complete. Preparing your report.');
         const sid = payload.session_id ?? null;
         setCompletedSessionId(sid);
         isIntentionalClose.current = true;
@@ -309,18 +311,17 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
           document.exitFullscreen();
         }
         // Check if this is a practice session (no drive_id/token) - skip showing report
-        const urlParams = new URLSearchParams(window.location.search);
-        const isPractice = !urlParams.get('drive_id') && !urlParams.get('token');
+        const isPractice = !searchParams.get('drive_id') && !searchParams.get('token');
         if (isPractice) {
           // For practice, exit immediately without showing report
-          onComplete?.(null);
+          navigate('/dashboard');
         } else {
           // For scheduled interviews, show report after delay
           setTimeout(() => {
             if (document.fullscreenElement) {
               document.exitFullscreen();
             }
-            onComplete?.(sid);
+            navigate(`/report/${sid}`);
           }, 3000);
         }
       } else if (payload.type === 'error') {
@@ -332,9 +333,8 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
   useEffect(() => {
     if (!ready) return;
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const driveId = urlParams.get('drive_id');
-    const token = urlParams.get('token');
+    const driveId = searchParams.get('drive_id');
+    const token = searchParams.get('token');
 
     const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
     let wsBase = apiBase;
@@ -366,6 +366,19 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
     };
   }, [ready, resolvedSessionId]);
 
+  // Check voice capability once ready
+  useEffect(() => {
+    if (!ready) return;
+    (async () => {
+      try {
+        const resp = await apiClient.get('/voice/capabilities');
+        setVoiceAvailable(!!resp.data?.voice_available);
+      } catch {
+        setVoiceAvailable(false);
+      }
+    })();
+  }, [ready]);
+
   const toggleRecording = async () => {
     if (isRecording) {
       mediaRecorder.current?.stop();
@@ -389,6 +402,11 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
     }
   };
 
+  // Sync toggleRecording into ref after it is defined
+  useEffect(() => {
+    toggleRecordingRef.current = toggleRecording;
+  });
+
   const submitCode = () => {
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type: 'code', data: code }));
@@ -399,7 +417,7 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
   const submitTextAnswer = () => {
     if (manualText.trim() && ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type: 'answer', data: manualText }));
-      setAgentStatus('AI Interviewer: Processing text answer...');
+      setAgentStatus('Text answer submitted. Reviewing your response.');
       setManualText('');
       setShowTextInput(false);
     }
@@ -413,7 +431,11 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
     if (document.fullscreenElement) {
       document.exitFullscreen();
     }
-    onComplete?.(completedSessionId);
+    if (completedSessionId) {
+      navigate(`/report/${completedSessionId}`);
+    } else {
+      navigate('/');
+    }
   };
 
   // Exit fullscreen helper
@@ -449,10 +471,10 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
         <div className="flex items-center space-x-8">
           <div className="text-right">
             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 flex items-center justify-end">
-              Adaptive Interview
+              Interview Session
               <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full ml-2 inline-block animate-pulse" />
             </p>
-            <p className="text-xs font-bold text-white uppercase tracking-wider">No question limit</p>
+            <p className="text-xs font-bold text-white uppercase tracking-wider">Voice and typed answers supported</p>
           </div>
 
           <button onClick={handleEndInterview}
@@ -506,7 +528,7 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
                 <div className="w-72 h-72 rounded-[3rem] bg-slate-900 border border-white/10 overflow-hidden relative shadow-[0_0_100px_rgba(147,51,234,0.1)]">
                   <img
                     src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=1000"
-                    alt="AI Interviewer"
+                    alt="Interviewer"
                     className={`w-full h-full object-cover grayscale transition-all duration-500 ${isSpeaking ? 'scale-110 opacity-100' : 'opacity-80'}`}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent" />
@@ -523,7 +545,7 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
                   )}
                   <div className="absolute top-4 left-4 bg-slate-900/60 backdrop-blur border border-white/10 px-3 py-1.5 rounded-xl flex items-center space-x-2">
                     <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-pulse" />
-                    <span className="text-[8px] font-black text-white uppercase tracking-[0.2em]">AI Interviewer</span>
+                    <span className="text-[8px] font-black text-white uppercase tracking-[0.2em]">Interviewer</span>
                   </div>
                 </div>
 
@@ -590,8 +612,8 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
               className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isVideoOn ? 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10' : 'bg-red-500 text-white'}`}>
               {isVideoOn ? <Video size={20} /> : <VideoOff size={20} />}
             </button>
-            <button onClick={toggleRecording}
-              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-500 text-white shadow-xl shadow-red-500/30' : 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10'}`}>
+            <button onClick={toggleRecording} disabled={!voiceAvailable}
+              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-500 text-white shadow-xl shadow-red-500/30' : 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10'} ${!voiceAvailable ? 'opacity-60 cursor-not-allowed' : ''}`}>
               {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
             </button>
             <button onClick={handleEndInterview}
@@ -608,9 +630,9 @@ const InterviewRoom = ({ sessionId, onComplete }) => {
           <div className="flex justify-between items-center mb-6">
             <div className="flex items-center space-x-4">
               <span className="text-sm font-black uppercase tracking-widest text-white">Your Answer</span>
-              <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${isRecording ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'}`}>
-                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${isRecording ? 'bg-red-400' : 'bg-emerald-500'}`} />
-                <span>{isRecording ? 'Recording...' : 'Voice Ready'}</span>
+              <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${voiceAvailable ? (isRecording ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20') : 'bg-gray-500/40 text-slate-300 border-gray-500/40'}`}>
+                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${isRecording ? 'bg-red-400' : voiceAvailable ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                <span>{voiceAvailable ? (isRecording ? 'Recording...' : 'Voice Ready') : 'Voice Unavailable'}</span>
               </div>
               {currentQuestion?.time_limit && (
                 <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${questionTimeLeft < 10 ? 'bg-red-500/10 text-red-400 border-red-500/20 animate-pulse' : 'bg-white/5 text-slate-400 border-white/10'}`}>

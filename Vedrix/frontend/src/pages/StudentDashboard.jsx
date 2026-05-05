@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Play, Upload, FileText, BarChart3, Clock, CheckCircle2,
@@ -7,7 +8,8 @@ import {
 import apiClient from '../services/api';
 import useAuthStore from '../store/useAuthStore';
 
-const StudentDashboard = ({ onStartInterview, onViewReport }) => {
+const StudentDashboard = () => {
+  const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const [stats, setStats] = useState(null);
   const [sessions, setSessions] = useState([]);
@@ -15,6 +17,14 @@ const StudentDashboard = ({ onStartInterview, onViewReport }) => {
   const [uploading, setUploading] = useState(false);
   const [resumeName, setResumeName] = useState(null);
   const fileRef = useRef();
+
+  const handleStartInterview = () => {
+    navigate('/interview');
+  };
+
+  const handleViewReport = (sessionId) => {
+    navigate(`/report/${sessionId}`);
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -82,9 +92,9 @@ const StudentDashboard = ({ onStartInterview, onViewReport }) => {
         {/* Welcome */}
         <div>
           <h1 className="text-4xl font-black text-white tracking-tight">
-            Welcome back, <span className="text-purple-400">{user?.first_name}</span> 👋
+            Welcome back, <span className="text-purple-400">{user?.first_name}</span>
           </h1>
-          <p className="text-slate-500 mt-2">Ready for your next assessment?</p>
+          <p className="text-slate-500 mt-2">Review your progress, update your resume, and start your next interview when you are ready.</p>
         </div>
 
         {/* Stats row */}
@@ -116,7 +126,7 @@ const StudentDashboard = ({ onStartInterview, onViewReport }) => {
           <motion.div
             whileHover={{ scale: 1.01 }}
             className="bg-gradient-to-br from-purple-600/20 to-indigo-600/10 border border-purple-500/20 rounded-[2rem] p-8 flex flex-col justify-between min-h-[200px] relative overflow-hidden cursor-pointer group"
-            onClick={onStartInterview}
+            onClick={handleStartInterview}
           >
             <div className="absolute top-0 right-0 w-32 h-32 bg-purple-600/10 blur-[60px] rounded-full group-hover:bg-purple-600/20 transition-all" />
             <div>
@@ -124,10 +134,10 @@ const StudentDashboard = ({ onStartInterview, onViewReport }) => {
                 <Play size={22} className="text-white" fill="white" />
               </div>
               <h2 className="text-2xl font-black text-white mb-1">Start AI Interview</h2>
-              <p className="text-slate-400 text-sm">Adaptive, voice-based assessment powered by Vedrix AI</p>
+              <p className="text-slate-400 text-sm">Start a practice interview or continue with your next scheduled assessment.</p>
             </div>
             <div className="flex items-center text-purple-400 font-black text-xs uppercase tracking-widest mt-6">
-              <span>Join Room</span>
+              <span>Start Interview</span>
               <ChevronRight size={16} className="ml-1" />
             </div>
           </motion.div>
@@ -187,7 +197,7 @@ const StudentDashboard = ({ onStartInterview, onViewReport }) => {
                           ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
                           : 'bg-white/5 text-slate-400 border-white/10'
                       }`}>
-                        {s.session_type}
+                        {s.session_type === 'actual' ? 'Scheduled' : 'Practice'}
                       </span>
                     </div>
                     <div className="col-span-3">
@@ -208,7 +218,7 @@ const StudentDashboard = ({ onStartInterview, onViewReport }) => {
                     <div className="col-span-1 text-right">
                       {s.status === 'completed' && (
                         <button
-                          onClick={() => onViewReport(s.id)}
+                          onClick={() => handleViewReport(s.id)}
                           className="p-2 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white hover:bg-purple-600 transition-all"
                         >
                           <ChevronRight size={16} />

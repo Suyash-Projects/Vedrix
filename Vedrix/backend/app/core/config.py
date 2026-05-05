@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     JUDGE0_URL: str = "https://judge0-ce.p.rapidapi.com"
     JUDGE0_API_KEY: str = ""
 
+    # Supabase (optional — mirrors data to Postgres when configured)
+    SUPABASE_URL: str = ""
+    SUPABASE_KEY: str = ""   # use the publishable/anon key or service key
+
     class Config:
         env_file = ".env"
         case_sensitive = True
