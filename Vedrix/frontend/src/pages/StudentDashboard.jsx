@@ -1,21 +1,25 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Play, Upload, FileText, BarChart3, Clock, CheckCircle2,
-  TrendingUp, Award, ChevronRight, Loader2, User, LogOut
+  TrendingUp, Award, ChevronRight, Loader2
 } from 'lucide-react';
 import apiClient from '../services/api';
 import useAuthStore from '../store/useAuthStore';
 
 const StudentDashboard = () => {
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const [stats, setStats] = useState(null);
   const [sessions, setSessions] = useState([]);
+  const [profile, setProfile] = useState(null);
+  const [editProfile, setEditProfile] = useState({ university: '', degree: '', graduation_year: '', skills: '' });
+  const [completion, setCompletion] = useState(0);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [resumeName, setResumeName] = useState(null);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
   const fileRef = useRef();
 
   const handleStartInterview = () => {
@@ -27,14 +31,23 @@ const StudentDashboard = () => {
   };
 
   useEffect(() => {
+    const computeCompletion = (profileData) => {
+      const required = [profileData?.university, profileData?.degree, profileData?.graduation_year, profileData?.skills];
+      const filled = required.filter(field => field !== null && field !== undefined && String(field).trim() !== '').length;
+      return Math.round((filled / required.length) * 100);
+    };
+
     const fetchData = async () => {
       try {
-        const [statsRes, sessionsRes] = await Promise.all([
+        const [statsRes, sessionsRes, profileRes] = await Promise.all([
           apiClient.get('/student/stats'),
           apiClient.get('/student/interviews'),
+          apiClient.get('/profiles/student'),
         ]);
         setStats(statsRes.data);
         setSessions(sessionsRes.data);
+        setProfile(profileRes.data);
+        setCompletion(computeCompletion(profileRes.data));
       } catch (err) {
         console.error('Dashboard fetch error:', err);
       } finally {
@@ -66,26 +79,37 @@ const StudentDashboard = () => {
   const scoreColor = (s) =>
     s >= 8 ? 'text-emerald-400' : s >= 5 ? 'text-purple-400' : 'text-amber-400';
 
+  const handleProfileSave = async (updatedProfile) => {
+    const payload = Object.entries(updatedProfile).reduce((acc, [key, value]) => {
+      if (value !== null && value !== undefined && String(value).trim() !== '') {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+
+    try {
+      await apiClient.post('/profiles/student', payload);
+      setProfile({
+        ...profile,
+        ...payload,
+      });
+      setCompletion(Math.round(([
+        payload.university,
+        payload.degree,
+        payload.graduation_year,
+        payload.skills
+      ].filter(field => field !== null && field !== undefined && String(field).trim() !== '').length / 4) * 100));
+      setProfileModalOpen(false);
+      alert('Profile saved successfully.');
+    } catch (err) {
+      console.error('Profile save error:', err.response?.data || err.message || err);
+      alert(err.response?.data?.detail ? `Failed to save profile: ${err.response.data.detail}` : 'Failed to save profile.');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#020617] text-white font-sans">
-      {/* Ambient */}
       <div className="fixed top-0 right-0 w-[40%] h-[40%] bg-purple-600/5 blur-[150px] rounded-full pointer-events-none" />
-
-      {/* Top bar */}
-      <div className="border-b border-white/5 bg-[#0a0f1e]/80 backdrop-blur-xl px-8 h-20 flex items-center justify-between sticky top-0 z-40">
-        <div className="flex items-center space-x-3">
-          <div className="w-9 h-9 bg-gradient-to-tr from-purple-600 to-indigo-400 rounded-xl flex items-center justify-center text-white font-black text-sm">
-            {user?.first_name?.[0] || 'V'}
-          </div>
-          <div>
-            <p className="text-white font-bold text-sm">{user?.first_name} {user?.last_name}</p>
-            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Candidate</p>
-          </div>
-        </div>
-        <button onClick={logout} className="text-slate-500 hover:text-red-400 transition-colors">
-          <LogOut size={18} />
-        </button>
-      </div>
 
       <div className="max-w-6xl mx-auto px-8 py-12 space-y-10 relative z-10">
 
@@ -120,13 +144,12 @@ const StudentDashboard = () => {
         )}
 
         {/* Action cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-          {/* Start Interview */}
           <motion.div
             whileHover={{ scale: 1.01 }}
-            className="bg-gradient-to-br from-purple-600/20 to-indigo-600/10 border border-purple-500/20 rounded-[2rem] p-8 flex flex-col justify-between min-h-[200px] relative overflow-hidden cursor-pointer group"
-            onClick={handleStartInterview}
+            className={`bg-gradient-to-br from-purple-600/20 to-indigo-600/10 border rounded-[2rem] p-8 flex flex-col justify-between min-h-[200px] relative overflow-hidden group ${completion < 50 ? 'opacity-80 cursor-not-allowed' : ''}`}
+            onClick={() => completion >= 50 && handleStartInterview()}
           >
             <div className="absolute top-0 right-0 w-32 h-32 bg-purple-600/10 blur-[60px] rounded-full group-hover:bg-purple-600/20 transition-all" />
             <div>
@@ -134,15 +157,14 @@ const StudentDashboard = () => {
                 <Play size={22} className="text-white" fill="white" />
               </div>
               <h2 className="text-2xl font-black text-white mb-1">Start AI Interview</h2>
-              <p className="text-slate-400 text-sm">Start a practice interview or continue with your next scheduled assessment.</p>
+              <p className="text-slate-400 text-sm">Begin a practice interview or launch your scheduled assessment.</p>
             </div>
             <div className="flex items-center text-purple-400 font-black text-xs uppercase tracking-widest mt-6">
-              <span>Start Interview</span>
+              <span>{completion >= 50 ? 'Start Interview' : 'Complete Profile First'}</span>
               <ChevronRight size={16} className="ml-1" />
             </div>
           </motion.div>
 
-          {/* Resume Upload */}
           <div className="bg-white/2 border border-white/5 rounded-[2rem] p-8 flex flex-col justify-between min-h-[200px]">
             <div>
               <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center mb-4">
@@ -165,7 +187,79 @@ const StudentDashboard = () => {
             </button>
             <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={handleResumeUpload} />
           </div>
+
+          <div className="bg-white/2 border border-white/5 rounded-[2rem] p-8 min-h-[200px] flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-2xl font-black text-white">Profile</h2>
+                  <p className="text-slate-500 text-sm">Complete at least 50% to unlock interviews.</p>
+                </div>
+                <button onClick={() => {
+                  setEditProfile({
+                    university: profile?.university ?? '',
+                    degree: profile?.degree ?? '',
+                    graduation_year: profile?.graduation_year ?? '',
+                    skills: profile?.skills ?? ''
+                  });
+                  setProfileModalOpen(true);
+                }}
+                  className="bg-purple-600 text-white px-4 py-2 rounded-2xl text-sm font-bold hover:bg-purple-500 transition-all">
+                  Edit
+                </button>
+              </div>
+              <div className="space-y-3">
+                <div className="text-slate-400 text-sm">Completion</div>
+                <div className="text-3xl font-black text-white">{completion}%</div>
+              </div>
+            </div>
+            {completion < 50 ? (
+              <p className="text-slate-400 text-sm mt-4">Add more profile details before starting interviews.</p>
+            ) : (
+              <p className="text-emerald-400 text-sm mt-4">Profile is complete enough to use the platform.</p>
+            )}
+          </div>
         </div>
+
+        {profileModalOpen && (
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6">
+            <div className="bg-[#0f172a] border border-white/10 rounded-[2rem] w-full max-w-xl p-8 space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-black text-white">Edit Student Profile</h2>
+                  <p className="text-slate-500 text-sm">Save essential profile details to access interviews.</p>
+                </div>
+                <button onClick={() => setProfileModalOpen(false)} className="text-slate-400 hover:text-white">Close</button>
+              </div>
+              {[
+                { label: 'University', key: 'university', placeholder: 'e.g. University of XYZ' },
+                { label: 'Degree', key: 'degree', placeholder: 'e.g. B.Sc. Computer Science' },
+                { label: 'Graduation Year', key: 'graduation_year', placeholder: 'e.g. 2026', type: 'number' },
+                { label: 'Top Skills', key: 'skills', placeholder: 'e.g. Python, React, SQL' },
+              ].map(({ label, key, placeholder, type }) => (
+                <div key={key}>
+                  <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">{label}</label>
+                  <input
+                    type={type || 'text'}
+                    value={editProfile[key] ?? ''}
+                    onChange={(e) => setEditProfile({
+                      ...editProfile,
+                      [key]: type === 'number'
+                        ? (e.target.value === '' ? null : Number(e.target.value))
+                        : e.target.value,
+                    })}
+                    placeholder={placeholder}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+                  />
+                </div>
+              ))}
+              <div className="flex justify-end gap-3 pt-2">
+                <button onClick={() => setProfileModalOpen(false)} className="px-6 py-3 rounded-2xl border border-white/10 text-slate-300 hover:bg-white/5 transition-all">Cancel</button>
+                <button onClick={() => handleProfileSave(editProfile)} className="px-6 py-3 rounded-2xl bg-purple-600 text-white font-bold hover:bg-purple-500 transition-all">Save Profile</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Past Sessions */}
         <div>

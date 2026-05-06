@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Briefcase, Plus, Link as LinkIcon, Users, Activity,
+  Briefcase, Plus, Link as LinkIcon, Activity,
   ChevronRight, Copy, CheckCircle2, Clock, LayoutDashboard,
   LogOut, Settings, MoreVertical, X, Loader2, Mail, Send,
-  Calendar, ChevronDown, Radio, MessageSquareText
+  ChevronDown, Radio, MessageSquareText
 } from 'lucide-react';
 import apiClient from '../services/api';
 import useAuthStore from '../store/useAuthStore';
@@ -275,7 +275,7 @@ const HRDashboard = () => {
   const [interviews, setInterviews] = useState([]);
   const [liveSessions, setLiveSessions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [hasProfile, setHasProfile] = useState(true);
+  const [profileCompletion, setProfileCompletion] = useState(0);
   const [activeTab, setActiveTab] = useState('Active Drives');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [bulkInviteDrive, setBulkInviteDrive] = useState(null);
@@ -309,16 +309,20 @@ const HRDashboard = () => {
     (async () => {
       try {
         const res = await apiClient.get('/hr/profile-check');
-        if (mounted) setHasProfile(res.data?.has_profile !== false);
+        if (mounted) {
+          setProfileCompletion(res.data?.completion ?? 0);
+        }
       } catch {
-        // Default to true — profile is auto-created on registration
-        if (mounted) setHasProfile(true);
+        if (mounted) {
+          setProfileCompletion(0);
+        }
       }
     })();
     return () => { mounted = false };
   }, []);
 
   useEffect(() => { 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData(); 
     // Basic polling for live sessions could be added here
     const interval = setInterval(fetchData, 15000);
@@ -424,17 +428,27 @@ const HRDashboard = () => {
             </h1>
             <p className="text-slate-500 text-lg mt-1 font-medium italic">Welcome back, {user?.first_name}</p>
           </div>
-        {activeTab === 'Active Drives' && (
-            <button onClick={() => setShowCreateModal(true)}
-              className={`bg-purple-600 text-white px-8 py-4 rounded-2xl font-bold hover:bg-purple-500 transition-all shadow-xl shadow-purple-900/30 flex items-center space-x-2 active:scale-95 ${hasProfile ? '' : 'opacity-50 cursor-not-allowed'}`} 
-              disabled={!hasProfile}>
-              <Plus size={20} />
-              <span>Launch Drive</span>
-            </button>
+          {activeTab === 'Active Drives' && (
+            <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
+              <div className="rounded-3xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-slate-300">
+                <p className="uppercase tracking-[0.2em] text-[10px] text-slate-500 font-black">HR Profile Completion</p>
+                <p className="text-lg font-black text-white">{profileCompletion}%</p>
+              </div>
+              <button onClick={() => setActiveTab('Drive Settings')}
+                className="bg-white/5 border border-white/10 text-white px-6 py-3 rounded-2xl font-bold hover:bg-white/10 transition-all">
+                Edit Profile
+              </button>
+              <button onClick={() => setShowCreateModal(true)}
+                className={`bg-purple-600 text-white px-8 py-4 rounded-2xl font-bold hover:bg-purple-500 transition-all shadow-xl shadow-purple-900/30 flex items-center space-x-2 active:scale-95 ${profileCompletion < 50 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                disabled={profileCompletion < 50}>
+                <Plus size={20} />
+                <span>Launch Drive</span>
+              </button>
+            </div>
           )}
-        {activeTab === 'Active Drives' && !hasProfile && (
-          <div className="mt-2 text-sm text-slate-400">Please complete your HR profile to enable drive creation.</div>
-        )}
+          {activeTab === 'Active Drives' && profileCompletion < 50 && (
+            <div className="mt-4 text-sm text-slate-400">Complete at least 50% of your HR profile before launching a drive. Click <button onClick={() => setActiveTab('Drive Settings')} className="text-purple-400 underline">Edit Profile</button> to continue.</div>
+          )}
         </header>
 
         {loading && !drives.length ? (

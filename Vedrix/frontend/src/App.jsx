@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 import Login from './pages/Login';
-import LandingSections from './components/LandingSections';
 import Register from './pages/Register';
 import InterviewRoom from './pages/InterviewRoom';
 import AdminDashboard from './pages/AdminDashboard';
@@ -27,10 +26,10 @@ function App() {
   const isReport = location.pathname.startsWith('/report');
 
   return (
-    <div className="min-h-screen bg-[#020617] text-white pt-20">
+    <div className="min-h-screen bg-[#020617] text-white">
       {!isInterviewRoom && !isReport && <Navbar />}
 
-      <main className="pt-0">
+      <main className={!isInterviewRoom && !isReport ? 'pt-20' : ''}>
         <Routes>
           {/* Public Routes */}
           <Route path="/" element={
@@ -41,8 +40,16 @@ function App() {
             ) : <LandingPage />
           } />
           
-          <Route path="/login" element={<Login onToggleMode={() => {}} onSuccess={() => {}} />} />
-          <Route path="/register" element={<Register onToggleMode={() => {}} onSuccess={() => {}} />} />
+          <Route path="/login" element={
+            <div className="min-h-screen flex items-center justify-center px-4 py-16">
+              <Login />
+            </div>
+          } />
+          <Route path="/register" element={
+            <div className="min-h-screen flex items-center justify-center px-4 py-16">
+              <Register />
+            </div>
+          } />
           
           {/* Interview Room (Public-ish/Self-protected) */}
           <Route path="/interview" element={<InterviewRoom />} />

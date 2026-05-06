@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -9,6 +9,9 @@ import {
 import useAuthStore from '../store/useAuthStore';
 import apiClient from '../services/api';
 import Editor from '@monaco-editor/react';
+
+/* ── WAVEFORM HEIGHTS — pre-generated for stability ────────────────────── */
+const waveformHeights = Array.from({ length: 60 }, () => Math.random() * 50 + 10);
 
 /* ── READY CHECK WIZARD ─────────────────────────────────────────────────── */
 const ReadyCheckWizard = ({ onReady }) => {
@@ -106,10 +109,9 @@ const ReadyCheckWizard = ({ onReady }) => {
 
 /* ── WAVEFORM — stable random heights, no re-render jitter ─────────────── */
 const Waveform = ({ isRecording }) => {
-  const heights = useMemo(() => Array.from({ length: 60 }, () => Math.random() * 50 + 10), []);
   return (
     <div className="h-24 flex items-center justify-center space-x-1 overflow-hidden">
-      {heights.map((h, i) => (
+      {waveformHeights.map((h, i) => (
         <motion.div
           key={i}
           animate={{ height: isRecording ? h : 4, opacity: isRecording ? 1 : 0.2 }}
@@ -127,9 +129,9 @@ const InterviewRoom = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  const resolvedSessionId = useRef(
+  const [resolvedSessionId] = useState(() =>
     `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-  ).current;
+  );
 
   const [ready, setReady] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
@@ -152,6 +154,7 @@ const InterviewRoom = () => {
   useEffect(() => {
     let qTimer;
     if (currentQuestion?.time_limit) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setQuestionTimeLeft(currentQuestion.time_limit);
       qTimer = setInterval(() => {
         setQuestionTimeLeft(prev => {
@@ -199,7 +202,7 @@ const InterviewRoom = () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         setVideoStream(stream);
-      } catch (err) {
+      } catch {
         console.log('Camera not available, continuing without video');
         setIsVideoOn(false);
       }
@@ -210,7 +213,7 @@ const InterviewRoom = () => {
         videoStream.getTracks().forEach(track => track.stop());
       }
     };
-  }, [ready]);
+  }, [ready, videoStream]);
 
   // Toggle video function
   const toggleVideo = async () => {
@@ -253,13 +256,13 @@ const InterviewRoom = () => {
         // Check for WAV RIFF header ('R' = 0x52)
         const isWav = binary.charCodeAt(0) === 0x52;
         mime = isWav ? 'audio/wav' : 'audio/opus';
-      } catch (e) {
+      } catch {
         // Default to opus if detection fails
         mime = 'audio/opus';
       }
       const audio = new Audio(`data:${mime};base64,${base64}`);
       audio.onended = () => setIsSpeaking(false);
-      audio.onerror = (e) => { console.error('Audio playback error:', e); setIsSpeaking(false); };
+      audio.onerror = () => { console.error('Audio playback error'); setIsSpeaking(false); };
       audio.play().catch(e => { console.error('Audio play() failed:', e); setIsSpeaking(false); });
     } catch (e) {
       console.error('playAudio error:', e);
@@ -277,7 +280,7 @@ const InterviewRoom = () => {
       setAgentStatus('Connected. Your interviewer is ready.');
     };
 
-    ws.current.onclose = (e) => {
+    ws.current.onclose = () => {
       setIsConnected(false);
       if (isIntentionalClose.current) return;
       // Exponential back-off: 1s, 2s, 4s, 8s, max 16s
@@ -364,7 +367,7 @@ const InterviewRoom = () => {
       ws.current?.close();
       clearInterval(timer);
     };
-  }, [ready, resolvedSessionId]);
+  }, [ready, resolvedSessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check voice capability once ready
   useEffect(() => {
@@ -396,7 +399,7 @@ const InterviewRoom = () => {
         };
         mediaRecorder.current.start();
         setIsRecording(true);
-      } catch (err) {
+      } catch {
         alert("Microphone access failed.");
       }
     }
@@ -404,6 +407,7 @@ const InterviewRoom = () => {
 
   // Sync toggleRecording into ref after it is defined
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability
     toggleRecordingRef.current = toggleRecording;
   });
 
@@ -435,13 +439,6 @@ const InterviewRoom = () => {
       navigate(`/report/${completedSessionId}`);
     } else {
       navigate('/');
-    }
-  };
-
-  // Exit fullscreen helper
-  const exitFullscreen = () => {
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
     }
   };
 
@@ -612,8 +609,8 @@ const InterviewRoom = () => {
               className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isVideoOn ? 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10' : 'bg-red-500 text-white'}`}>
               {isVideoOn ? <Video size={20} /> : <VideoOff size={20} />}
             </button>
-            <button onClick={toggleRecording} disabled={!voiceAvailable}
-              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-500 text-white shadow-xl shadow-red-500/30' : 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10'} ${!voiceAvailable ? 'opacity-60 cursor-not-allowed' : ''}`}>
+            <button onClick={toggleRecording}
+              className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-500 text-white shadow-xl shadow-red-500/30' : 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10'}`}>
               {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
             </button>
             <button onClick={handleEndInterview}

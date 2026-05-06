@@ -45,6 +45,38 @@ async def create_student_profile(
     await db.commit()
     return {"status": "success", "message": "Student profile updated"}
 
+@router.get("/student", response_model=dict)
+async def get_student_profile(
+    current_user: User = Depends(deps.get_current_user),
+    db: AsyncSession = Depends(get_session)
+) -> Any:
+    """Retrieve the current student's profile."""
+    if current_user.user_type != 'student':
+        raise HTTPException(status_code=400, detail="User is not registered as a student")
+
+    result = await db.execute(select(StudentProfile).where(StudentProfile.user_id == current_user.id))
+    profile = result.scalars().first()
+    if not profile:
+        return {
+            "university": None,
+            "degree": None,
+            "graduation_year": None,
+            "skills": None,
+            "resume_file": None,
+            "resume_text": None,
+            "experience_level": None,
+        }
+
+    return {
+        "university": profile.university,
+        "degree": profile.degree,
+        "graduation_year": profile.graduation_year,
+        "skills": profile.skills,
+        "resume_file": profile.resume_file,
+        "resume_text": profile.resume_text,
+        "experience_level": profile.experience_level,
+    }
+
 @router.post("/hr", response_model=dict)
 async def create_hr_profile(
     profile_in: HRProfileCreate,

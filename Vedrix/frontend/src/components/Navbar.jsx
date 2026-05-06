@@ -72,6 +72,28 @@ const Navbar = () => {
           {isOpen ? <X /> : <Menu />}
         </button>
       </div>
+
+      {isOpen && (
+        <div className="md:hidden bg-[#020617]/95 border-t border-white/10 backdrop-blur-xl">
+          <div className="px-6 py-4 space-y-3">
+            <Link onClick={() => setIsOpen(false)} to={isAuthenticated ? getDashboardPath() : '/'}
+              className="block text-slate-400 hover:text-white font-bold text-sm uppercase tracking-widest transition-colors">Home</Link>
+            {isAuthenticated && (
+              <Link onClick={() => setIsOpen(false)} to={getDashboardPath()}
+                className="block text-slate-400 hover:text-white font-bold text-sm uppercase tracking-widest transition-colors">Dashboard</Link>
+            )}
+            {!isAuthenticated ? (
+              <>
+                <Link onClick={() => setIsOpen(false)} to="/login" className="block text-white font-bold px-4 py-3 rounded-xl hover:bg-white/5 transition-all">Sign In</Link>
+                <Link onClick={() => setIsOpen(false)} to="/register" className="block bg-purple-600 text-white font-bold px-4 py-3 rounded-xl hover:bg-purple-500 transition-all">Register</Link>
+              </>
+            ) : (
+              <button onClick={() => { setIsOpen(false); handleLogout(); }}
+                className="w-full text-left text-slate-400 hover:text-red-400 font-bold px-4 py-3 rounded-xl hover:bg-red-500/10 transition-all">Logout</button>
+            )}
+          </div>
+        </div>
+      )}
     </nav>
   );
 };

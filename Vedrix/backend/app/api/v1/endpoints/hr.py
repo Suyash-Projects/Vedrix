@@ -68,6 +68,12 @@ async def _get_hr_profile(db: AsyncSession, user_id: int) -> HRProfile:
     return profile
 
 
+def _calculate_hr_profile_completion(profile: HRProfile) -> int:
+    required_fields = [profile.company_name, profile.department, profile.position]
+    filled_count = sum(1 for field in required_fields if field and str(field).strip())
+    return int((filled_count / len(required_fields)) * 100)
+
+
 # ── DRIVES ──────────────────────────────────────────────────────────────────
 
 @router.post("/drives", response_model=JobDriveRead)
@@ -77,11 +83,11 @@ async def create_job_drive(
     current_hr: User = Depends(deps.get_current_hr)
 ) -> Any:
     hr_profile = await _get_hr_profile(db, current_hr.id)
-    if not hr_profile:
-        # Should be handled by _get_hr_profile, but guard just in case
+    profile_completion = _calculate_hr_profile_completion(hr_profile)
+    if profile_completion < 50:
         raise HTTPException(
-            status_code=400,
-            detail="HR Profile not found. Please complete your profile setup."
+            status_code=403,
+            detail="HR profile is not sufficiently complete. Complete at least 50% of your profile before creating a drive."
         )
     try:
         # Debug: inspect payload before DB write
@@ -110,12 +116,21 @@ async def profile_check(
     db: AsyncSession = Depends(get_session),
     current_hr: User = Depends(deps.get_current_hr),
 ) -> Any:
-    """Lightweight endpoint to verify HR profile existence for the current HR user."""
+    """Lightweight endpoint to verify HR profile existence and completion for the current HR user."""
     result = await db.execute(select(HRProfile).where(HRProfile.user_id == current_hr.id))
     profile = result.scalars().first()
+    if not profile:
+        return {
+            "has_profile": False,
+            "hr_profile_id": None,
+            "completion": 0,
+        }
+
+    completion = _calculate_hr_profile_completion(profile)
     return {
-        "has_profile": bool(profile),
-        "hr_profile_id": profile.id if profile else None,
+        "has_profile": completion >= 50,
+        "hr_profile_id": profile.id,
+        "completion": completion,
     }
 
 

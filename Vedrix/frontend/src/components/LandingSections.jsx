@@ -1,4 +1,3 @@
-import React from 'react'
 import { Zap, Cpu, Activity } from 'lucide-react'
 
 const LandingSections = () => {

@@ -1,10 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useEffect } from 'react';
 import { 
   Users, 
   Settings, 
   Trash2, 
-  ShieldAlert, 
   Database, 
   Server, 
   RefreshCcw,
@@ -14,12 +12,10 @@ import {
   User
 } from 'lucide-react';
 import apiClient from '../services/api';
-import useAuthStore from '../store/useAuthStore';
 
 const AdminDashboard = () => {
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState({ total_users: 0, total_sessions: 0, system_status: 'Checking...' });
-  const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
     try {
@@ -29,14 +25,13 @@ const AdminDashboard = () => {
       ]);
       setUsers(usersRes.data);
       setStats(statsRes.data);
-    } catch (err) {
-      console.error("Admin fetch error:", err);
-    } finally {
-      setLoading(false);
+    } catch {
+      console.error("Admin fetch error");
     }
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
   }, []);
 
@@ -45,7 +40,7 @@ const AdminDashboard = () => {
     try {
       await apiClient.delete(`/admin/users/${userId}`);
       setUsers(users.filter(u => u.id !== userId));
-    } catch (err) {
+    } catch {
       alert("Failed to delete user");
     }
   };
