@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import apiClient from '../services/api';
 import useAuthStore from '../store/useAuthStore';
+import SkillMatrixTab from '../components/SkillMatrixTab';
 
 /* ── CREATE DRIVE MODAL ── */
 const CreateDriveModal = ({ onClose, onCreated }) => {
@@ -390,6 +391,7 @@ const HRDashboard = () => {
             { label: 'Active Drives', icon: LayoutDashboard },
             { label: 'Live Monitoring', icon: Radio },
             { label: 'Evaluation Reports', icon: Activity },
+            { label: 'Skill Matrix', icon: Briefcase },
             { label: 'Drive Settings', icon: Settings },
           ].map(item => (
             <button key={item.label}
@@ -424,7 +426,9 @@ const HRDashboard = () => {
           <div>
             <h1 className="text-4xl font-extrabold text-white tracking-tight">
               {activeTab === 'Active Drives' ? 'Recruitment Orchestration' : 
-               activeTab === 'Live Monitoring' ? 'Live Session Oversight' : 'Assessment Insights'}
+               activeTab === 'Live Monitoring' ? 'Live Session Oversight' : 
+               activeTab === 'Evaluation Reports' ? 'Assessment Insights' :
+               activeTab === 'Skill Matrix' ? 'Skill Matrix Analytics' : 'HR Profile Settings'}
             </h1>
             <p className="text-slate-500 text-lg mt-1 font-medium italic">Welcome back, {user?.first_name}</p>
           </div>
@@ -637,6 +641,8 @@ const HRDashboard = () => {
               )}
             </div>
           </div>
+        ) : activeTab === 'Skill Matrix' ? (
+          <SkillMatrixTab interviews={interviews} />
         ) : (
           activeTab === 'Drive Settings' ? (
             <DriveSettingsTab />

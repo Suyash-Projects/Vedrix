@@ -131,7 +131,11 @@ dmypy.json
 
 # Project specific
 reference/
-Vedrix/backend/.env
+ Vedrix/backend/.env
+ Vedrix/frontend/.env
+ # Prototype assets
+ Prototype/Claude Setup.exe
+ Prototype/
 Vedrix/frontend/node_modules/
 Vedrix/frontend/dist/
 *.db

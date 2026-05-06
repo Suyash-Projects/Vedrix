@@ -1,3 +1,3 @@
 from .user import User
 from .profile import StudentProfile, HRProfile
-from .interview import JobDrive, InterviewSession, DriveInviteToken
+from .interview import JobDrive, InterviewSession, DriveInviteToken, ScenarioTemplate

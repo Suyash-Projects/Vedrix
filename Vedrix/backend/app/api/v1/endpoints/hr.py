@@ -425,6 +425,7 @@ async def list_hr_interviews(
             "status": row[0].status,
             "overall_score": row[0].overall_score,
             "ai_feedback": row[0].ai_feedback,
+            "skill_matrix": row[0].skill_matrix,
             "created_at": row[0].created_at,
             "drive_title": row[1],
             "job_role": row[2],
