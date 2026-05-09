@@ -38,6 +38,7 @@ async def create_student_profile(
     if db_profile:
         for field, value in profile_in.model_dump(exclude_unset=True).items():
             setattr(db_profile, field, value)
+        db.add(db_profile)
     else:
         db_profile = StudentProfile(**profile_in.model_dump(), user_id=current_user.id)
         db.add(db_profile)

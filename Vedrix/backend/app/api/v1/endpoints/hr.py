@@ -219,7 +219,8 @@ async def list_job_drives(
             round(sum(s.overall_score for s in completed) / len(completed), 1)
             if completed else None
         )
-        participant_count = max(len(tokens), len(sessions))
+        # The user requested to only count candidates whom we have sent invites to.
+        participant_count = len(tokens)
         enriched.append({
             "id": drive.id,
             "hr_id": drive.hr_id,
@@ -251,6 +252,16 @@ async def delete_drive(
     drive = result.scalars().first()
     if not drive:
         raise HTTPException(status_code=404, detail="Drive not found")
+        
+    # Delete associated tokens and sessions first to prevent orphans
+    tokens_result = await db.execute(select(DriveInviteToken).where(DriveInviteToken.drive_id == drive_id))
+    for t in tokens_result.scalars().all():
+        await db.delete(t)
+        
+    sessions_result = await db.execute(select(InterviewSession).where(InterviewSession.job_drive_id == drive_id))
+    for s in sessions_result.scalars().all():
+        await db.delete(s)
+
     await db.delete(drive)
     await db.commit()
     return {"status": "deleted"}
@@ -373,7 +384,9 @@ async def bulk_invite_candidates(
 
     expires_at = datetime.now(timezone.utc) + timedelta(hours=invite_in.expires_in_hours)
     links = []
+    total_invited = 0
     for email in invite_in.emails:
+        total_invited += 1
         # Check if user already exists
         user_result = await db.execute(select(User).where(User.email == email))
         existing_user = user_result.scalars().first()
@@ -387,6 +400,14 @@ async def bulk_invite_candidates(
                 status="scheduled",
             )
             db.add(new_session)
+            # Create an invite token purely for tracking the invite metric
+            db.add(DriveInviteToken(
+                drive_id=drive_id,
+                token=str(uuid.uuid4()),
+                candidate_email=email,
+                expires_at=expires_at,
+                is_used=True
+            ))
             # Send notification email to existing user
             background_tasks.add_task(
                 send_invite_email,
@@ -419,7 +440,7 @@ async def bulk_invite_candidates(
             )
 
     await db.commit()
-    return {"invited": len(links), "links": links}
+    return {"invited": total_invited, "links": links}
 
 
 # ── CANDIDATES PER DRIVE ─────────────────────────────────────────────────────
@@ -447,28 +468,41 @@ async def list_drive_candidates(
     )
     sessions = sessions_result.scalars().all()
 
+    user_ids = [s.candidate_id for s in sessions if s.candidate_id]
+    users = []
+    if user_ids:
+        users_result = await db.execute(select(User).where(User.id.in_(user_ids)))
+        users = users_result.scalars().all()
+    user_map = {u.id: u.email for u in users}
+
+    candidates = []
+    for t in tokens:
+        matching_session = None
+        for s in sessions:
+            if user_map.get(s.candidate_id) == t.candidate_email:
+                matching_session = s
+                break
+        
+        status = "pending"
+        if matching_session:
+            status = matching_session.status
+        else:
+            expires = t.expires_at if t.expires_at.tzinfo else t.expires_at.replace(tzinfo=timezone.utc)
+            if expires < datetime.now(timezone.utc):
+                status = "expired"
+
+        candidates.append({
+            "email": t.candidate_email,
+            "status": status,
+            "expires_at": t.expires_at,
+            "score": matching_session.overall_score if matching_session else None,
+            "session_id": matching_session.id if matching_session else None
+        })
+
     return {
         "total_invited": len(tokens),
         "total_completed": len([s for s in sessions if s.status == "completed"]),
-        "candidates": [
-            {
-                "email": t.candidate_email,
-                "token": t.token,
-                "is_used": t.is_used,
-                "expires_at": t.expires_at,
-            }
-            for t in tokens
-        ],
-        "sessions": [
-            {
-                "id": s.id,
-                "status": s.status,
-                "overall_score": s.overall_score,
-                "start_time": s.start_time,
-                "end_time": s.end_time,
-            }
-            for s in sessions
-        ]
+        "candidates": candidates
     }
 
 

@@ -300,24 +300,38 @@ const CandidateListModal = ({ drive, onClose }) => {
           ) : (
             <div className="space-y-4">
               {candidates.map((c, i) => {
-                const session = sessions.find(s => s.candidate_email === c.email || s.id === c.session_id);
+                let badgeClass = 'bg-amber-500/10 border-amber-500/20 text-amber-400';
+                let statusLabel = 'Pending';
+                
+                if (c.status === 'completed') {
+                  badgeClass = 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400';
+                  statusLabel = 'Completed';
+                } else if (c.status === 'in_progress') {
+                  badgeClass = 'bg-blue-500/10 border-blue-500/20 text-blue-400';
+                  statusLabel = 'In Progress';
+                } else if (c.status === 'scheduled') {
+                  badgeClass = 'bg-purple-500/10 border-purple-500/20 text-purple-400';
+                  statusLabel = 'Scheduled';
+                } else if (c.status === 'expired') {
+                  badgeClass = 'bg-red-500/10 border-red-500/20 text-red-400';
+                  statusLabel = 'Expired';
+                }
+
                 return (
                   <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-between group">
                     <div>
                       <p className="text-white font-bold">{c.email}</p>
                       <div className="flex items-center space-x-3 mt-1">
-                        <span className={`text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-md border ${
-                          c.is_used ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
-                        }`}>
-                          {c.is_used ? 'Interviewed' : 'Pending'}
+                        <span className={`text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-md border ${badgeClass}`}>
+                          {statusLabel}
                         </span>
                         <span className="text-[9px] text-slate-500 font-bold uppercase">Expires: {new Date(c.expires_at).toLocaleDateString()}</span>
                       </div>
                     </div>
-                    {session && session.overall_score && (
+                    {c.score !== null && (
                       <div className="text-right">
                         <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Score</p>
-                        <p className="text-lg font-black text-purple-400">{session.overall_score.toFixed(1)}</p>
+                        <p className="text-lg font-black text-purple-400">{c.score.toFixed(1)}</p>
                       </div>
                     )}
                   </div>
@@ -332,7 +346,7 @@ const CandidateListModal = ({ drive, onClose }) => {
 };
 
 /* ── DRIVE SETTINGS TAB ── */
-const DriveSettingsTab = () => {
+const DriveSettingsTab = ({ onProfileUpdated }) => {
   const [profile, setProfile] = useState({ company_name: '', department: '', position: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -351,6 +365,7 @@ const DriveSettingsTab = () => {
     try {
       await apiClient.put('/hr/profile', profile);
       setSaved(true);
+      if (onProfileUpdated) onProfileUpdated();
       setTimeout(() => setSaved(false), 2500);
     } catch { alert('Failed to save profile.'); }
     finally { setSaving(false); }
@@ -444,22 +459,18 @@ const HRDashboard = () => {
     }
   };
 
+  const fetchProfileCheck = async () => {
+    try {
+      const res = await apiClient.get('/hr/profile-check');
+      setProfileCompletion(res.data?.completion ?? 0);
+    } catch {
+      setProfileCompletion(0);
+    }
+  };
+
   // Preflight HR profile check
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const res = await apiClient.get('/hr/profile-check');
-        if (mounted) {
-          setProfileCompletion(res.data?.completion ?? 0);
-        }
-      } catch {
-        if (mounted) {
-          setProfileCompletion(0);
-        }
-      }
-    })();
-    return () => { mounted = false };
+    fetchProfileCheck();
   }, []);
 
   useEffect(() => { 
@@ -686,7 +697,7 @@ const HRDashboard = () => {
                     </button>
 
                     <button 
-                      onClick={() => setActiveTab('Evaluation Reports')}
+                      onClick={() => setViewCandidatesDrive(drive)}
                       className="bg-white/5 border border-white/10 text-slate-400 px-4 py-4 rounded-2xl hover:bg-white/10 transition-all">
                       <ChevronRight size={18} />
                     </button>
@@ -813,7 +824,7 @@ const HRDashboard = () => {
           <SkillMatrixTab interviews={interviews} />
         ) : (
           activeTab === 'Drive Settings' ? (
-            <DriveSettingsTab />
+            <DriveSettingsTab onProfileUpdated={fetchProfileCheck} />
           ) : (
           <div className="p-20 text-center">
             <h2 className="text-2xl font-bold text-white">{activeTab}</h2>

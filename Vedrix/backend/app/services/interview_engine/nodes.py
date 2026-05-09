@@ -119,6 +119,7 @@ async def generate_question_node(state: InterviewState) -> Dict[str, Any]:
         "1. Acknowledge the candidate's previous answer before asking the next question.\n"
         "2. Never repeat a question already asked.\n"
         "3. OUTPUT JSON ONLY — no markdown, no explanation, just the JSON object.\n"
+        f"{parser.get_format_instructions()}"
     )
 
     try:

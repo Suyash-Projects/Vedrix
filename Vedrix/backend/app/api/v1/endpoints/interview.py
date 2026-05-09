@@ -412,6 +412,31 @@ async def websocket_endpoint(
         traceback.print_exc()
         await manager.send_json({"type": "error", "data": str(e)}, session_id)
         manager.disconnect(session_id)
+    finally:
+        if db_session_id:
+            try:
+                async with async_session() as db:
+                    res = await db.execute(select(InterviewSession).where(InterviewSession.id == db_session_id))
+                    rec = res.scalars().first()
+                    if rec and rec.status == "in_progress":
+                        rec.status = "completed"
+                        rec.end_time = datetime.now(timezone.utc)
+                        if rec.start_time:
+                            rec.duration = int((rec.end_time - rec.start_time.replace(tzinfo=timezone.utc)).total_seconds())
+                        
+                        # Try to capture whatever responses were made before disconnect
+                        try:
+                            final_state = await interview_graph.aget_state(config)
+                            if final_state and final_state.values:
+                                rec.responses = final_state.values.get("messages", [])
+                                rec.skill_matrix = final_state.values.get("topic_scores", {})
+                        except Exception:
+                            pass
+                        
+                        db.add(rec)
+                        await db.commit()
+            except Exception as e:
+                logger.error(f"Failed to finalize session {db_session_id} on disconnect: {e}")
 
 
 # ── HR Live Instruction Injection (audit #14: requires HR auth) ──────────────

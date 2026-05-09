@@ -16,14 +16,16 @@ def _get_llm_with_fallback(primary_model: str, fallback_model: str, primary_prov
                 api_key=settings.NVIDIA_API_KEY,
                 base_url=settings.NVIDIA_BASE_URL,
                 model=model,
-                temperature=temperature
+                temperature=temperature,
+                max_retries=0
             )
         elif provider == "groq":
             return ChatOpenAI(
                 api_key=settings.GROQ_API_KEY,
                 base_url=settings.GROQ_BASE_URL,
                 model=model,
-                temperature=temperature
+                temperature=temperature,
+                max_retries=0
             )
 
     primary = make_llm(primary_provider, primary_model)
