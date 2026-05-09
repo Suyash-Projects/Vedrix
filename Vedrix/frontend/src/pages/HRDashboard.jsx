@@ -186,7 +186,7 @@ const BulkInviteModal = ({ drive, onClose }) => {
               </label>
               <textarea rows={5} value={emailInput} onChange={e => setEmailInput(e.target.value)}
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all resize-none font-mono text-sm"
-                placeholder={"alice@example.com\nbob@example.com\ncharlie@example.com"} />
+                placeholder={"candidate1@company.com\ncandidate2@company.com"} />
             </div>
             <div>
               <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">

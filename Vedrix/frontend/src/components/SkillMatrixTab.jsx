@@ -128,16 +128,9 @@ const SkillMatrixTab = ({ interviews }) => {
   const [viewMode, setViewMode] = useState('radar'); // 'radar' or 'table'
   const [sortBy, setSortBy] = useState('overall');
 
-  // Extract unique drives
+  // Extract unique drives from real interview data
   const drives = useMemo(() => {
     const driveSet = new Set(interviews.map(i => i.drive_title).filter(Boolean));
-    
-    // Add mock drives if no real drives exist
-    if (driveSet.size === 0) {
-      driveSet.add('Senior Backend Developer');
-      driveSet.add('Frontend Developer');
-    }
-    
     return ['all', ...Array.from(driveSet)];
   }, [interviews]);
 
@@ -172,38 +165,7 @@ const SkillMatrixTab = ({ interviews }) => {
       };
     }).filter(item => Object.keys(item.skills).length > 0);
 
-    // If no real data, add mock data for demonstration
-    if (processedData.length === 0) {
-      processedData = [
-        {
-          id: 1,
-          candidate_name: 'Alice Johnson',
-          candidate_email: 'alice@example.com',
-          drive_title: 'Senior Backend Developer',
-          skills: { technical: 8.5, communication: 7.2, problem_solving: 8.8, code_quality: 8.1 },
-          overall_score: 8.2,
-          completed_at: new Date().toISOString()
-        },
-        {
-          id: 2,
-          candidate_name: 'Bob Smith',
-          candidate_email: 'bob@example.com',
-          drive_title: 'Senior Backend Developer',
-          skills: { technical: 7.8, communication: 8.5, problem_solving: 7.5, code_quality: 7.9 },
-          overall_score: 7.9,
-          completed_at: new Date().toISOString()
-        },
-        {
-          id: 3,
-          candidate_name: 'Charlie Brown',
-          candidate_email: 'charlie@example.com',
-          drive_title: 'Frontend Developer',
-          skills: { technical: 8.2, communication: 6.8, problem_solving: 8.0, code_quality: 8.5 },
-          overall_score: 7.9,
-          completed_at: new Date().toISOString()
-        }
-      ];
-    }
+    // No mock data — only real interview data will be displayed
 
     return processedData;
   }, [interviews, selectedDrive]);
@@ -251,7 +213,7 @@ const SkillMatrixTab = ({ interviews }) => {
       <div className="p-20 text-center">
         <BarChart3 size={48} className="mx-auto text-slate-700 mb-6" />
         <h2 className="text-2xl font-bold text-white mb-2">No Skill Data Available</h2>
-        <p className="text-slate-500">Complete interviews to see skill matrix analytics. Showing demo data for now.</p>
+        <p className="text-slate-500">Complete interviews to see skill matrix analytics.</p>
       </div>
     );
   }
