@@ -59,17 +59,18 @@ class InterviewSession(SQLModel, table=True):
     ai_feedback: Optional[Any] = Field(default=None, sa_column=Column(JSON))
     
     # Enhanced skill matrix and AI transparency fields (Phase 1)
-    skill_matrix: Optional[Any] = Field(default=None, sa_column=Column(JSON))  # Radar chart data
-    confidence_scores: Optional[Any] = Field(default=None, sa_column=Column(JSON))  # Real-time scoring
-    evidence_log: Optional[Any] = Field(default=None, sa_column=Column(JSON))  # Timestamped insights
-    agent_states: Optional[Any] = Field(default=None, sa_column=Column(JSON))  # Multi-agent state tracking
+    skill_matrix: Optional[Any] = Field(default=None, sa_column=Column(JSON))
+    confidence_scores: Optional[Any] = Field(default=None, sa_column=Column(JSON))
+    evidence_log: Optional[Any] = Field(default=None, sa_column=Column(JSON))
+    agent_states: Optional[Any] = Field(default=None, sa_column=Column(JSON))
     
-    # Bias mitigation and fairness metrics (Phase 1)
-    bias_metrics: Optional[Any] = Field(default=None, sa_column=Column(JSON))  # Fairness monitoring
-    question_difficulty: Optional[Any] = Field(default=None, sa_column=Column(JSON))  # Difficulty analysis
+    # Bias mitigation and fairness metrics
+    bias_metrics: Optional[Any] = Field(default=None, sa_column=Column(JSON))
+    question_difficulty: Optional[Any] = Field(default=None, sa_column=Column(JSON))
 
-
-
+    # Relationships — must match back_populates on User and JobDrive
+    candidate: "User" = Relationship(back_populates="interview_sessions")
+    job_drive: Optional["JobDrive"] = Relationship(back_populates="interview_sessions")
 class ScenarioTemplate(SQLModel, table=True):
     __tablename__ = "scenario_templates"
     __table_args__ = {"extend_existing": True}

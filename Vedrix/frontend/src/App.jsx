@@ -21,23 +21,27 @@ function App() {
     checkAuth();
   }, [checkAuth]);
 
+  // Helper to get dashboard path based on user type
+  const getDashboardPath = (user) => {
+    if (user?.user_type === 'admin') return '/admin';
+    if (user?.user_type === 'hr') return '/hr';
+    return '/dashboard'; // student default
+  };
+
   // Determine if we should show the navbar/footer
   const isInterviewRoom = location.pathname === '/interview';
   const isReport = location.pathname.startsWith('/report');
+  const showNavbar = !isInterviewRoom && !isReport;
 
   return (
     <div className="min-h-screen bg-[#020617] text-white">
-      {!isInterviewRoom && !isReport && <Navbar />}
+      {showNavbar && <Navbar />}
 
-      <main className={!isInterviewRoom && !isReport ? 'pt-20' : ''}>
+      <main className={showNavbar ? 'pt-20' : 'pt-0'}>
         <Routes>
           {/* Public Routes */}
           <Route path="/" element={
-            isAuthenticated ? (
-              user?.user_type === 'hr' ? <Navigate to="/hr" replace /> :
-              user?.user_type === 'admin' ? <Navigate to="/admin" replace /> :
-              <Navigate to="/dashboard" replace />
-            ) : <LandingPage />
+            isAuthenticated ? <Navigate to={getDashboardPath(user)} replace /> : <LandingPage />
           } />
           
           <Route path="/login" element={

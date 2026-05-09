@@ -338,6 +338,7 @@ const InterviewRoom = () => {
 
     const driveId = searchParams.get('drive_id');
     const token = searchParams.get('token');
+    const scheduledSessionId = searchParams.get('scheduled_session_id');
 
     const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
     let wsBase = apiBase;
@@ -351,6 +352,10 @@ const InterviewRoom = () => {
     if (driveId && token) {
       queryParams.push(`drive_id=${driveId}`);
       queryParams.push(`token=${token}`);
+    } else if (scheduledSessionId) {
+      queryParams.push(`scheduled_session_id=${scheduledSessionId}`);
+      const jwt = localStorage.getItem('token');
+      if (jwt) queryParams.push(`auth_token=${encodeURIComponent(jwt)}`);
     } else {
       const jwt = localStorage.getItem('token');
       if (jwt) queryParams.push(`auth_token=${encodeURIComponent(jwt)}`);

@@ -3,18 +3,31 @@ import os
 import sys
 import time
 import socket
+import errno
 
 def get_free_port(start_port):
     """Finds a free port starting from start_port."""
     port = start_port
     while port < start_port + 100:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            try:
-                s.bind(('127.0.0.1', port))
-                return port
-            except socket.error:
-                port += 1
+        if _is_port_free(port):
+            return port
+        port += 1
     raise IOError("Could not find a free port in the specified range.")
+
+
+def _is_port_free(port):
+    """Check whether a port can be bound on both IPv4 and IPv6 localhost."""
+    for family, addr in [(socket.AF_INET, ('127.0.0.1', port)), (socket.AF_INET6, ('::1', port))]:
+        try:
+            with socket.socket(family, socket.SOCK_STREAM) as s:
+                # On Windows, SO_REUSEADDR allows multiple processes to bind to the same port.
+                # To accurately check if a port is in use, we must NOT use it.
+                s.bind(addr)
+        except OSError as exc:
+            if exc.errno in (errno.EAFNOSUPPORT, errno.EINVAL, errno.ENOPROTOOPT):
+                continue
+            return False
+    return True
 
 def run_dev():
     # Paths
@@ -44,14 +57,21 @@ def run_dev():
     # 2. Synchronize Frontend with Dynamic Backend URL
     # Vite reads .env.development.local automatically
     backend_url = f"http://localhost:{backend_port}/api/v1"
+    frontend_url = f"http://localhost:{frontend_port}"
+    
     env_file_path = os.path.join(frontend_dir, ".env.development.local")
     with open(env_file_path, "w") as f:
         f.write(f"VITE_API_URL={backend_url}\n")
     
     # 3. Start Backend
+    # Pass FRONTEND_URL to backend so it knows where the UI is
+    backend_env = os.environ.copy()
+    backend_env["FRONTEND_URL"] = frontend_url
+    
     backend_process = subprocess.Popen(
-        [python_exe, "-m", "uvicorn", "main:app", "--reload", "--port", str(backend_port)],
-        cwd=backend_dir
+        [python_exe, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", str(backend_port)],
+        cwd=backend_dir,
+        env=backend_env
     )
 
     # 4. Start Frontend

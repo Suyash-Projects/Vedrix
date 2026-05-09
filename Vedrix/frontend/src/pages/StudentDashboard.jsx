@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Play, Upload, FileText, BarChart3, Clock, CheckCircle2,
-  TrendingUp, Award, ChevronRight, Loader2
+  TrendingUp, Award, ChevronRight, Loader2, Trash2
 } from 'lucide-react';
 import apiClient from '../services/api';
 import useAuthStore from '../store/useAuthStore';
@@ -28,6 +28,10 @@ const StudentDashboard = () => {
 
   const handleViewReport = (sessionId) => {
     navigate(`/report/${sessionId}`);
+  };
+
+  const handleStartScheduledInterview = (sessionId) => {
+    navigate(`/interview?scheduled_session_id=${sessionId}`);
   };
 
   useEffect(() => {
@@ -104,6 +108,32 @@ const StudentDashboard = () => {
     } catch (err) {
       console.error('Profile save error:', err.response?.data || err.message || err);
       alert(err.response?.data?.detail ? `Failed to save profile: ${err.response.data.detail}` : 'Failed to save profile.');
+    }
+  };
+
+  const handleClearInterviewData = async () => {
+    if (!window.confirm('Are you absolutely sure? This will permanently delete ALL your interview sessions and reports. This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await apiClient.delete('/users/clear-interviews');
+      setSessions([]);
+      setStats(prev => ({
+        ...prev,
+        total_interviews: 0,
+        completed_interviews: 0,
+        avg_score: null,
+        best_score: null
+      }));
+      alert('All interview data has been cleared.');
+    } catch (err) {
+      console.error('Clear data error:', err);
+      const msg = err.response?.data?.detail || 'Failed to clear interview data. Please try again.';
+      alert(msg);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -218,6 +248,17 @@ const StudentDashboard = () => {
             ) : (
               <p className="text-emerald-400 text-sm mt-4">Profile is complete enough to use the platform.</p>
             )}
+            
+            {/* Clear Data Action */}
+            <div className="mt-8 pt-6 border-t border-white/5">
+              <button 
+                onClick={handleClearInterviewData}
+                className="flex items-center space-x-2 text-slate-500 hover:text-red-400 transition-colors text-xs font-black uppercase tracking-widest"
+              >
+                <Trash2 size={14} />
+                <span>Clear Interview Data</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -310,14 +351,21 @@ const StudentDashboard = () => {
                       {new Date(s.created_at).toLocaleDateString()}
                     </div>
                     <div className="col-span-1 text-right">
-                      {s.status === 'completed' && (
+                      {s.status === 'completed' ? (
                         <button
                           onClick={() => handleViewReport(s.id)}
                           className="p-2 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white hover:bg-purple-600 transition-all"
                         >
                           <ChevronRight size={16} />
                         </button>
-                      )}
+                      ) : s.status === 'scheduled' ? (
+                        <button
+                          onClick={() => handleStartScheduledInterview(s.id)}
+                          className="p-2 bg-purple-600 border border-purple-500 rounded-xl text-white hover:bg-purple-500 transition-all"
+                        >
+                          <Play size={16} />
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 ))}

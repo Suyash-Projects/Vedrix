@@ -1,5 +1,5 @@
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from datetime import datetime
 
 class JobDriveBase(BaseModel):
@@ -16,6 +16,10 @@ class JobDriveCreate(JobDriveBase):
 class JobDriveUpdate(JobDriveBase):
     title: Optional[str] = None
     job_role: Optional[str] = None
+    description: Optional[str] = None
+    experience_required: Optional[str] = None
+    skills_required: Optional[str] = None
+    is_active: Optional[bool] = None
 
 class JobDriveRead(JobDriveBase):
     id: int
@@ -23,8 +27,7 @@ class JobDriveRead(JobDriveBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class MagicLinkRequest(BaseModel):
     candidate_email: Optional[str] = None  # audit #26: associate email with single link

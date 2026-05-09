@@ -1,4 +1,7 @@
-def test_hr_drive_happy_path(client):
+import pytest
+
+@pytest.mark.asyncio
+async def test_hr_drive_happy_path(client):
     hr = {
         "email": "hr_test2@example.com",
         "username": "hr_test2",
@@ -8,11 +11,11 @@ def test_hr_drive_happy_path(client):
         "user_type": "hr",
         "company_name": "TestCo2"
     }
-    resp = client.post("/api/v1/auth/register", json=hr)
+    resp = await client.post("/api/v1/auth/register", json=hr)
     assert resp.status_code == 200, resp.text
 
     login = {"username": hr["username"], "password": hr["password"]}
-    resp = client.post("/api/v1/auth/login", data=login)
+    resp = await client.post("/api/v1/auth/login", data=login)
     assert resp.status_code == 200
     token = resp.json().get("access_token")
     assert token
@@ -26,14 +29,15 @@ def test_hr_drive_happy_path(client):
         "skills_required": "Python, FastAPI, Postgres",
         "is_active": True,
     }
-    resp = client.post("/api/v1/hr/drives", json=drive, headers=headers)
+    resp = await client.post("/api/v1/hr/drives", json=drive, headers=headers)
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert data.get("title") == drive["title"]
     assert data.get("id") is not None
 
 
-def test_hr_drive_unauthorized_by_student(client):
+@pytest.mark.asyncio
+async def test_hr_drive_unauthorized_by_student(client):
     # Register a student
     student = {
         "email": "student1@example.com",
@@ -43,10 +47,10 @@ def test_hr_drive_unauthorized_by_student(client):
         "last_name": "One",
         "user_type": "student",
     }
-    resp = client.post("/api/v1/auth/register", json=student)
+    resp = await client.post("/api/v1/auth/register", json=student)
     assert resp.status_code == 200, resp.text
     login = {"username": student["username"], "password": student["password"]}
-    resp = client.post("/api/v1/auth/login", data=login)
+    resp = await client.post("/api/v1/auth/login", data=login)
     assert resp.status_code == 200
     token = resp.json().get("access_token")
     headers = {"Authorization": f"Bearer {token}"}
@@ -59,11 +63,12 @@ def test_hr_drive_unauthorized_by_student(client):
         "skills_required": "React, TS",
         "is_active": True,
     }
-    resp = client.post("/api/v1/hr/drives", json=drive, headers=headers)
+    resp = await client.post("/api/v1/hr/drives", json=drive, headers=headers)
     assert resp.status_code == 403  # HR endpoints require HR auth
 
 
-def test_hr_drive_missing_title_422(client):
+@pytest.mark.asyncio
+async def test_hr_drive_missing_title_422(client):
     # Register and login HR
     hr = {
         "email": "hr_edge@example.com",
@@ -74,9 +79,9 @@ def test_hr_drive_missing_title_422(client):
         "user_type": "hr",
         "company_name": "EdgeCo"
     }
-    client.post("/api/v1/auth/register", json=hr)
+    await client.post("/api/v1/auth/register", json=hr)
     login = {"username": hr["username"], "password": hr["password"]}
-    resp = client.post("/api/v1/auth/login", data=login)
+    resp = await client.post("/api/v1/auth/login", data=login)
     token = resp.json().get("access_token")
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -88,12 +93,64 @@ def test_hr_drive_missing_title_422(client):
         "skills_required": "Docker, Kubernetes",
         "is_active": True,
     }
-    resp = client.post("/api/v1/hr/drives", json=drive, headers=headers)
+    resp = await client.post("/api/v1/hr/drives", json=drive, headers=headers)
     assert resp.status_code == 422  # Unprocessable Entity due to validation
 
 
-def test_voice_capabilities_endpoint(client):
-    resp = client.get("/api/v1/voice/capabilities")
+@pytest.mark.asyncio
+async def test_voice_capabilities_endpoint(client):
+    resp = await client.get("/api/v1/voice/capabilities")
     assert resp.status_code == 200
     data = resp.json()
     assert "voice_available" in data
+
+
+@pytest.mark.asyncio
+async def test_hr_drive_lifecycle(client):
+    # 1. Register & Login HR
+    hr = {
+        "email": "hr_lifecycle@example.com",
+        "username": "hr_lifecycle",
+        "password": "lifepassword",
+        "first_name": "Life",
+        "last_name": "Cycle",
+        "user_type": "hr",
+        "company_name": "LifeCo"
+    }
+    await client.post("/api/v1/auth/register", json=hr)
+    login = {"username": hr["username"], "password": hr["password"]}
+    resp = await client.post("/api/v1/auth/login", data=login)
+    token = resp.json().get("access_token")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 2. Create Drive
+    drive_data = {"title": "Initial Title", "job_role": "Tester", "is_active": True}
+    resp = await client.post("/api/v1/hr/drives", json=drive_data, headers=headers)
+    drive_id = resp.json()["id"]
+
+    # 3. Update Drive
+    update_data = {"title": "Updated Title"}
+    resp = await client.put(f"/api/v1/hr/drives/{drive_id}", json=update_data, headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["title"] == "Updated Title"
+
+    # 4. Toggle Drive (Close)
+    resp = await client.patch(f"/api/v1/hr/drives/{drive_id}/toggle", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["is_active"] is False
+
+    # 5. Toggle Drive (Open)
+    resp = await client.patch(f"/api/v1/hr/drives/{drive_id}/toggle", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["is_active"] is True
+
+    # 6. List Candidates
+    resp = await client.get(f"/api/v1/hr/drives/{drive_id}/candidates", headers=headers)
+    assert resp.status_code == 200
+    assert "candidates" in resp.json()
+
+    # 7. Delete Drive
+    resp = await client.delete(f"/api/v1/hr/drives/{drive_id}", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "deleted"
+

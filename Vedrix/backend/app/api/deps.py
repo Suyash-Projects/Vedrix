@@ -46,6 +46,19 @@ async def get_current_admin(
         )
     return current_user
 
+
+async def get_current_hr_or_admin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Allows both HR managers and admins (ultimate authority)."""
+    if current_user.user_type not in ("hr", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User must have HR or Admin privileges",
+        )
+    return current_user
+
+
 async def get_current_hr(
     current_user: User = Depends(get_current_user),
 ) -> User:

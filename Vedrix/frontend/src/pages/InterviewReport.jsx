@@ -65,18 +65,30 @@ const InterviewReport = () => {
           transcript = data.transcript || [];
         }
 
+        const skillMatrix = data.skill_matrix ? (typeof data.skill_matrix === 'string' ? JSON.parse(data.skill_matrix) : data.skill_matrix) : null;
+        
+        let radarMetrics = [
+          { subject: 'Accuracy', A: (aiFeedback?.technical_accuracy ?? 0) * 10, fullMark: 100 },
+          { subject: 'Clarity', A: (aiFeedback?.communication_clarity ?? 0) * 10, fullMark: 100 },
+          { subject: 'Depth', A: (aiFeedback?.depth_of_knowledge ?? 0) * 10, fullMark: 100 },
+          { subject: 'Overall', A: (data.overall_score ?? 0) * 10, fullMark: 100 },
+        ];
+
+        if (skillMatrix && Object.keys(skillMatrix).length > 0) {
+          radarMetrics = Object.entries(skillMatrix).map(([topic, score]) => ({
+            subject: topic.charAt(0).toUpperCase() + topic.slice(1),
+            A: score * 10,
+            fullMark: 100
+          }));
+        }
+
         setReport({
           overall_score: data.overall_score ?? 0,
           hire_recommendation: aiFeedback?.hire_recommendation || 'Unknown',
           technical_accuracy: aiFeedback?.technical_accuracy ?? 0,
           communication_clarity: aiFeedback?.communication_clarity ?? 0,
           depth_of_knowledge: aiFeedback?.depth_of_knowledge ?? 0,
-          metrics: [
-            { subject: 'Accuracy', A: (aiFeedback?.technical_accuracy ?? 0) * 10, fullMark: 100 },
-            { subject: 'Clarity', A: (aiFeedback?.communication_clarity ?? 0) * 10, fullMark: 100 },
-            { subject: 'Depth', A: (aiFeedback?.depth_of_knowledge ?? 0) * 10, fullMark: 100 },
-            { subject: 'Overall', A: (data.overall_score ?? 0) * 10, fullMark: 100 },
-          ],
+          metrics: radarMetrics,
           strengths: aiFeedback?.strengths || [],
           weaknesses: aiFeedback?.weaknesses || [],
           summary: aiFeedback?.summary || 'No summary available.',

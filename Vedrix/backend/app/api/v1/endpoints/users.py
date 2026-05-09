@@ -19,6 +19,33 @@ async def read_user_me(
     return current_user
 
 
+@router.delete("/clear-interviews")
+async def clear_my_interviews(
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    """Permanently delete ALL interview data for the current user."""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Fetch first, then delete — safer for some async ORM configurations
+        result = await db.execute(
+            select(InterviewSession).where(InterviewSession.candidate_id == current_user.id)
+        )
+        sessions = result.scalars().all()
+        
+        for session in sessions:
+            await db.delete(session)
+            
+        await db.commit()
+        return {"status": "success", "message": f"Cleared {len(sessions)} interview sessions."}
+    except Exception as e:
+        logger.error(f"Error clearing interviews for user {current_user.id}: {e}")
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Internal error clearing data: {str(e)}")
+
+
 @router.get("/sessions/{session_id}/report")
 async def get_session_report(
     session_id: int,
@@ -50,6 +77,7 @@ async def get_session_report(
         "strengths": ai_feedback.get("strengths", []),
         "weaknesses": ai_feedback.get("weaknesses", []),
         "summary": ai_feedback.get("summary", "No summary available."),
+        "skill_matrix": session.skill_matrix,
         "transcript": responses,
         "status": session.status,
         "start_time": session.start_time,

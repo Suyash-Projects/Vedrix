@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, TYPE_CHECKING
 from sqlmodel import SQLModel, Field, Relationship
 
@@ -18,8 +18,8 @@ class User(SQLModel, table=True):
     phone: Optional[str] = None
     profile_photo: Optional[str] = None
     is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Relationships
     student_profile: Optional["StudentProfile"] = Relationship(
@@ -28,4 +28,5 @@ class User(SQLModel, table=True):
     hr_profile: Optional["HRProfile"] = Relationship(
         back_populates="user", sa_relationship_kwargs={"uselist": False}
     )
+    # back_populates must match the relationship name on InterviewSession
     interview_sessions: List["InterviewSession"] = Relationship(back_populates="candidate")

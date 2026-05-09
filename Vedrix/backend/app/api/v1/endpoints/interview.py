@@ -72,6 +72,7 @@ async def websocket_endpoint(
     drive_id: Optional[int] = None,
     token: Optional[str] = None,
     auth_token: Optional[str] = None,  # JWT for authenticated practice sessions
+    scheduled_session_id: Optional[int] = None,  # For resuming scheduled sessions
 ):
     await manager.connect(websocket, session_id)
     config = {"configurable": {"thread_id": session_id}}
@@ -169,7 +170,7 @@ async def websocket_endpoint(
                 asyncio.create_task(send_interview_started_email(candidate_email, candidate_name, job_role))
 
         elif auth_token:
-            # ── Authenticated practice session — validate JWT (#4) ──
+            # ── Authenticated session (practice or scheduled) — validate JWT (#4) ──
             user_id = _verify_ws_token(auth_token)
             if not user_id:
                 await manager.send_json({"type": "error", "data": "Invalid authentication token."}, session_id)
@@ -185,23 +186,52 @@ async def websocket_endpoint(
                 candidate_name = user.first_name
                 candidate_email = user.email
 
-                # Fetch resume text from student profile (#3)
-                profile_res = await db.execute(select(StudentProfile).where(StudentProfile.user_id == user_id))
-                profile = profile_res.scalars().first()
-                if profile and profile.resume_text:
-                    resume_text = profile.resume_text
-                    job_role = f"Software Engineer (Skills: {profile.skills or 'General'})"
+                if scheduled_session_id:
+                    # Use existing scheduled session
+                    session_res = await db.execute(
+                        select(InterviewSession).where(
+                            InterviewSession.id == scheduled_session_id,
+                            InterviewSession.candidate_id == user_id,
+                            InterviewSession.status == "scheduled"
+                        )
+                    )
+                    existing_session = session_res.scalars().first()
+                    if not existing_session:
+                        await manager.send_json({"type": "error", "data": "Scheduled session not found or already started."}, session_id)
+                        return
+                    
+                    # Update session to in_progress
+                    existing_session.status = "in_progress"
+                    existing_session.start_time = datetime.now(timezone.utc)
+                    db.add(existing_session)
+                    await db.commit()
+                    db_session_id = existing_session.id
+                    
+                    # Get job role from drive
+                    if existing_session.job_drive_id:
+                        drive_res = await db.execute(select(JobDrive).where(JobDrive.id == existing_session.job_drive_id))
+                        drive = drive_res.scalars().first()
+                        if drive:
+                            job_role = drive.job_role
+                            resume_text = f"Applying for: {drive.job_role}. Required skills: {drive.skills_required or 'General'}"
+                else:
+                    # Fetch resume text from student profile for practice
+                    profile_res = await db.execute(select(StudentProfile).where(StudentProfile.user_id == user_id))
+                    profile = profile_res.scalars().first()
+                    if profile and profile.resume_text:
+                        resume_text = profile.resume_text
+                        job_role = f"Software Engineer (Skills: {profile.skills or 'General'})"
 
-                new_session = InterviewSession(
-                    candidate_id=user_id, session_type="practice",
-                    status="in_progress", start_time=datetime.now(timezone.utc),
-                )
-                db.add(new_session)
-                await db.commit()
-                await db.refresh(new_session)
-                db_session_id = new_session.id
+                    new_session = InterviewSession(
+                        candidate_id=user_id, session_type="practice",
+                        status="in_progress", start_time=datetime.now(timezone.utc),
+                    )
+                    db.add(new_session)
+                    await db.commit()
+                    await db.refresh(new_session)
+                    db_session_id = new_session.id
 
-            await manager.send_json({"type": "status", "data": f"Practice round ready, {candidate_name}."}, session_id)
+            await manager.send_json({"type": "status", "data": f"Interview ready, {candidate_name}."}, session_id)
 
         # ── 2. Build initial state ────────────────────────────────────────
         initial_state: InterviewState = {
@@ -295,9 +325,14 @@ async def websocket_endpoint(
                     # Execute code via Judge0 before AI evaluation
                     if user_code:
                         await manager.send_json({"type": "status", "data": "Judge0: Executing code..."}, session_id)
+                        
+                        # Audit #17: Fetch current state to get correct code_language
+                        current_state_vals = await interview_graph.aget_state(config)
+                        current_lang = current_state_vals.values.get("code_language") or "python"
+                        
                         exec_result = await code_execution_service.execute(
                             source_code=user_code,
-                            language=initial_state.get("code_language") or "python",
+                            language=current_lang,
                         )
                         await manager.send_json({"type": "execution_result", "data": exec_result}, session_id)
                         # Enrich the code snippet with execution output for AI evaluation
@@ -349,6 +384,7 @@ async def websocket_endpoint(
                                     rec.responses = final_history          # native JSON
                                     rec.ai_feedback = report_dict          # native JSON
                                     rec.overall_score = report.overall_score
+                                    rec.skill_matrix = final_state.values.get("topic_scores") # #19: persist scores
                                     db.add(rec)
                                     await db.commit()
 

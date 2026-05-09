@@ -4,6 +4,7 @@ import tempfile
 import base64
 import logging
 from groq import Groq
+from openai import AsyncOpenAI
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -12,18 +13,25 @@ logger = logging.getLogger(__name__)
 class VoiceService:
     """
     Speech-to-Text : Groq Whisper Large V3   (~300ms, fastest available)
-    Text-to-Speech : Groq PlayAI TTS         (uses same GROQ_API_KEY)
+    Text-to-Speech : OpenAI TTS or Fallback  (PlayAI is decommissioned)
 
-    Both SDK calls are synchronous — run in a thread executor so they
-    never block the async event loop.
+    STT is run in a thread executor because the Groq SDK call is synchronous.
+    TTS uses AsyncOpenAI if available for better async performance.
     """
 
     def __init__(self):
+        self._groq = None
+        self._openai = None
+
         if settings.GROQ_API_KEY:
             self._groq = Groq(api_key=settings.GROQ_API_KEY)
         else:
-            self._groq = None
-            logger.warning("VoiceService: GROQ_API_KEY not set — STT and TTS disabled")
+            logger.warning("VoiceService: GROQ_API_KEY not set — STT disabled")
+
+        if settings.OPENAI_API_KEY:
+            self._openai = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        else:
+            logger.warning("VoiceService: OPENAI_API_KEY not set — OpenAI TTS disabled")
 
     # ── STT ──────────────────────────────────────────────────────────────────
 
@@ -52,7 +60,10 @@ class VoiceService:
                 return ""
             finally:
                 if tmp_path and os.path.exists(tmp_path):
-                    os.remove(tmp_path)
+                    try:
+                        os.remove(tmp_path)
+                    except:
+                        pass
 
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _run)
@@ -61,28 +72,28 @@ class VoiceService:
 
     async def speak_text(self, text: str) -> str:
         """
-        Convert text → base64-encoded WAV audio via Groq PlayAI TTS.
-        Returns empty string if Groq key is not set (silent fallback).
+        Convert text -> base64-encoded MP3/WAV audio.
+        Returns empty string if no provider is available (silent fallback).
         """
-        if not self._groq or not text.strip():
+        if not text.strip():
             return ""
 
-        def _run():
+        # Priority 1: OpenAI TTS (High quality, reliable)
+        if self._openai:
             try:
-                response = self._groq.audio.speech.create(
-                    model="playai-tts",
-                    voice="Celeste-PlayAI",   # clear, professional female voice
+                response = await self._openai.audio.speech.create(
+                    model="tts-1",
+                    voice="alloy",  # professional neutral voice
                     input=text[:4096],
-                    response_format="wav",
                 )
                 # response.content is raw bytes
                 return base64.b64encode(response.content).decode("utf-8")
             except Exception as e:
-                logger.error(f"TTS error: {e}")
-                return ""
+                logger.error(f"OpenAI TTS error: {e}")
 
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, _run)
+        # Priority 2: Fallback (Silent for now, or add other providers)
+        logger.warning("TTS: No active provider or all providers failed. Falling back to silent mode.")
+        return ""
 
 
 voice_service = VoiceService()

@@ -1,9 +1,12 @@
 import smtplib
 import asyncio
+import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional, List, Dict, Any
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  BASE LAYOUT  (shared wrapper for all emails)
@@ -415,14 +418,14 @@ def _send_sync(to: str, subject: str, html: str) -> None:
 async def _send(to: str, subject: str, html: str) -> None:
     """Non-blocking send — runs SMTP in a thread so it never blocks the event loop."""
     if not settings.MAIL_USERNAME or not settings.MAIL_PASSWORD:
-        print(f"[Email] Skipped (no credentials) → {subject} → {to}")
+        logger.warning(f"[Email] Skipped (no credentials) → {subject} → {to}")
         return
     try:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, _send_sync, to, subject, html)
-        print(f"[Email] Sent → {subject} → {to}")
+        logger.info(f"[Email] Sent → {subject} → {to}")
     except Exception as e:
-        print(f"[Email] Failed → {subject} → {to} | Error: {e}")
+        logger.error(f"[Email] Failed → {subject} → {to} | Error: {e}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

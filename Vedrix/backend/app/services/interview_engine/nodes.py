@@ -55,12 +55,25 @@ class EvaluationSchema(BaseModel):
 
 # ── Nodes ─────────────────────────────────────────────────────────────────────
 
+def _strip_markdown(text: str) -> str:
+    """Remove markdown code fences from LLM output before JSON parsing."""
+    text = text.strip()
+    # Remove ```json ... ``` or ``` ... ```
+    for fence in ["```json", "```json\n", "```"]:
+        if text.startswith(fence):
+            text = text[len(fence):]
+            if text.endswith("```"):
+                text = text[:-3]
+            break
+    return text.strip()
+
+
 async def generate_question_node(state: InterviewState) -> Dict[str, Any]:
     """Interviewer Agent — generates next adaptive question."""
     # Reference Phase 6: Adaptive Follow-ups using specialized model
     last_eval = state.get('last_evaluation')
     should_deep_dive = last_eval.get('should_deep_dive', False) if last_eval and isinstance(last_eval, dict) else False
-    
+
     llm = get_adaptive_llm() if should_deep_dive else get_fast_llm()
     parser = JsonOutputParser(pydantic_object=QuestionSchema)
 
@@ -71,7 +84,7 @@ async def generate_question_node(state: InterviewState) -> Dict[str, Any]:
 
     phase = state['current_phase']
     is_first_question = state['current_question_index'] == 0
-    
+
     phase_guide = {
         "warmup": "Start with a warm, welcoming greeting if this is the first message. Then ease into resume discussion.",
         "technical": "Transition smoothly from resume into deep technical concepts. Reference prior answers.",
@@ -98,21 +111,24 @@ async def generate_question_node(state: InterviewState) -> Dict[str, Any]:
         f"CURRENT PHASE: {phase}\n"
         f"CURRENT DIFFICULTY: {state['difficulty']}\n"
         f"TOPIC STRENGTHS: {state['topic_strengths']}\n\n"
+        f"HR INSTRUCTIONS: {state.get('hr_instructions', 'None')}\n"
         f"PHASE INSTRUCTION: {phase_guide}\n"
         f"{adaptation_instruction}\n\n"
         f"RESUME CONTEXT:\n{state['resume_text'][:2000]}\n\n"
         "RULES:\n"
         "1. Acknowledge the candidate's previous answer before asking the next question.\n"
         "2. Never repeat a question already asked.\n"
-        f"3. {parser.get_format_instructions()}"
+        "3. OUTPUT JSON ONLY — no markdown, no explanation, just the JSON object.\n"
     )
 
     try:
         response = await llm.ainvoke([
             SystemMessage(content=system_prompt),
-            HumanMessage(content=f"Conversation History:\n{history}\n\nGenerate the next question for the {phase} phase."),
+            HumanMessage(content=f"Conversation History:\n{history}\n\nGenerate the next question for the {phase} phase. Output JSON only."),
         ])
-        parsed_q = parser.parse(response.content)
+        # Strip markdown before parsing (LLMs often wrap JSON in ```json ... ```)
+        clean_content = _strip_markdown(response.content)
+        parsed_q = parser.parse(clean_content)
         is_coding = phase == 'technical' and (state['current_question_index'] + 1) % 3 == 0
         return {
             "next_question": parsed_q,
@@ -125,18 +141,21 @@ async def generate_question_node(state: InterviewState) -> Dict[str, Any]:
         
         # Robust Fallback Mechanism based on phase
         fallback_questions = SAFETY_QUESTION_BANK.get(phase, SAFETY_QUESTION_BANK["technical"])
-        fallback_q = fallback_questions[state['current_question_index'] % len(fallback_questions)]
+        idx = state['current_question_index'] + 1
+        fallback_q = fallback_questions[(idx - 1) % len(fallback_questions)]
         
         fallback = {
-            "id": state['current_question_index'] + 1,
+            "id": idx,
             "question": fallback_q,
             "category": phase,
             "difficulty": state['difficulty'],
+            "time_limit": 120,
         }
         return {
             "next_question": fallback,
             "messages": [{"role": "assistant", "content": fallback['question']}],
             "is_coding_mode": False,
+            "code_language": "python",
         }
 
 
@@ -163,7 +182,8 @@ async def evaluate_answer_node(state: InterviewState) -> Dict[str, Any]:
 
     try:
         response = await llm.ainvoke([SystemMessage(content=system_prompt)])
-        parsed = parser.parse(response.content)
+        clean_content = _strip_markdown(response.content)
+        parsed = parser.parse(clean_content)
         return {
             "last_evaluation": parsed,
             "latest_score": parsed['score'],
@@ -187,20 +207,28 @@ async def evaluate_code_node(state: InterviewState) -> Dict[str, Any]:
     code = state.get('code_snippet', "")
     question = state.get('next_question', {}).get('question') if state.get('next_question') else None
     
+    # Audit #11: Include Judge0 execution results in prompt
+    last_message = state['messages'][-1]['content'] if state.get('messages') else ""
+    execution_info = ""
+    if "Status:" in last_message and "Output:" in last_message:
+        execution_info = f"\nJUDGE0 EXECUTION RESULTS:\n{last_message}"
+
     if not question:
         logger.warning("evaluate_code_node: no question in state")
 
     system_prompt = (
         f"You are a Principal Software Engineer evaluating a code submission for {state['job_role']}.\n\n"
         f"CHALLENGE: {question}\n"
-        f"SUBMITTED CODE:\n{code}\n\n"
+        f"SUBMITTED CODE:\n{code}\n"
+        f"{execution_info}\n\n"
         "CRITERIA: Logic & Correctness (Accuracy), Time/Space Complexity (Depth), Readability (Communication).\n\n"
         f"{parser.get_format_instructions()}"
     )
 
     try:
         response = await llm.ainvoke([SystemMessage(content=system_prompt)])
-        parsed = parser.parse(response.content)
+        clean_content = _strip_markdown(response.content)
+        parsed = parser.parse(clean_content)
         return {
             "last_evaluation": parsed,
             "latest_score": parsed['score'],
@@ -219,54 +247,63 @@ async def evaluate_code_node(state: InterviewState) -> Dict[str, Any]:
 
 async def update_memory_node(state: InterviewState) -> Dict[str, Any]:
     """Decision & Memory Agent — updates difficulty, phase, and topic scores."""
-    eval_result = state['last_evaluation']
-    topic = eval_result.get('topic', 'general')
-    score = eval_result.get('score', 5.0)
+    try:
+        eval_result = state['last_evaluation']
+        topic = eval_result.get('topic', 'general')
+        score = eval_result.get('score', 5.0)
 
-    # Update topic strengths (audit #19: also write topic_scores)
-    new_strengths = state.get('topic_strengths', {}).copy()
-    new_topic_scores = state.get('topic_scores', {}).copy()
-    new_topic_scores[topic] = score
-    if score >= 7.5:
-        new_strengths[topic] = "strong"
-    elif score >= 4.5:
-        new_strengths[topic] = "improving"
-    else:
-        new_strengths[topic] = "weak"
+        # Update topic strengths (audit #19: also write topic_scores)
+        new_strengths = state.get('topic_strengths', {}).copy()
+        new_topic_scores = state.get('topic_scores', {}).copy()
+        new_topic_scores[topic] = score
+        if score >= 7.5:
+            new_strengths[topic] = "strong"
+        elif score >= 4.5:
+            new_strengths[topic] = "improving"
+        else:
+            new_strengths[topic] = "weak"
 
-    # Adaptive difficulty
-    diff = state['difficulty']
-    if score > 7.0:
-        if diff == "easy": diff = "medium"
-        elif diff == "medium": diff = "hard"
-    elif score < 4.0:
-        if diff == "hard": diff = "medium"
-        elif diff == "medium": diff = "easy"
+        # Adaptive difficulty
+        diff = state['difficulty']
+        if score > 7.0:
+            if diff == "easy": diff = "medium"
+            elif diff == "medium": diff = "hard"
+        elif score < 4.0:
+            if diff == "hard": diff = "medium"
+            elif diff == "medium": diff = "easy"
 
-    # Phase transitions
-    phase = state['current_phase']
-    idx = state['current_question_index'] + 1
+        # Phase transitions
+        phase = state['current_phase']
+        idx = state['current_question_index'] + 1
 
-    if phase == "warmup" and idx >= 2:
-        phase = "technical"
-    elif phase == "technical" and idx >= 6:
-        phase = "stress" if score > 8.0 else "behavioral"
-    elif phase == "stress" and idx >= 9:
-        phase = "behavioral"
-    elif phase == "behavioral" and idx >= 11:
-        phase = "closing"
+        if phase == "warmup" and idx >= 2:
+            phase = "technical"
+        elif phase == "technical" and idx >= 6:
+            phase = "stress" if score > 8.0 else "behavioral"
+        elif phase == "stress" and idx >= 9:
+            phase = "behavioral"
+        elif phase == "behavioral" and idx >= 11:
+            phase = "closing"
 
-    # Mark complete when closing phase starts OR max questions reached
-    # Audit #13: interview_complete triggers BEFORE generate_question runs in closing,
-    # so the candidate never receives a question after being told it's over.
-    is_complete = idx >= state['max_questions'] or phase == "closing"
+        # Mark complete when we've finished all question cycles AND have conducted the closing phase
+        is_complete = (
+            idx >= state['max_questions'] or
+            (state['current_phase'] == "closing" and idx >= 11)
+        )
 
-    return {
-        "difficulty": diff,
-        "topic_strengths": new_strengths,
-        "topic_scores": new_topic_scores,
-        "current_phase": phase,
-        "current_question_index": idx,
-        "interview_complete": is_complete,
-        "is_coding_mode": state.get('is_coding_mode', False),
-    }
+        return {
+            "difficulty": diff,
+            "topic_strengths": new_strengths,
+            "topic_scores": new_topic_scores,
+            "current_phase": phase,
+            "current_question_index": idx,
+            "interview_complete": is_complete,
+            "is_coding_mode": state.get('is_coding_mode', False),
+        }
+    except Exception as e:
+        logger.error(f"update_memory_node failed: {e}")
+        # Return current state to avoid breaking the graph
+        return {
+            "current_question_index": state['current_question_index'] + 1,
+            "interview_complete": state['current_question_index'] + 1 >= state['max_questions']
+        }

@@ -11,20 +11,29 @@ import apiClient from '../services/api';
 import useAuthStore from '../store/useAuthStore';
 import SkillMatrixTab from '../components/SkillMatrixTab';
 
-/* ── CREATE DRIVE MODAL ── */
-const CreateDriveModal = ({ onClose, onCreated }) => {
-  const [formData, setFormData] = useState({ title: '', job_role: '', description: '', skills_required: '' });
+/* ── CREATE/EDIT DRIVE MODAL ── */
+const DriveModal = ({ onClose, onSaved, drive = null }) => {
+  const [formData, setFormData] = useState({ 
+    title: drive?.title || '', 
+    job_role: drive?.job_role || '', 
+    description: drive?.description || '', 
+    skills_required: drive?.skills_required || '' 
+  });
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await apiClient.post('/hr/drives', formData);
-      onCreated();
+      if (drive) {
+        await apiClient.put(`/hr/drives/${drive.id}`, formData);
+      } else {
+        await apiClient.post('/hr/drives', formData);
+      }
+      onSaved();
       onClose();
     } catch {
-      alert('Failed to create drive');
+      alert(`Failed to ${drive ? 'update' : 'create'} drive`);
     } finally {
       setLoading(false);
     }
@@ -35,7 +44,7 @@ const CreateDriveModal = ({ onClose, onCreated }) => {
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
         className="bg-[#0f172a] border border-white/10 rounded-[2rem] w-full max-w-xl overflow-hidden shadow-2xl">
         <div className="px-8 py-6 border-b border-white/5 flex justify-between items-center">
-          <h2 className="text-xl font-bold text-white">New Recruitment Drive</h2>
+          <h2 className="text-xl font-bold text-white">{drive ? 'Edit Recruitment Drive' : 'New Recruitment Drive'}</h2>
           <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors"><X size={20} /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-8 space-y-5">
@@ -49,15 +58,61 @@ const CreateDriveModal = ({ onClose, onCreated }) => {
               <input required={key !== 'skills_required'}
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all"
                 placeholder={placeholder}
+                value={formData[key]}
                 onChange={(e) => setFormData({ ...formData, [key]: e.target.value })}
               />
             </div>
           ))}
           <button type="submit" disabled={loading}
             className="w-full bg-purple-600 text-white py-4 rounded-2xl font-bold hover:bg-purple-500 shadow-xl shadow-purple-900/30 transition-all flex items-center justify-center">
-            {loading ? <Loader2 className="animate-spin" size={20} /> : <span>Initialize Drive</span>}
+            {loading ? <Loader2 className="animate-spin" size={20} /> : <span>{drive ? 'Save Changes' : 'Initialize Drive'}</span>}
           </button>
         </form>
+      </motion.div>
+    </div>
+  );
+};
+
+/* ── DELETE CONFIRMATION MODAL ── */
+const DeleteModal = ({ drive, onClose, onDeleted }) => {
+  const [loading, setLoading] = useState(false);
+
+  const handleDelete = async () => {
+    setLoading(true);
+    try {
+      await apiClient.delete(`/hr/drives/${drive.id}`);
+      onDeleted();
+      onClose();
+    } catch {
+      alert('Failed to delete drive');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-6">
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+        className="bg-[#0f172a] border border-red-500/20 rounded-[2rem] w-full max-w-md overflow-hidden shadow-2xl">
+        <div className="p-8 text-center space-y-6">
+          <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto text-red-500 mb-2">
+            <X size={32} />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-white">Delete Drive?</h2>
+            <p className="text-sm text-slate-400 mt-2">Are you sure you want to delete <span className="text-white font-bold">{drive.title}</span>? This action cannot be undone and will delete all associated session data.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <button onClick={onClose}
+              className="bg-white/5 border border-white/10 text-white py-3 rounded-2xl font-bold hover:bg-white/10 transition-all">
+              Cancel
+            </button>
+            <button onClick={handleDelete} disabled={loading}
+              className="bg-red-600 text-white py-3 rounded-2xl font-bold hover:bg-red-500 transition-all flex items-center justify-center">
+              {loading ? <Loader2 className="animate-spin" size={18} /> : 'Delete Now'}
+            </button>
+          </div>
+        </div>
       </motion.div>
     </div>
   );
@@ -209,6 +264,73 @@ const TakeoverModal = ({ session, onClose }) => {
   );
 };
 
+/* ── CANDIDATE LIST MODAL ── */
+const CandidateListModal = ({ drive, onClose }) => {
+  const [candidates, setCandidates] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiClient.get(`/hr/drives/${drive.id}/candidates`)
+      .then(res => {
+        setCandidates(res.data.candidates || []);
+        setSessions(res.data.sessions || []);
+      })
+      .catch(() => alert('Failed to fetch candidates'))
+      .finally(() => setLoading(false));
+  }, [drive.id]);
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-6">
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+        className="bg-[#0f172a] border border-white/10 rounded-[2rem] w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
+        <div className="px-8 py-6 border-b border-white/5 flex justify-between items-center bg-white/2">
+          <div>
+            <h2 className="text-xl font-bold text-white">Drive Participants</h2>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">{drive.title}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors"><X size={20} /></button>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto p-8">
+          {loading ? (
+            <div className="flex justify-center py-20"><Loader2 className="animate-spin text-purple-500" size={32} /></div>
+          ) : candidates.length === 0 ? (
+            <div className="text-center py-20 text-slate-500">No candidates invited yet.</div>
+          ) : (
+            <div className="space-y-4">
+              {candidates.map((c, i) => {
+                const session = sessions.find(s => s.candidate_email === c.email || s.id === c.session_id);
+                return (
+                  <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-between group">
+                    <div>
+                      <p className="text-white font-bold">{c.email}</p>
+                      <div className="flex items-center space-x-3 mt-1">
+                        <span className={`text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-md border ${
+                          c.is_used ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                        }`}>
+                          {c.is_used ? 'Interviewed' : 'Pending'}
+                        </span>
+                        <span className="text-[9px] text-slate-500 font-bold uppercase">Expires: {new Date(c.expires_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                    {session && session.overall_score && (
+                      <div className="text-right">
+                        <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Score</p>
+                        <p className="text-lg font-black text-purple-400">{session.overall_score.toFixed(1)}</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 /* ── DRIVE SETTINGS TAB ── */
 const DriveSettingsTab = () => {
   const [profile, setProfile] = useState({ company_name: '', department: '', position: '' });
@@ -279,9 +401,13 @@ const HRDashboard = () => {
   const [profileCompletion, setProfileCompletion] = useState(0);
   const [activeTab, setActiveTab] = useState('Active Drives');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editDrive, setEditDrive] = useState(null);
+  const [deleteDrive, setDeleteDrive] = useState(null);
+  const [viewCandidatesDrive, setViewCandidatesDrive] = useState(null);
   const [bulkInviteDrive, setBulkInviteDrive] = useState(null);
   const [takeoverSession, setTakeoverSession] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  const [activeMenuId, setActiveMenuId] = useState(null);
 
   const handleViewReport = (sessionId) => {
     navigate(`/report/${sessionId}`);
@@ -294,13 +420,27 @@ const HRDashboard = () => {
         apiClient.get('/hr/drives'),
         apiClient.get('/hr/interviews')
       ]);
-      setDrives(drivesRes.data);
-      setInterviews(interviewsRes.data.filter(i => i.status === 'completed'));
-      setLiveSessions(interviewsRes.data.filter(i => i.status === 'in_progress'));
+      // Normalize drives response shape in case API returns data under a nested key
+      const possibleDrives = drivesRes?.data?.drives ?? drivesRes?.data ?? [];
+      setDrives(Array.isArray(possibleDrives) ? possibleDrives : []);
+      // Normalize interviews response shape
+      const allInterviews = Array.isArray(interviewsRes?.data) ? interviewsRes.data : (interviewsRes?.data?.interviews ?? []);
+      setInterviews(allInterviews.filter(i => i.status === 'completed'));
+      setLiveSessions(allInterviews.filter(i => i.status === 'in_progress'));
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleDrive = async (driveId) => {
+    try {
+      await apiClient.patch(`/hr/drives/${driveId}/toggle`);
+      fetchData();
+      setActiveMenuId(null);
+    } catch {
+      alert('Failed to toggle drive status');
     }
   };
 
@@ -372,7 +512,10 @@ const HRDashboard = () => {
   return (
     <div className="min-h-screen bg-[#020617] flex font-sans">
       <AnimatePresence>
-        {showCreateModal && <CreateDriveModal onClose={() => setShowCreateModal(false)} onCreated={fetchData} />}
+        {showCreateModal && <DriveModal onClose={() => setShowCreateModal(false)} onSaved={fetchData} />}
+        {editDrive && <DriveModal drive={editDrive} onClose={() => setEditDrive(null)} onSaved={fetchData} />}
+        {deleteDrive && <DeleteModal drive={deleteDrive} onClose={() => setDeleteDrive(null)} onDeleted={fetchData} />}
+        {viewCandidatesDrive && <CandidateListModal drive={viewCandidatesDrive} onClose={() => setViewCandidatesDrive(null)} />}
         {bulkInviteDrive && <BulkInviteModal drive={bulkInviteDrive} onClose={() => setBulkInviteDrive(null)} />}
         {takeoverSession && <TakeoverModal session={takeoverSession} onClose={() => setTakeoverSession(null)} />}
       </AnimatePresence>
@@ -480,20 +623,45 @@ const HRDashboard = () => {
                   <div className="flex justify-between items-start mb-8 relative">
                     <div>
                       <div className="flex items-center space-x-3 mb-2">
-                        <span className="bg-purple-500/10 text-purple-400 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border border-purple-500/20">Interview Workflow</span>
+                        <span className={`${drive.is_active ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'} text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border`}>
+                          {drive.is_active ? 'Open' : 'Closed'}
+                        </span>
                         <span className="flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                           <Clock size={12} className="mr-1" /> {new Date(drive.created_at).toLocaleDateString()}
                         </span>
                       </div>
-                      <h2 className="text-2xl font-bold text-white">{drive.title}</h2>
+                      <h2 className="text-2xl font-bold text-white cursor-pointer hover:text-purple-400 transition-colors" onClick={() => setViewCandidatesDrive(drive)}>{drive.title}</h2>
                       <p className="text-slate-400 font-medium">{drive.job_role}</p>
                     </div>
-                    <button className="text-slate-600 hover:text-slate-400 transition-colors"><MoreVertical size={20} /></button>
+                    <div className="relative">
+                      <button onClick={() => setActiveMenuId(activeMenuId === drive.id ? null : drive.id)}
+                        className="text-slate-600 hover:text-white transition-colors p-2 hover:bg-white/5 rounded-xl"><MoreVertical size={20} /></button>
+                      
+                      <AnimatePresence>
+                        {activeMenuId === drive.id && (
+                          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
+                            className="absolute right-0 mt-2 w-48 bg-[#1e293b] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                            <button onClick={() => { setEditDrive(drive); setActiveMenuId(null); }}
+                              className="w-full text-left px-5 py-3 text-xs font-bold text-slate-300 hover:bg-white/5 hover:text-white transition-all flex items-center space-x-3">
+                              <Settings size={14} /> <span>Edit Details</span>
+                            </button>
+                            <button onClick={() => handleToggleDrive(drive.id)}
+                              className="w-full text-left px-5 py-3 text-xs font-bold text-slate-300 hover:bg-white/5 hover:text-white transition-all flex items-center space-x-3">
+                              <Activity size={14} /> <span>{drive.is_active ? 'Close Drive' : 'Re-open Drive'}</span>
+                            </button>
+                            <button onClick={() => { setDeleteDrive(drive); setActiveMenuId(null); }}
+                              className="w-full text-left px-5 py-3 text-xs font-bold text-red-400 hover:bg-red-500/10 transition-all flex items-center space-x-3">
+                              <X size={14} /> <span>Delete Forever</span>
+                            </button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 mb-8">
-                    <div className="bg-white/5 p-5 rounded-2xl border border-white/5 text-center">
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Participants</p>
+                    <div className="bg-white/5 p-5 rounded-2xl border border-white/5 text-center cursor-pointer hover:bg-white/10 transition-all" onClick={() => setViewCandidatesDrive(drive)}>
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Candidates</p>
                       <p className="text-2xl font-black text-white">{drive.participant_count ?? 0}</p>
                     </div>
                     <div className="bg-white/5 p-5 rounded-2xl border border-white/5 text-center">
@@ -514,7 +682,7 @@ const HRDashboard = () => {
                     <button onClick={() => setBulkInviteDrive(drive)}
                       className="flex items-center space-x-2 bg-white/5 border border-white/10 text-slate-300 px-5 py-4 rounded-2xl font-bold hover:bg-white/10 hover:text-white transition-all text-sm">
                       <Mail size={16} />
-                      <span>Bulk</span>
+                      <span>Bulk Invite</span>
                     </button>
 
                     <button 

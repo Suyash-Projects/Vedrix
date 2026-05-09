@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import api_router
@@ -17,20 +18,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup logic
+    await init_db()
+    logger.info("Vedrix backend started — DB initialised")
+    yield
+    # Shutdown logic (if any)
+
 app = FastAPI(
     title="Vedrix AI Interview System",
     description="Modern AI-powered interview platform",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
-
-@app.on_event("startup")
-async def on_startup():
-    await init_db()
-    logger.info("Vedrix backend started — DB initialised")
 
 app.add_middleware(
     CORSMiddleware,

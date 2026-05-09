@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, TYPE_CHECKING
 from sqlmodel import SQLModel, Field, Relationship
 
@@ -19,8 +19,8 @@ class StudentProfile(SQLModel, table=True):
     resume_file: Optional[str] = None
     resume_text: Optional[str] = None
     experience_level: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Relationships
     user: "User" = Relationship(back_populates="student_profile")
@@ -34,8 +34,8 @@ class HRProfile(SQLModel, table=True):
     department: Optional[str] = None
     position: Optional[str] = None
     hr_code: Optional[str] = Field(default=None, unique=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Relationships
     user: "User" = Relationship(back_populates="hr_profile")

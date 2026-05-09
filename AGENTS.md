@@ -41,8 +41,7 @@ python Vedrix/run_dev.py
 | Command | Purpose |
 |---------|---------|
 | `python Vedrix/run_dev.py` | Full stack dev (both services) |
-| `cd Vedrix/backend && uvicorn main:app --reload` | Backend only |
-| `cd Vedrix/frontend && npm run dev` | Frontend only |
+| `cd Vedrix/backend && python -m pytest` | Run backend tests |
 | `cd Vedrix/frontend && npm run lint` | ESLint check |
 | `cd Vedrix/frontend && npm run build` | Production build |
 | `docker-compose -f Vedrix/docker-compose.yml up` | PostgreSQL + Redis |
@@ -65,7 +64,6 @@ python Vedrix/run_dev.py
 1. Frontend won't connect to API without `.env.development.local` — always run via `run_dev.py` or create manually
 2. SQLite DB file: `Vedrix/backend/vedrix.db` (check .gitignore)
 3. Tailwind v4 uses `@tailwindcss/vite` plugin, not postcss
-4. Empty `tests/` folder — no formal test setup yet
 
 ## References
 
