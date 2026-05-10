@@ -1,0 +1,75 @@
+version: '3.8'
+
+# Staging Environment Configuration
+# Usage: docker-compose -f docker-compose.staging.yml up -d
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: vedrix-db-staging
+    volumes:
+      - postgres_staging_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=vedrix_staging
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: vedrix-redis-staging
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_staging_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: vedrix/backend:latest
+    container_name: vedrix-backend-staging
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:${DB_PASSWORD}@db:5432/vedrix_staging
+      - REDIS_URL=redis://redis:6379/0
+      - ENVIRONMENT=staging
+      - SECRET_KEY=${SECRET_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    image: vedrix/frontend:latest
+    container_name: vedrix-frontend-staging
+    environment:
+      - VITE_API_URL=https://staging.api.vedrix.com/api/v1
+    ports:
+      - "5173:8080"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_staging_data:
+  redis_staging_data:

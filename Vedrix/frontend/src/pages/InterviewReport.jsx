@@ -46,6 +46,25 @@ const InterviewReport = () => {
     alert("Report link copied to clipboard!");
   };
 
+  const handleDownloadCertificate = async () => {
+    setExporting(true);
+    try {
+      const res = await apiClient.get(`/users/sessions/${sessionId}/certificate`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Vedrix_Certificate_${sessionId}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      alert('Failed to download certificate.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   useEffect(() => {
     if (!sessionId) return;
     const fetchReport = async () => {
@@ -149,13 +168,23 @@ const InterviewReport = () => {
               {exporting ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
               <span>{exporting ? 'Generating...' : 'Export PDF'}</span>
             </button>
-            <button 
+            <button
               onClick={handleShare}
               className="flex items-center space-x-2 bg-purple-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-purple-500 transition-all shadow-lg shadow-purple-900/30 active:scale-95"
             >
               <Share2 size={18} />
               <span>Share with Team</span>
             </button>
+            {report?.overall_score >= 60 && (
+              <button
+                onClick={handleDownloadCertificate}
+                disabled={exporting}
+                className="flex items-center space-x-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:from-amber-400 hover:to-orange-400 transition-all shadow-lg shadow-orange-900/30 active:scale-95 disabled:opacity-50"
+              >
+                <Award size={18} />
+                <span>Certificate</span>
+              </button>
+            )}
           </div>
         </div>
       </header>

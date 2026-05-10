@@ -14,8 +14,10 @@ from app.core.config import settings
 from app.core import security
 from app.core.security import ALGORITHM
 from app.services.interview_engine.graph import interview_graph
+from app.services.interview_engine.nodes import _initialize_skills_to_cover
 from app.services.interview_engine.state import InterviewState
 from app.services.voice_service import voice_service
+import base64
 from app.services.evaluation_service import evaluation_service
 from app.services.code_execution_service import code_execution_service
 from app.services.email_service import (
@@ -234,6 +236,9 @@ async def websocket_endpoint(
             await manager.send_json({"type": "status", "data": f"Interview ready, {candidate_name}."}, session_id)
 
         # ── 2. Build initial state ────────────────────────────────────────
+        # Initialize skills to cover based on resume and job role
+        skills_to_cover = _initialize_skills_to_cover(resume_text, job_role)
+
         initial_state: InterviewState = {
             "messages": [],
             "resume_text": resume_text,
@@ -241,12 +246,23 @@ async def websocket_endpoint(
             "current_question_index": 0,
             "max_questions": 15,
             "interview_complete": False,
-            "current_phase": "warmup",
+            "completion_reason": None,
+            "current_phase": "greeting",
+            "phase_transition": False,
+            "previous_phase": None,
             "difficulty": "medium",
             "latest_score": 0.0,
             "metrics": {"accuracy": 0, "clarity": 0, "depth": 0, "communication": 0},
+            "avg_score": 0.0,
+            "covered_skills": [],
+            "skills_to_cover": skills_to_cover,
+            "pending_skills": skills_to_cover,
+            "skill_coverage_percentage": 0.0,
             "topic_scores": {},
             "topic_strengths": {},
+            "total_responses": 0,
+            "low_quality_count": 0,
+            "high_quality_count": 0,
             "interviewer_mode": "ai",
             "hr_instructions": None,
             "last_evaluation": None,
@@ -254,6 +270,8 @@ async def websocket_endpoint(
             "code_snippet": None,
             "code_language": None,
             "is_coding_mode": False,
+            "follow_up_requested": False,
+            "previous_topic": None,
         }
 
         # ── 3. Start Interview ────────────────────────────────────────────
@@ -271,13 +289,27 @@ async def websocket_endpoint(
                 raise ValueError("AI engine failed to generate opening question")
 
             q = current_values["next_question"]
-            await manager.send_json({
+
+            # Generate TTS audio for the question
+            audio_base64 = ""
+            try:
+                question_text = q.get("question", "") if isinstance(q, dict) else ""
+                if question_text:
+                    audio_base64 = await voice_service.speak_text(question_text)
+            except Exception as e:
+                logger.warning(f"TTS generation failed: {e}")
+
+            response_data = {
                 "type": "question",
                 "data": q,
                 "job_role": job_role,
                 "is_coding": current_values.get("is_coding_mode", False),
                 "language": current_values.get("code_language", "python"),
-            }, session_id)
+            }
+            if audio_base64:
+                response_data["audio"] = audio_base64
+
+            await manager.send_json(response_data, session_id)
         except Exception as e:
             logger.error(f"Interview start failed [{session_id}]: {e}")
             await manager.send_json({"type": "error", "data": f"Engine Error: {str(e)}"}, session_id)
@@ -353,13 +385,27 @@ async def websocket_endpoint(
                                     await manager.send_json({"type": "metrics_update", "data": output["metrics"]}, session_id)
                             elif node_name == "generate_question" and output.get("next_question"):
                                 q = output["next_question"]
-                                all_questions.append(q)  # #18: track questions
-                                await manager.send_json({
+                                all_questions.append(q)
+
+                                # Generate TTS audio for the question
+                                audio_base64 = ""
+                                try:
+                                    question_text = q.get("question", "") if isinstance(q, dict) else ""
+                                    if question_text:
+                                        audio_base64 = await voice_service.speak_text(question_text)
+                                except Exception as e:
+                                    logger.warning(f"TTS generation failed: {e}")
+
+                                response_data = {
                                     "type": "question",
                                     "data": q,
                                     "is_coding": output.get("is_coding_mode", False),
                                     "language": output.get("code_language", "python"),
-                                }, session_id)
+                                }
+                                if audio_base64:
+                                    response_data["audio"] = audio_base64
+
+                                await manager.send_json(response_data, session_id)
 
                     final_state = await interview_graph.aget_state(config)
                     if final_state.values.get("interview_complete"):

@@ -140,3 +140,102 @@ def generate_interview_pdf(
         pdf.ln(4)
 
     return bytes(pdf.output())
+
+
+def generate_certificate(
+    candidate_name: str,
+    job_role: str,
+    overall_score: float,
+    date_completed: str,
+) -> bytes:
+    """
+    Generates a completion certificate PDF.
+    """
+    from datetime import datetime
+
+    class CertificatePDF(FPDF):
+        def header(self):
+            # Decorative border
+            self.set_draw_color(124, 58, 237)
+            self.set_line_width(2)
+            self.rect(10, 10, 190, 277)
+            self.set_line_width(0.5)
+            self.rect(15, 15, 180, 267)
+
+            # Logo area
+            self.set_font("helvetica", "B", 36)
+            self.set_text_color(124, 58, 237)
+            self.cell(0, 40, "VEDRIX", align="C", new_x="LMARGIN", new_y="NEXT")
+            self.set_font("helvetica", "", 14)
+            self.set_text_color(100, 100, 100)
+            self.cell(0, 10, "AI Interview Platform", align="C", new_x="LMARGIN", new_y="NEXT")
+            self.ln(20)
+
+    pdf = CertificatePDF()
+    pdf.add_page()
+
+    # Certificate Title
+    pdf.set_font("helvetica", "B", 32)
+    pdf.set_text_color(50, 50, 50)
+    pdf.cell(0, 20, "Certificate of Completion", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(10)
+
+    # Subtitle
+    pdf.set_font("helvetica", "", 14)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 10, "This is to certify that", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(15)
+
+    # Candidate Name
+    pdf.set_font("helvetica", "B", 28)
+    pdf.set_text_color(124, 58, 237)
+    pdf.cell(0, 15, candidate_name, align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(15)
+
+    # Achievement text
+    pdf.set_font("helvetica", "", 14)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 10, "has successfully completed the AI-powered interview", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(10)
+
+    # Job Role
+    pdf.set_font("helvetica", "B", 18)
+    pdf.set_text_color(50, 50, 50)
+    pdf.cell(0, 12, f"for the role of {job_role or 'General Candidate'}", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(15)
+
+    # Score
+    pdf.set_font("helvetica", "", 14)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 10, "with an overall performance score of", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(8)
+
+    pdf.set_font("helvetica", "B", 48)
+    if overall_score >= 80:
+        pdf.set_text_color(34, 197, 94)  # Green
+    elif overall_score >= 60:
+        pdf.set_text_color(251, 191, 36)  # Amber
+    else:
+        pdf.set_text_color(239, 68, 68)  # Red
+
+    pdf.cell(0, 25, f"{overall_score:.1f}%", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(20)
+
+    # Date
+    pdf.set_font("helvetica", "", 12)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 8, f"Date of Completion: {date_completed}", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(25)
+
+    # Signatures
+    pdf.set_font("helvetica", "", 12)
+    pdf.set_text_color(50, 50, 50)
+
+    pdf.cell(85, 10, "_______________________", align="L")
+    pdf.cell(0, 10, "_______________________", align="R", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_font("helvetica", "B", 10)
+    pdf.cell(85, 8, "Vedrix AI Platform", align="L")
+    pdf.cell(0, 8, "Candidate", align="R", new_x="LMARGIN", new_y="NEXT")
+
+    return bytes(pdf.output())

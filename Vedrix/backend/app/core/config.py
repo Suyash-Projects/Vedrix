@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./vedrix.db"
+    DB_SSL_MODE: str = "require"  # PostgreSQL SSL mode: "disable", "require", "verify-full"
     
     # AI API Keys
     GROQ_API_KEY: str = ""
@@ -43,6 +44,12 @@ class Settings(BaseSettings):
     # Supabase (optional — mirrors data to Postgres when configured)
     SUPABASE_URL: str = ""
     SUPABASE_KEY: str = ""   # use the publishable/anon key or service key
+
+    # Redis for caching
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+    # Environment
+    ENVIRONMENT: str = "development"  # "development" or "production"
 
     model_config = ConfigDict(
         env_file=".env",

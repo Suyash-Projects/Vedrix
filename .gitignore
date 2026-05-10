@@ -5,6 +5,8 @@ __pycache__/
 
 # C extensions
 *.so
+College Documentation
+Talentsync*
 
 # Distribution / packaging
 .Python

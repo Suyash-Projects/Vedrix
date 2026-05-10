@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional, List, Any, TYPE_CHECKING
 from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import Column, JSON, Text
+from sqlalchemy import Column, JSON, Text, Index
 
 if TYPE_CHECKING:
     from .user import User
@@ -40,12 +40,18 @@ class JobDrive(SQLModel, table=True):
 
 class InterviewSession(SQLModel, table=True):
     __tablename__ = "interview_session"
+    __table_args__ = (
+        Index("ix_interview_candidate_id", "candidate_id"),
+        Index("ix_interview_job_drive_id", "job_drive_id"),
+        Index("ix_interview_status", "status"),
+        Index("ix_interview_created_at", "created_at"),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    candidate_id: int = Field(foreign_key="user.id", nullable=False)
-    job_drive_id: Optional[int] = Field(default=None, foreign_key="job_drive.id")
+    candidate_id: int = Field(foreign_key="user.id", nullable=False, index=True)
+    job_drive_id: Optional[int] = Field(default=None, foreign_key="job_drive.id", index=True)
     session_type: str = Field(nullable=False)
-    status: str = Field(default="scheduled")
+    status: str = Field(default="scheduled", index=True)
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     duration: Optional[int] = None

@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vedrix-backend
+  labels:
+    app: vedrix-backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: vedrix-backend
+  template:
+    metadata:
+      labels:
+        app: vedrix-backend
+    spec:
+      containers:
+        - name: backend
+          image: vedrix/backend:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: vedrix-secrets
+                  key: database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: vedrix-secrets
+                  key: redis-url
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vedrix-secrets
+                  key: secret-key
+            - name: GROQ_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vedrix-secrets
+                  key: groq-api-key
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vedrix-backend
+spec:
+  selector:
+    app: vedrix-backend
+  ports:
+    - port: 8000
+      targetPort: 8000
+  type: ClusterIP

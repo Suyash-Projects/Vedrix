@@ -1,5 +1,7 @@
 from typing import Any
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -9,6 +11,7 @@ from app.models.user import User
 from app.models.interview import InterviewSession
 from app.schemas.user import UserRead
 from app.core import security
+from app.services.pdf_service import generate_certificate
 
 router = APIRouter()
 
@@ -84,6 +87,45 @@ async def get_session_report(
         "start_time": session.start_time,
         "end_time": session.end_time,
     }
+
+
+@router.get("/sessions/{session_id}/certificate")
+async def get_session_certificate(
+    session_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
+) -> Response:
+    """Generate and download a completion certificate for the session."""
+    result = await db.execute(
+        select(InterviewSession).where(InterviewSession.id == session_id)
+    )
+    session = result.scalars().first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if current_user.user_type == "student" and session.candidate_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if session.overall_score < 60:
+        raise HTTPException(status_code=400, detail="Score must be >= 60% to generate certificate")
+
+    candidate_name = current_user.username
+    job_role = session.job_role or "General Candidate"
+    overall_score = float(session.overall_score or 0)
+    date_completed = session.end_time.strftime("%B %d, %Y") if session.end_time else datetime.now().strftime("%B %d, %Y")
+
+    pdf_bytes = generate_certificate(
+        candidate_name=candidate_name,
+        job_role=job_role,
+        overall_score=overall_score,
+        date_completed=date_completed,
+    )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=Vedrix_Certificate_{session_id}.pdf"},
+    )
 
 
 @router.post("/change-password")
