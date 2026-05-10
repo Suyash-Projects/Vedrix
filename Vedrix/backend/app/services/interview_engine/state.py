@@ -15,8 +15,8 @@ class InterviewState(TypedDict):
     interview_complete: bool
     
     # NEW: Phase Management
-    # Phases: "warmup", "technical", "stress", "behavioral", "closing"
-    current_phase: Literal["warmup", "technical", "stress", "behavioral", "closing"]
+    # Phases: "greeting", "welcome", "warmup", "technical", "stress", "behavioral", "closing"
+    current_phase: Literal["greeting", "welcome", "warmup", "technical", "stress", "behavioral", "closing"]
     
     # Performance & Memory
     difficulty: Literal["easy", "medium", "hard"]

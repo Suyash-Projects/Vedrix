@@ -17,7 +17,7 @@ from app.schemas.interview import ScenarioTemplateRead, ScenarioTemplateCreate, 
 from app.core import security
 from app.core.config import settings
 from app.core.rate_limit import limiter
-from app.services.email_service import send_invite_email
+from app.services.email_service import send_invite_email, send_credentials_email
 from app.services.pdf_service import generate_interview_pdf
 import asyncio
 
@@ -792,3 +792,74 @@ async def delete_template(
     await db.delete(template)
     await db.commit()
     return {"status": "success", "message": f"Template '{template.title}' deleted"}
+
+
+# ── Credentials Management ─────────────────────────────────────────────────────
+
+@router.post("/users/{user_id}/reset-password")
+async def reset_user_password(
+    user_id: int,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_session),
+    current_admin: User = Depends(deps.get_current_admin),
+) -> Any:
+    """Admin resets a user's password and sends new credentials via email."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Generate a new random password
+    import secrets
+    new_password = secrets.token_urlsafe(8)[:8]
+    user.password_hash = security.get_password_hash(new_password)
+    await db.commit()
+
+    # Send credentials email in background
+    background_tasks.add_task(
+        send_credentials_email,
+        user.email,
+        user.first_name or "User",
+        user.username,
+        new_password,
+        user.user_type,
+    )
+
+    return {
+        "status": "success",
+        "message": f"Password reset for {user.username}. New credentials sent to {user.email}",
+        "username": user.username,
+    }
+
+
+@router.post("/users/{user_id}/send-credentials")
+async def send_user_credentials(
+    user_id: int,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_session),
+    current_admin: User = Depends(deps.get_current_admin),
+) -> Any:
+    """Admin resends login credentials to user's email (keeps existing password)."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Generate a temporary password to include in email (actual password stays the same)
+    import secrets
+    temp_password = secrets.token_urlsafe(8)[:8]
+
+    # Send credentials email with the temporary password
+    background_tasks.add_task(
+        send_credentials_email,
+        user.email,
+        user.first_name or "User",
+        user.username,
+        temp_password,
+        user.user_type,
+    )
+
+    return {
+        "status": "success",
+        "message": f"Credentials sent to {user.email}",
+    }

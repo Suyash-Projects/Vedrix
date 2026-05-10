@@ -8,6 +8,7 @@ from app.db.session import get_session
 from app.models.user import User
 from app.models.interview import InterviewSession
 from app.schemas.user import UserRead
+from app.core import security
 
 router = APIRouter()
 
@@ -83,3 +84,59 @@ async def get_session_report(
         "start_time": session.start_time,
         "end_time": session.end_time,
     }
+
+
+@router.post("/change-password")
+async def change_password(
+    *,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
+    current_password: str,
+    new_password: str,
+) -> Any:
+    """Change user's own password (requires current password verification)."""
+    if not security.verify_password(current_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    if len(new_password) < 4:
+        raise HTTPException(status_code=400, detail="New password must be at least 4 characters")
+
+    # Re-fetch user in this session
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalars().first()
+    if user:
+        user.password_hash = security.get_password_hash(new_password)
+        await db.commit()
+
+    return {"status": "success", "message": "Password changed successfully"}
+
+
+@router.put("/username")
+async def update_username(
+    *,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
+    new_username: str,
+) -> Any:
+    """Change user's own username (must be unique)."""
+    if len(new_username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
+
+    # Check if username is already taken
+    result = await db.execute(
+        select(User).where(User.username == new_username, User.id != current_user.id)
+    )
+    existing = result.scalars().first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Username already taken")
+
+    # Update username - re-fetch user in this session
+    result = await db.execute(
+        select(User).where(User.id == current_user.id)
+    )
+    user = result.scalars().first()
+    if user:
+        user.username = new_username
+        await db.commit()
+
+    return {"status": "success", "message": f"Username changed to @{new_username}"}

@@ -482,3 +482,64 @@ async def send_report_to_hr(
         f"New Candidate Evaluated — {job_role} | Vedrix",
         _build_report_hr(hr_first_name, candidate_email, job_role, drive_title, report, session_id),
     )
+
+
+def _build_credentials_email(first_name: str, username: str, password: str, user_type: str) -> str:
+    user_type_label = "Candidate" if user_type == "student" else "HR Manager" if user_type == "hr" else "Administrator"
+    login_url = "https://vedrix.ai/login"
+
+    return _base(
+        "Your Vedrix Account Credentials",
+        f"""
+        <div style="padding: 20px 0;">
+          <p style="color:#a78bfa;font-size:14px;margin-bottom:24px;">
+            Your Vedrix account has been created by an administrator. Here are your login credentials:
+          </p>
+
+          <!-- CREDENTIALS BOX -->
+          <div style="background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.3);border-radius:16px;padding:24px;margin:24px 0;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding-bottom:12px;">
+                  <span style="color:#a78bfa;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;">Username</span>
+                  <div style="color:#fff;font-size:20px;font-weight:700;margin-top:4px;">{username}</div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding-top:12px;border-top:1px solid rgba(255,255,255,0.1);">
+                  <span style="color:#a78bfa;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;">Password</span>
+                  <div style="color:#fff;font-size:20px;font-weight:700;margin-top:4px;font-family:monospace;">{password}</div>
+                </td>
+              </tr>
+            </table>
+          </div>
+
+          <!-- WARNING -->
+          <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:12px;padding:16px;margin:24px 0;">
+            <p style="color:#fbbf24;font-size:12px;font-weight:600;margin:0;">
+              ⚠️ Please change your password after first login for security.
+            </p>
+          </div>
+
+          <!-- LOGIN BUTTON -->
+          <div style="text-align:center;margin:32px 0;">
+            <a href="{login_url}" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;font-size:14px;font-weight:700;padding:16px 32px;border-radius:12px;text-decoration:none;">
+              Login to Vedrix
+            </a>
+          </div>
+
+          <p style="color:#64748b;font-size:12px;margin-top:24px;">
+            If you didn't request this account, please contact your administrator immediately.
+          </p>
+        </div>
+        """
+    )
+
+
+async def send_credentials_email(to: str, first_name: str, username: str, password: str, user_type: str) -> None:
+    """Send login credentials to a user (admin triggered)."""
+    await _send(
+        to,
+        "Your Vedrix Login Credentials",
+        _build_credentials_email(first_name, username, password, user_type),
+    )

@@ -203,6 +203,25 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleSendCredentials = async (userId, username) => {
+    try {
+      await apiClient.post(`/admin/users/${userId}/send-credentials`);
+      showMsg('success', `Credentials sent to ${username}`);
+    } catch (err) {
+      showMsg('error', err.response?.data?.detail || 'Failed to send credentials');
+    }
+  };
+
+  const handleResetPassword = async (userId, username) => {
+    if (!window.confirm(`Reset password for "${username}"? A new password will be generated and sent to their email.`)) return;
+    try {
+      const res = await apiClient.post(`/admin/users/${userId}/reset-password`);
+      showMsg('success', `Password reset for ${username}. New credentials sent to email.`);
+    } catch (err) {
+      showMsg('error', err.response?.data?.detail || 'Failed to reset password');
+    }
+  };
+
   // ── Drive Actions ─────────────────────────────────────────────────────────
 
   const handleToggleDrive = async (driveId) => {
@@ -462,6 +481,7 @@ const AdminDashboard = () => {
                 <thead>
                   <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/5">
                     <th className="px-8 py-4">User</th>
+                    <th className="px-8 py-4">Username</th>
                     <th className="px-8 py-4">Role</th>
                     <th className="px-8 py-4">Email</th>
                     <th className="px-8 py-4">Status</th>
@@ -502,6 +522,10 @@ const AdminDashboard = () => {
                               </div>
                             </div>
                           )}
+                        </td>
+
+                        <td className="px-8 py-5">
+                          <span className="text-sm font-mono text-slate-400">@{user.username}</span>
                         </td>
 
                         <td className="px-8 py-5">
@@ -573,7 +597,15 @@ const AdminDashboard = () => {
                               )}
                               <button onClick={() => startEdit(user)} className="text-slate-500 hover:text-purple-400 p-1.5 rounded-lg hover:bg-purple-500/10 transition-colors" title="Edit"><Edit2 size={14} /></button>
                               {user.user_type !== 'admin' && (
-                                <button onClick={() => handleDeleteUser(user.id, `${user.first_name} ${user.last_name}`)} className="text-slate-600 hover:text-red-400 p-1.5 rounded-lg transition-colors" title="Delete permanently"><Trash2 size={16} /></button>
+                                <>
+                                  <button onClick={() => handleSendCredentials(user.id, user.email)} className="text-slate-500 hover:text-emerald-400 p-1.5 rounded-lg hover:bg-emerald-500/10 transition-colors" title="Send login credentials via email">
+                                    <Mail size={14} />
+                                  </button>
+                                  <button onClick={() => handleResetPassword(user.id, user.username)} className="text-slate-500 hover:text-amber-400 p-1.5 rounded-lg hover:bg-amber-500/10 transition-colors" title="Reset password and send new credentials">
+                                    <RefreshCcw size={14} />
+                                  </button>
+                                  <button onClick={() => handleDeleteUser(user.id, `${user.first_name} ${user.last_name}`)} className="text-slate-600 hover:text-red-400 p-1.5 rounded-lg transition-colors" title="Delete permanently"><Trash2 size={16} /></button>
+                                </>
                               )}
                             </div>
                           )}
@@ -808,7 +840,7 @@ const AdminDashboard = () => {
 
         {/* Create User Modal */}
         {showCreate && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200]">
             <div className="bg-[#0f1420] border border-white/10 rounded-3xl p-8 w-full max-w-md mx-4 shadow-2xl shadow-black/50">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-bold text-white">Create New User</h3>
@@ -886,7 +918,7 @@ const AdminDashboard = () => {
 
         {/* Drive Create/Edit Modal */}
         {showDriveModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200]">
             <div className="bg-[#0f1420] border border-white/10 rounded-3xl p-8 w-full max-w-lg mx-4 shadow-2xl overflow-y-auto max-h-[90vh]">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-bold text-white">{editingDriveId ? 'Edit Job Drive' : 'Create New Job Drive'}</h3>
@@ -943,7 +975,7 @@ const AdminDashboard = () => {
 
         {/* Template Create/Edit Modal */}
         {showTemplateModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200]">
             <div className="bg-[#0f1420] border border-white/10 rounded-3xl p-8 w-full max-w-2xl mx-4 shadow-2xl overflow-y-auto max-h-[90vh]">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-bold text-white">{editingTemplateId ? 'Edit Template' : 'Create New Template'}</h3>

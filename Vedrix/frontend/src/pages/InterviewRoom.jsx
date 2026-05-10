@@ -142,6 +142,12 @@ const InterviewRoom = () => {
   const [voiceAvailable, setVoiceAvailable] = useState(false);
   const [questionTimeLeft, setQuestionTimeLeft] = useState(0); // Per-question countdown
 
+  // Auto-submit and timeout handling
+  const [lastUserActivity, setLastUserActivity] = useState(Date.now());
+  const [showTimeoutConfirm, setShowTimeoutConfirm] = useState(false);
+  const silenceTimerRef = useRef(null);
+  const noResponseTimerRef = useRef(null);
+
   // ... (rest of states)
 
   const [currentQuestion, setCurrentQuestion] = useState(null);
@@ -388,22 +394,41 @@ const InterviewRoom = () => {
   }, [ready]);
 
   const toggleRecording = async () => {
+    // Track user activity for timeout
+    setLastUserActivity(Date.now());
+    setShowTimeoutConfirm(false);
+    clearTimeout(noResponseTimerRef.current);
+
     if (isRecording) {
+      // Stop recording - auto-submit after silence detection
       mediaRecorder.current?.stop();
       setIsRecording(false);
       mediaRecorder.current?.stream.getTracks().forEach(t => t.stop());
+
+      // Auto-submit after short silence (1.5 seconds of no recording)
+      setAgentStatus('Processing your answer...');
+      setTimeout(() => {
+        const blob = new Blob(audioChunks.current, { type: 'audio/webm' });
+        if (ws.current?.readyState === WebSocket.OPEN && audioChunks.current.length > 0) {
+          ws.current.send(blob);
+          audioChunks.current = [];
+          setAgentStatus('Answer submitted. Reviewing your response...');
+        }
+      }, 1500);
     } else {
       audioChunks.current = [];
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaRecorder.current = new MediaRecorder(stream);
-        mediaRecorder.current.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.current.push(e.data); };
+        mediaRecorder.current.ondataavailable = (e) => {
+          if (e.data.size > 0) audioChunks.current.push(e.data);
+        };
         mediaRecorder.current.onstop = () => {
-          const blob = new Blob(audioChunks.current, { type: 'audio/webm' });
-          if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(blob);
+          // Audio captured - will be sent when recording stops
         };
         mediaRecorder.current.start();
         setIsRecording(true);
+        setAgentStatus('Listening... Speak your answer.');
       } catch {
         alert("Microphone access failed.");
       }
@@ -416,7 +441,53 @@ const InterviewRoom = () => {
     toggleRecordingRef.current = toggleRecording;
   });
 
+  // Auto-submit on text change and timeout detection
+  useEffect(() => {
+    const checkActivity = setInterval(() => {
+      if (!isConnected || !currentQuestion) return;
+
+      const timeSinceActivity = Date.now() - lastUserActivity;
+
+      // After 5 seconds of no activity, show confirmation
+      if (timeSinceActivity > 5000 && !showTimeoutConfirm) {
+        setShowTimeoutConfirm(true);
+        setAgentStatus("Are you still there? Please respond to continue the interview.");
+        noResponseTimerRef.current = setTimeout(() => {
+          // If no response after 5 more seconds, end interview
+          setAgentStatus("No response detected. Ending interview...");
+          setTimeout(() => {
+            handleEndInterview();
+          }, 3000);
+        }, 5000);
+      }
+    }, 1000);
+
+    return () => clearInterval(checkActivity);
+  }, [isConnected, currentQuestion, lastUserActivity, showTimeoutConfirm]);
+
+  // Update activity timestamp on user interactions
+  const updateActivity = () => {
+    setLastUserActivity(Date.now());
+    if (showTimeoutConfirm) {
+      setShowTimeoutConfirm(false);
+      clearTimeout(noResponseTimerRef.current);
+      setAgentStatus('Welcome back! Continuing interview...');
+    }
+  };
+
+  // Add activity listeners
+  useEffect(() => {
+    const handleActivity = () => updateActivity();
+    window.addEventListener('click', handleActivity);
+    window.addEventListener('keypress', handleActivity);
+    return () => {
+      window.removeEventListener('click', handleActivity);
+      window.removeEventListener('keypress', handleActivity);
+    };
+  }, [showTimeoutConfirm]);
+
   const submitCode = () => {
+    updateActivity();
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type: 'code', data: code }));
       setAgentStatus('AI Evaluator: Analyzing logic...');
@@ -424,6 +495,7 @@ const InterviewRoom = () => {
   };
 
   const submitTextAnswer = () => {
+    updateActivity();
     if (manualText.trim() && ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type: 'answer', data: manualText }));
       setAgentStatus('Text answer submitted. Reviewing your response.');

@@ -239,7 +239,7 @@ async def websocket_endpoint(
             "resume_text": resume_text,
             "job_role": job_role,
             "current_question_index": 0,
-            "max_questions": 12,
+            "max_questions": 15,
             "interview_complete": False,
             "current_phase": "warmup",
             "difficulty": "medium",

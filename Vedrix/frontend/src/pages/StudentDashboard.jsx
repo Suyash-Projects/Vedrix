@@ -20,6 +20,22 @@ const StudentDashboard = () => {
   const [uploading, setUploading] = useState(false);
   const [resumeName, setResumeName] = useState(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
+
+  // Username change state
+  const [newUsername, setNewUsername] = useState('');
+  const [usernameSaving, setUsernameSaving] = useState(false);
+  const [usernameSuccess, setUsernameSuccess] = useState(false);
+  const [usernameError, setUsernameError] = useState('');
+
+  // Password change state
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+
   const fileRef = useRef();
 
   const handleStartInterview = () => {
@@ -108,6 +124,59 @@ const StudentDashboard = () => {
     } catch (err) {
       console.error('Profile save error:', err.response?.data || err.message || err);
       alert(err.response?.data?.detail ? `Failed to save profile: ${err.response.data.detail}` : 'Failed to save profile.');
+    }
+  };
+
+  const handleUsernameChange = async (e) => {
+    e.preventDefault();
+    setUsernameError('');
+    if (!newUsername || newUsername.length < 3) {
+      setUsernameError('Username must be at least 3 characters');
+      return;
+    }
+    setUsernameSaving(true);
+    try {
+      await apiClient.put('/users/username', { new_username: newUsername });
+      setUsernameSuccess(true);
+      setNewUsername('');
+      setTimeout(() => setUsernameSuccess(false), 2500);
+    } catch (err) {
+      setUsernameError(err.response?.data?.detail || 'Failed to change username');
+    } finally {
+      setUsernameSaving(false);
+    }
+  };
+
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    setPasswordError('');
+    if (!currentPassword || !newPassword) {
+      setPasswordError('Please fill in all password fields');
+      return;
+    }
+    if (newPassword.length < 4) {
+      setPasswordError('New password must be at least 4 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New passwords do not match');
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      await apiClient.post('/users/change-password', {
+        current_password: currentPassword,
+        new_password: newPassword
+      });
+      setPasswordSuccess(true);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => setPasswordSuccess(false), 2500);
+    } catch (err) {
+      setPasswordError(err.response?.data?.detail || 'Failed to change password');
+    } finally {
+      setPasswordSaving(false);
     }
   };
 
@@ -225,18 +294,24 @@ const StudentDashboard = () => {
                   <h2 className="text-2xl font-black text-white">Profile</h2>
                   <p className="text-slate-500 text-sm">Complete at least 50% to unlock interviews.</p>
                 </div>
-                <button onClick={() => {
-                  setEditProfile({
-                    university: profile?.university ?? '',
-                    degree: profile?.degree ?? '',
-                    graduation_year: profile?.graduation_year ?? '',
-                    skills: profile?.skills ?? ''
-                  });
-                  setProfileModalOpen(true);
-                }}
-                  className="bg-purple-600 text-white px-4 py-2 rounded-2xl text-sm font-bold hover:bg-purple-500 transition-all">
-                  Edit
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={() => {
+                    setEditProfile({
+                      university: profile?.university ?? '',
+                      degree: profile?.degree ?? '',
+                      graduation_year: profile?.graduation_year ?? '',
+                      skills: profile?.skills ?? ''
+                    });
+                    setProfileModalOpen(true);
+                  }}
+                    className="bg-purple-600 text-white px-4 py-2 rounded-2xl text-sm font-bold hover:bg-purple-500 transition-all">
+                    Edit
+                  </button>
+                  <button onClick={() => setAccountSettingsOpen(true)}
+                    className="bg-white/5 border border-white/10 text-white px-4 py-2 rounded-2xl text-sm font-bold hover:bg-white/10 transition-all">
+                    Account
+                  </button>
+                </div>
               </div>
               <div className="space-y-3">
                 <div className="text-slate-400 text-sm">Completion</div>
@@ -263,7 +338,7 @@ const StudentDashboard = () => {
         </div>
 
         {profileModalOpen && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6">
+          <div className="fixed inset-0 z-[200] bg-black/70 flex items-center justify-center p-6">
             <div className="bg-[#0f172a] border border-white/10 rounded-[2rem] w-full max-w-xl p-8 space-y-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -297,6 +372,104 @@ const StudentDashboard = () => {
               <div className="flex justify-end gap-3 pt-2">
                 <button onClick={() => setProfileModalOpen(false)} className="px-6 py-3 rounded-2xl border border-white/10 text-slate-300 hover:bg-white/5 transition-all">Cancel</button>
                 <button onClick={() => handleProfileSave(editProfile)} className="px-6 py-3 rounded-2xl bg-purple-600 text-white font-bold hover:bg-purple-500 transition-all">Save Profile</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Account Settings Modal */}
+        {accountSettingsOpen && (
+          <div className="fixed inset-0 z-[200] bg-black/70 flex items-center justify-center p-6">
+            <div className="bg-[#0f172a] border border-white/10 rounded-[2rem] w-full max-w-xl p-8 space-y-8 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-black text-white">Account Settings</h2>
+                  <p className="text-slate-500 text-sm">Manage your username and password.</p>
+                </div>
+                <button onClick={() => setAccountSettingsOpen(false)} className="text-slate-400 hover:text-white">Close</button>
+              </div>
+
+              {/* Username Change */}
+              <div className="border-t border-white/10 pt-6">
+                <h3 className="text-lg font-bold text-white mb-2">Change Username</h3>
+                <p className="text-slate-500 mb-4 text-sm">Current: <span className="text-purple-400 font-mono">@{user?.username}</span></p>
+                {usernameSuccess ? (
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-4 py-3 rounded-xl text-sm font-bold">
+                    Username changed successfully!
+                  </div>
+                ) : (
+                  <form onSubmit={handleUsernameChange} className="space-y-4">
+                    {usernameError && (
+                      <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-2 rounded-xl text-sm">{usernameError}</div>
+                    )}
+                    <div>
+                      <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">New Username</label>
+                      <input
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+                        placeholder="Enter new username"
+                        value={newUsername}
+                        onChange={e => setNewUsername(e.target.value)}
+                      />
+                    </div>
+                    <button type="submit" disabled={usernameSaving}
+                      className="flex items-center space-x-2 px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/10 text-white rounded-xl font-bold text-sm transition-all disabled:opacity-50">
+                      {usernameSaving && <Loader2 className="animate-spin" size={14} />}
+                      <span>{usernameSaving ? 'Changing...' : 'Change Username'}</span>
+                    </button>
+                  </form>
+                )}
+              </div>
+
+              {/* Password Change */}
+              <div className="border-t border-white/10 pt-6">
+                <h3 className="text-lg font-bold text-white mb-2">Change Password</h3>
+                <p className="text-slate-500 mb-4 text-sm">Update your account password.</p>
+                {passwordSuccess ? (
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-4 py-3 rounded-xl text-sm font-bold">
+                    Password changed successfully!
+                  </div>
+                ) : (
+                  <form onSubmit={handlePasswordChange} className="space-y-4">
+                    {passwordError && (
+                      <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-2 rounded-xl text-sm">{passwordError}</div>
+                    )}
+                    <div>
+                      <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Current Password</label>
+                      <input
+                        type="password"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+                        placeholder="Enter current password"
+                        value={currentPassword}
+                        onChange={e => setCurrentPassword(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">New Password</label>
+                      <input
+                        type="password"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+                        placeholder="Enter new password"
+                        value={newPassword}
+                        onChange={e => setNewPassword(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Confirm New Password</label>
+                      <input
+                        type="password"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+                        placeholder="Confirm new password"
+                        value={confirmPassword}
+                        onChange={e => setConfirmPassword(e.target.value)}
+                      />
+                    </div>
+                    <button type="submit" disabled={passwordSaving}
+                      className="flex items-center space-x-2 px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/10 text-white rounded-xl font-bold text-sm transition-all disabled:opacity-50">
+                      {passwordSaving && <Loader2 className="animate-spin" size={14} />}
+                      <span>{passwordSaving ? 'Changing...' : 'Change Password'}</span>
+                    </button>
+                  </form>
+                )}
               </div>
             </div>
           </div>

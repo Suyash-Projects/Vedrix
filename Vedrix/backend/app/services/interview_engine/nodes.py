@@ -13,9 +13,21 @@ logger = logging.getLogger(__name__)
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 SAFETY_QUESTION_BANK = {
+    "greeting": [
+        "Hello! Welcome to your Vedrix AI interview. I'm excited to learn more about you today.",
+        "Hi there! Thank you for joining us. Let's get started with a warm-up."
+    ],
+    "welcome": [
+        "Thank you for being here. To begin, could you tell me a bit about yourself and what brings you to this interview?",
+        "Great to have you here! Let's start with you giving me a brief overview of your background."
+    ],
     "warmup": [
-        "Welcome! Could you start by walking me through your background and the most recent role on your resume?",
-        "Hello! I've reviewed your resume. Could you highlight a project you are particularly proud of?"
+        "Could you walk me through your most recent role and what you enjoyed most about it?",
+        "Based on your background, I'd love to hear about a project you're particularly proud of."
+    ],
+    "easy": [
+        "Let me simplify that. Can you explain [topic] in simple terms?",
+        "No worries, let's try a different approach. Can you describe a basic concept of [topic]?"
     ],
     "technical": [
         "Can you describe a challenging technical problem you solved recently and how you approached it?",
@@ -36,12 +48,13 @@ SAFETY_QUESTION_BANK = {
     ]
 }
 
+
 class QuestionSchema(BaseModel):
     id: int = Field(description="Sequence number of the question")
     question: str = Field(description="The actual interview question text")
     category: str = Field(description="Category: technical, behavioral, or resume-based")
     difficulty: str = Field(description="The difficulty level targeted")
-    time_limit: int = Field(description="Time limit for this question in seconds (e.g. 60, 120, 180)")
+    time_limit: int = Field(description="Time limit for this question in seconds")
 
 
 class EvaluationSchema(BaseModel):
@@ -51,6 +64,7 @@ class EvaluationSchema(BaseModel):
     topic: str = Field(description="The specific skill or topic being evaluated")
     should_deep_dive: bool = Field(description="Whether to ask a follow-up on this same topic")
     is_coding_challenge: bool = Field(default=False, description="Whether to trigger a coding sandbox")
+    needs_easier: bool = Field(default=False, description="Whether the candidate needs an easier question")
 
 
 # ── Nodes ─────────────────────────────────────────────────────────────────────
@@ -58,7 +72,6 @@ class EvaluationSchema(BaseModel):
 def _strip_markdown(text: str) -> str:
     """Remove markdown code fences from LLM output before JSON parsing."""
     text = text.strip()
-    # Remove ```json ... ``` or ``` ... ```
     for fence in ["```json", "```json\n", "```"]:
         if text.startswith(fence):
             text = text[len(fence):]
@@ -69,115 +82,166 @@ def _strip_markdown(text: str) -> str:
 
 
 async def generate_question_node(state: InterviewState) -> Dict[str, Any]:
-    """Interviewer Agent — generates next adaptive question."""
-    # Reference Phase 6: Adaptive Follow-ups using specialized model
+    """Interviewer Agent — generates next adaptive question with proper flow."""
     last_eval = state.get('last_evaluation')
     should_deep_dive = last_eval.get('should_deep_dive', False) if last_eval and isinstance(last_eval, dict) else False
+    needs_easier = last_eval.get('needs_easier', False) if last_eval and isinstance(last_eval, dict) else False
 
     llm = get_adaptive_llm() if should_deep_dive else get_fast_llm()
     parser = JsonOutputParser(pydantic_object=QuestionSchema)
 
     history = "\n".join(
-        f"{'Interviewer' if m['role'] == 'assistant' else 'Candidate'}: {m['content']}"
+        f"{'Interviewer' if m['role'] == 'assistant' else 'Candidate'}: {m['content'][:500]}"
         for m in state.get('messages', [])
     )
 
     phase = state['current_phase']
-    is_first_question = state['current_question_index'] == 0
+    idx = state['current_question_index']
 
-    phase_guide = {
-        "warmup": "Start with a warm, welcoming greeting if this is the first message. Then ease into resume discussion.",
-        "technical": "Transition smoothly from resume into deep technical concepts. Reference prior answers.",
-        "stress": "Push boundaries with complex architectural or edge-case logic questions.",
+    # ── PHASE-BASED FLOW ─────────────────────────────────────────────────────
+    # Start: greeting (0-1) -> welcome (1-2) -> warmup (2-4) -> technical (4-8) -> stress (8-10) -> behavioral (10-12) -> closing (12+)
+
+    if idx <= 1:
+        phase = "greeting"
+    elif idx <= 3:
+        phase = "welcome"
+    elif idx <= 5:
+        phase = "warmup"
+    elif idx <= 9:
+        phase = "technical"
+    elif idx <= 11:
+        phase = "stress"
+    elif idx <= 13:
+        phase = "behavioral"
+    else:
+        phase = "closing"
+
+    # Phase instructions with proper flow
+    phase_guides = {
+        "greeting": "Start with a warm, welcoming greeting. Introduce yourself and the interview format. Make the candidate feel comfortable.",
+        "welcome": "Thank the candidate for joining. Ask an easy opening question about their background and what excites them about this opportunity.",
+        "warmup": "Ease into resume discussion. Ask about recent experience and favorite projects. Keep questions simple and encouraging.",
+        "technical": "Transition into deeper technical concepts. Reference their prior answers. Increase difficulty gradually.",
+        "stress": "Push boundaries with complex scenarios. Test problem-solving under pressure. Be fair but challenging.",
         "behavioral": "Evaluate teamwork, communication, and problem-solving mindset with situational questions.",
-        "closing": "Wrap up the interview warmly. Summarize the session, thank the candidate, and ask if they have any final questions for the company.",
-    }.get(phase, "Ask a relevant professional question.")
+        "closing": "Wrap up warmly. Summarize, thank the candidate, and ask if they have final questions."
+    }
 
-    if is_first_question:
-        phase_guide += " CRITICAL INITIALIZATION: You MUST start by welcoming the candidate and asking a specific question about a concrete detail found in their RESUME CONTEXT. Do not ask a generic question."
+    phase_guide = phase_guides.get(phase, "Ask a relevant question.")
 
-    # Explicit Adaptation Logic (Reference Workflow A.4)
-    adaptation_instruction = ""
+    # Adaptive instructions
+    adaptation = ""
     if last_eval:
         score = last_eval.get('score', 5.0)
         topic = last_eval.get('topic', 'the previous topic')
         if should_deep_dive:
-            adaptation_instruction = f"\nADAPTATION: The candidate showed good understanding of {topic}. Ask a much more HARDER and GRANULAR follow-up question to test the limits of their knowledge on this specific topic."
-        elif score < 4.0:
-            adaptation_instruction = f"\nADAPTATION: The candidate struggled with {topic}. Ask a SIMPLER or CLARIFYING question on this topic to help them recover or demonstrate basic competency."
+            adaptation = f"\nDEEP DIVE: Candidate showed strength in {topic}. Ask a harder follow-up to test limits."
+        elif needs_easier or score < 4.0:
+            adaptation = f"\nEASIER: Candidate struggled with {topic}. Ask a SIMPLER clarifying question. Make it easy to answer."
+        elif score > 7.0:
+            adaptation = f"\nADVANCE: Excellent response on {topic}. Increase difficulty - ask a more complex version."
+
+    # First question special instruction
+    is_first = idx == 0
+    if is_first:
+        phase_guide += " CRITICAL: This is the FIRST question. Start with greeting, then ask them to introduce themselves."
 
     system_prompt = (
         f"You are an expert technical interviewer for the role of {state['job_role']}.\n\n"
         f"CURRENT PHASE: {phase}\n"
+        f"QUESTION NUMBER: {idx + 1}\n"
         f"CURRENT DIFFICULTY: {state['difficulty']}\n"
-        f"TOPIC STRENGTHS: {state['topic_strengths']}\n\n"
+        f"TOPIC STRENGTHS: {state.get('topic_strengths', {})}\n\n"
         f"HR INSTRUCTIONS: {state.get('hr_instructions', 'None')}\n"
-        f"PHASE INSTRUCTION: {phase_guide}\n"
-        f"{adaptation_instruction}\n\n"
+        f"PHASE: {phase_guide}\n"
+        f"{adaptation}\n\n"
         f"RESUME CONTEXT:\n{state['resume_text'][:2000]}\n\n"
+        f"CONVERSATION HISTORY:\n{history}\n\n"
         "RULES:\n"
-        "1. Acknowledge the candidate's previous answer before asking the next question.\n"
-        "2. Never repeat a question already asked.\n"
-        "3. OUTPUT JSON ONLY — no markdown, no explanation, just the JSON object.\n"
+        "1. Acknowledge the candidate's previous answer briefly.\n"
+        "2. Ask ONE clear question at a time.\n"
+        "3. If difficulty is 'easy', make questions simple and concrete.\n"
+        "4. If difficulty is 'hard', ask complex multi-part questions.\n"
+        "5. Never repeat questions already asked.\n"
+        "6. OUTPUT JSON ONLY.\n"
         f"{parser.get_format_instructions()}"
     )
 
     try:
         response = await llm.ainvoke([
             SystemMessage(content=system_prompt),
-            HumanMessage(content=f"Conversation History:\n{history}\n\nGenerate the next question for the {phase} phase. Output JSON only."),
+            HumanMessage(content=f"Generate question {idx + 1} for {phase} phase."),
         ])
-        # Strip markdown before parsing (LLMs often wrap JSON in ```json ... ```)
         clean_content = _strip_markdown(response.content)
         parsed_q = parser.parse(clean_content)
-        is_coding = phase == 'technical' and (state['current_question_index'] + 1) % 3 == 0
+
+        # Determine if coding challenge
+        is_coding = phase in ['technical', 'stress'] and (idx + 1) % 3 == 0
+
         return {
             "next_question": parsed_q,
             "messages": [{"role": "assistant", "content": parsed_q['question']}],
+            "current_phase": phase,
             "is_coding_mode": is_coding,
             "code_language": "python" if is_coding else None,
         }
     except Exception as e:
         logger.error(f"generate_question_node failed: {e}")
-        
-        # Robust Fallback Mechanism based on phase
-        fallback_questions = SAFETY_QUESTION_BANK.get(phase, SAFETY_QUESTION_BANK["technical"])
-        idx = state['current_question_index'] + 1
-        fallback_q = fallback_questions[(idx - 1) % len(fallback_questions)]
-        
-        fallback = {
-            "id": idx,
-            "question": fallback_q,
-            "category": phase,
-            "difficulty": state['difficulty'],
-            "time_limit": 120,
-        }
+        # Fallback
+        fallback_questions = SAFETY_QUESTION_BANK.get(phase, SAFETY_QUESTION_BANK.get("technical"))
+        fallback_q = fallback_questions[idx % len(fallback_questions)]
+
         return {
-            "next_question": fallback,
-            "messages": [{"role": "assistant", "content": fallback['question']}],
+            "next_question": {
+                "id": idx + 1,
+                "question": fallback_q,
+                "category": phase,
+                "difficulty": state['difficulty'],
+                "time_limit": 120,
+            },
+            "messages": [{"role": "assistant", "content": fallback_q}],
+            "current_phase": phase,
             "is_coding_mode": False,
-            "code_language": "python",
+            "code_language": None,
         }
 
 
 async def evaluate_answer_node(state: InterviewState) -> Dict[str, Any]:
-    """Evaluator Agent — scores the candidate's text/voice answer."""
+    """Evaluator Agent — scores the candidate's answer with adaptive feedback."""
     llm = get_strong_llm()
     parser = JsonOutputParser(pydantic_object=EvaluationSchema)
 
-    last_question = state.get('next_question', {}).get('question') if state.get('next_question') else None
+    last_question = state.get('next_question', {})
+    q_text = last_question.get('question', '') if isinstance(last_question, dict) else ''
     last_answer = state['messages'][-1]['content'] if state.get('messages') else ""
-    
-    if not last_question:
-        logger.warning("evaluate_answer_node: no last_question in state")
+
+    # Check for low effort/no answer
+    low_effort = len(last_answer.strip()) < 10 or last_answer.lower() in ['ok', 'yes', 'no', 'okay', 'uh', 'um']
+
+    if low_effort:
+        return {
+            "last_evaluation": {
+                "score": 3.0,
+                "metrics": {"accuracy": 2, "clarity": 4, "depth": 2, "communication": 4},
+                "topic": "engagement",
+                "should_deep_dive": False,
+                "needs_easier": True,
+                "feedback": "Candidate gave minimal response. Ask an easier question to encourage engagement."
+            },
+            "latest_score": 3.0,
+            "metrics": {"accuracy": 2, "clarity": 4, "depth": 2, "communication": 4},
+        }
 
     system_prompt = (
         f"You are a senior hiring manager grading a candidate for {state['job_role']}.\n\n"
         "SCORING (0.0–10.0): Accuracy (technical correctness), Clarity (communication), "
         "Depth (senior insight), Communication (professionalism).\n\n"
+        f"DIFFICULTY OF QUESTION ASKED: {state.get('difficulty', 'medium')}\n"
         f"HR GUIDANCE: {state.get('hr_instructions', 'None')}\n"
-        f"QUESTION: {last_question}\n"
+        f"QUESTION: {q_text}\n"
         f"ANSWER: {last_answer}\n\n"
+        "Evaluate fairly. If the answer is good, recommend follow-up questions. "
+        "If weak, mark needs_easier: true.\n\n"
         f"{parser.get_format_instructions()}"
     )
 
@@ -193,7 +257,14 @@ async def evaluate_answer_node(state: InterviewState) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"evaluate_answer_node failed: {e}")
         return {
-            "last_evaluation": {"score": 5.0, "metrics": {"accuracy": 5, "clarity": 5, "depth": 5, "communication": 5}, "topic": "general", "should_deep_dive": False, "feedback": ""},
+            "last_evaluation": {
+                "score": 5.0,
+                "metrics": {"accuracy": 5, "clarity": 5, "depth": 5, "communication": 5},
+                "topic": "general",
+                "should_deep_dive": False,
+                "needs_easier": False,
+                "feedback": ""
+            },
             "latest_score": 5.0,
             "metrics": {"accuracy": 5, "clarity": 5, "depth": 5, "communication": 5},
         }
@@ -201,28 +272,24 @@ async def evaluate_answer_node(state: InterviewState) -> Dict[str, Any]:
 
 async def evaluate_code_node(state: InterviewState) -> Dict[str, Any]:
     """Code Evaluator Agent — specialized evaluation for code submissions."""
-    # Reference Phase 5: GPT class model for technical logic
     llm = get_code_llm()
     parser = JsonOutputParser(pydantic_object=EvaluationSchema)
 
     code = state.get('code_snippet', "")
-    question = state.get('next_question', {}).get('question') if state.get('next_question') else None
-    
-    # Audit #11: Include Judge0 execution results in prompt
+    question = state.get('next_question', {})
+    q_text = question.get('question', '') if isinstance(question, dict) else ""
+
     last_message = state['messages'][-1]['content'] if state.get('messages') else ""
     execution_info = ""
     if "Status:" in last_message and "Output:" in last_message:
-        execution_info = f"\nJUDGE0 EXECUTION RESULTS:\n{last_message}"
-
-    if not question:
-        logger.warning("evaluate_code_node: no question in state")
+        execution_info = f"\nEXECUTION RESULTS:\n{last_message}"
 
     system_prompt = (
         f"You are a Principal Software Engineer evaluating a code submission for {state['job_role']}.\n\n"
-        f"CHALLENGE: {question}\n"
-        f"SUBMITTED CODE:\n{code}\n"
+        f"CHALLENGE: {q_text}\n"
+        f"CODE:\n{code}\n"
         f"{execution_info}\n\n"
-        "CRITERIA: Logic & Correctness (Accuracy), Time/Space Complexity (Depth), Readability (Communication).\n\n"
+        "CRITERIA: Logic & Correctness, Time/Space Complexity, Readability.\n\n"
         f"{parser.get_format_instructions()}"
     )
 
@@ -239,7 +306,14 @@ async def evaluate_code_node(state: InterviewState) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"evaluate_code_node failed: {e}")
         return {
-            "last_evaluation": {"score": 5.0, "metrics": {"accuracy": 5, "clarity": 5, "depth": 5, "communication": 5}, "topic": "coding", "should_deep_dive": False, "feedback": ""},
+            "last_evaluation": {
+                "score": 5.0,
+                "metrics": {"accuracy": 5, "clarity": 5, "depth": 5, "communication": 5},
+                "topic": "coding",
+                "should_deep_dive": False,
+                "needs_easier": False,
+                "feedback": ""
+            },
             "latest_score": 5.0,
             "metrics": {"accuracy": 5, "clarity": 5, "depth": 5, "communication": 5},
             "is_coding_mode": False,
@@ -247,16 +321,18 @@ async def evaluate_code_node(state: InterviewState) -> Dict[str, Any]:
 
 
 async def update_memory_node(state: InterviewState) -> Dict[str, Any]:
-    """Decision & Memory Agent — updates difficulty, phase, and topic scores."""
+    """Decision & Memory Agent — adaptive difficulty, phase transitions, completion."""
     try:
-        eval_result = state['last_evaluation']
+        eval_result = state.get('last_evaluation', {})
         topic = eval_result.get('topic', 'general')
         score = eval_result.get('score', 5.0)
+        needs_easier = eval_result.get('needs_easier', False)
 
-        # Update topic strengths (audit #19: also write topic_scores)
-        new_strengths = state.get('topic_strengths', {}).copy()
+        # Update topic scores
         new_topic_scores = state.get('topic_scores', {}).copy()
         new_topic_scores[topic] = score
+
+        new_strengths = state.get('topic_strengths', {}).copy()
         if score >= 7.5:
             new_strengths[topic] = "strong"
         elif score >= 4.5:
@@ -264,32 +340,43 @@ async def update_memory_node(state: InterviewState) -> Dict[str, Any]:
         else:
             new_strengths[topic] = "weak"
 
-        # Adaptive difficulty
+        # Adaptive difficulty with easier fallback
         diff = state['difficulty']
-        if score > 7.0:
-            if diff == "easy": diff = "medium"
-            elif diff == "medium": diff = "hard"
+        if needs_easier:
+            diff = "easy"
+        elif score > 7.0:
+            if diff == "easy":
+                diff = "medium"
+            elif diff == "medium":
+                diff = "hard"
         elif score < 4.0:
-            if diff == "hard": diff = "medium"
-            elif diff == "medium": diff = "easy"
+            if diff == "hard":
+                diff = "medium"
+            elif diff == "medium":
+                diff = "easy"
 
-        # Phase transitions
-        phase = state['current_phase']
+        # Phase transitions based on question count
         idx = state['current_question_index'] + 1
+        phase = state['current_phase']
 
-        if phase == "warmup" and idx >= 2:
+        # Auto transition phases
+        if phase == "greeting" and idx >= 2:
+            phase = "welcome"
+        elif phase == "welcome" and idx >= 4:
+            phase = "warmup"
+        elif phase == "warmup" and idx >= 6:
             phase = "technical"
-        elif phase == "technical" and idx >= 6:
-            phase = "stress" if score > 8.0 else "behavioral"
-        elif phase == "stress" and idx >= 9:
+        elif phase == "technical" and idx >= 10:
+            phase = "stress"
+        elif phase == "stress" and idx >= 12:
             phase = "behavioral"
-        elif phase == "behavioral" and idx >= 11:
+        elif phase == "behavioral" and idx >= 14:
             phase = "closing"
 
-        # Mark complete when we've finished all question cycles AND have conducted the closing phase
+        # Complete when closing done with sufficient questions
         is_complete = (
-            idx >= state['max_questions'] or
-            (state['current_phase'] == "closing" and idx >= 11)
+            idx >= state.get('max_questions', 12) and phase in ['closing', 'behavioral'] or
+            idx >= 15  # Hard cap at 15 questions
         )
 
         return {
@@ -299,12 +386,11 @@ async def update_memory_node(state: InterviewState) -> Dict[str, Any]:
             "current_phase": phase,
             "current_question_index": idx,
             "interview_complete": is_complete,
-            "is_coding_mode": state.get('is_coding_mode', False),
+            "is_coding_mode": False,
         }
     except Exception as e:
         logger.error(f"update_memory_node failed: {e}")
-        # Return current state to avoid breaking the graph
         return {
             "current_question_index": state['current_question_index'] + 1,
-            "interview_complete": state['current_question_index'] + 1 >= state['max_questions']
+            "interview_complete": state['current_question_index'] + 1 >= state.get('max_questions', 12)
         }

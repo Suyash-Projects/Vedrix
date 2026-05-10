@@ -20,10 +20,10 @@ const Navbar = () => {
   };
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-[#020617]/80 backdrop-blur-xl border-b border-white/5">
+    <nav className="fixed top-0 left-0 right-0 z-[100] bg-[#020617]/80 backdrop-blur-xl border-b border-white/5">
       <div className="max-w-7xl mx-auto px-8 h-20 flex items-center justify-between">
-        <Link 
-          to="/"
+        <Link
+          to="/home"
           className="flex items-center space-x-3 cursor-pointer group"
         >
           <div className="w-10 h-10 bg-gradient-to-tr from-purple-600 to-indigo-400 rounded-xl flex items-center justify-center text-white shadow-lg shadow-purple-900/20 group-hover:scale-110 transition-all">
@@ -34,7 +34,7 @@ const Navbar = () => {
 
         {/* Desktop Nav */}
         <div className="hidden md:flex items-center space-x-10">
-          <Link to="/" className="text-slate-400 hover:text-white font-bold text-sm uppercase tracking-widest transition-colors">Home</Link>
+          <Link to="/home" className="text-slate-400 hover:text-white font-bold text-sm uppercase tracking-widest transition-colors">Home</Link>
           {isAuthenticated && (
             <>
               <Link to={getDashboardPath()} className="text-slate-400 hover:text-white font-bold text-sm uppercase tracking-widest transition-colors">Dashboard</Link>

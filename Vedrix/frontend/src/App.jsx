@@ -40,6 +40,7 @@ function App() {
       <main className={showNavbar ? 'pt-20' : 'pt-0'}>
         <Routes>
           {/* Public Routes */}
+          <Route path="/home" element={<LandingPage />} />
           <Route path="/" element={
             isAuthenticated ? <Navigate to={getDashboardPath(user)} replace /> : <LandingPage />
           } />

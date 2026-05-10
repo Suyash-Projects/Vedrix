@@ -1,7 +1,23 @@
-import { Mic, BarChart3, ShieldCheck, ChevronRight, BrainCircuit } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Mic, BarChart3, ShieldCheck, ChevronRight, BrainCircuit, User, LogOut } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import useAuthStore from '../store/useAuthStore';
 
-const LandingPage = () => (
+const LandingPage = () => {
+  const { isAuthenticated, user, logout } = useAuthStore();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/home');
+  };
+
+  const getDashboardPath = () => {
+    if (user?.user_type === 'hr') return '/hr';
+    if (user?.user_type === 'admin') return '/admin';
+    return '/dashboard';
+  };
+
+  return (
   <div className="bg-[#020617] overflow-hidden">
 
     {/* ── HERO ─────────────────────────────────────────────────────────── */}
@@ -31,15 +47,41 @@ const LandingPage = () => (
           </p>
 
           <div className="flex flex-wrap gap-4">
-            <Link to="/register"
-              className="inline-flex items-center space-x-2 bg-purple-600 hover:bg-purple-500 text-white font-bold px-8 py-4 rounded-2xl transition-all shadow-[0_0_40px_rgba(124,58,237,0.35)] active:scale-95">
-              <span>Get Started Free</span>
-              <ChevronRight size={18} />
-            </Link>
-            <Link to="/login"
-              className="inline-flex items-center space-x-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold px-8 py-4 rounded-2xl transition-all">
-              <span>Sign In</span>
-            </Link>
+            {isAuthenticated ? (
+              <>
+                <div className="inline-flex items-center space-x-3 bg-white/5 border border-white/10 px-6 py-3 rounded-2xl">
+                  <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center">
+                    <User size={18} className="text-white" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-white font-bold text-sm">{user?.first_name} {user?.last_name}</p>
+                    <p className="text-slate-400 text-xs capitalize">{user?.user_type}</p>
+                  </div>
+                </div>
+                <Link to={getDashboardPath()}
+                  className="inline-flex items-center space-x-2 bg-purple-600 hover:bg-purple-500 text-white font-bold px-8 py-4 rounded-2xl transition-all shadow-[0_0_40px_rgba(124,58,237,0.35)] active:scale-95">
+                  <span>Go to Dashboard</span>
+                  <ChevronRight size={18} />
+                </Link>
+                <button onClick={handleLogout}
+                  className="inline-flex items-center space-x-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold px-8 py-4 rounded-2xl transition-all">
+                  <span>Logout</span>
+                  <LogOut size={18} />
+                </button>
+              </>
+            ) : (
+              <>
+                <Link to="/register"
+                  className="inline-flex items-center space-x-2 bg-purple-600 hover:bg-purple-500 text-white font-bold px-8 py-4 rounded-2xl transition-all shadow-[0_0_40px_rgba(124,58,237,0.35)] active:scale-95">
+                  <span>Get Started Free</span>
+                  <ChevronRight size={18} />
+                </Link>
+                <Link to="/login"
+                  className="inline-flex items-center space-x-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold px-8 py-4 rounded-2xl transition-all">
+                  <span>Sign In</span>
+                </Link>
+              </>
+            )}
           </div>
 
           <div className="flex items-center space-x-8 pt-4 border-t border-white/5">
@@ -200,20 +242,47 @@ const LandingPage = () => (
           Join teams using Vedrix to run faster, fairer, and more insightful interviews.
         </p>
         <div className="flex flex-wrap justify-center gap-4">
-          <Link to="/register"
-            className="inline-flex items-center space-x-2 bg-purple-600 hover:bg-purple-500 text-white font-black px-10 py-5 rounded-2xl transition-all shadow-[0_0_50px_rgba(124,58,237,0.4)] active:scale-95 text-sm uppercase tracking-widest">
-            <span>Start for Free</span>
-            <ChevronRight size={18} />
-          </Link>
-          <Link to="/login"
-            className="inline-flex items-center space-x-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold px-10 py-5 rounded-2xl transition-all text-sm">
-            <span>Sign In</span>
-          </Link>
+          {isAuthenticated ? (
+            <>
+              <div className="inline-flex items-center space-x-3 bg-white/5 border border-white/10 px-6 py-3 rounded-2xl">
+                <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center">
+                  <User size={18} className="text-white" />
+                </div>
+                <div className="text-left">
+                  <p className="text-white font-bold text-sm">{user?.first_name} {user?.last_name}</p>
+                  <p className="text-slate-400 text-xs capitalize">{user?.user_type}</p>
+                </div>
+              </div>
+              <Link to={getDashboardPath()}
+                className="inline-flex items-center space-x-2 bg-purple-600 hover:bg-purple-500 text-white font-black px-10 py-5 rounded-2xl transition-all shadow-[0_0_50px_rgba(124,58,237,0.4)] active:scale-95 text-sm uppercase tracking-widest">
+                <span>Go to Dashboard</span>
+                <ChevronRight size={18} />
+              </Link>
+              <button onClick={handleLogout}
+                className="inline-flex items-center space-x-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold px-10 py-5 rounded-2xl transition-all text-sm">
+                <span>Logout</span>
+                <LogOut size={18} />
+              </button>
+            </>
+          ) : (
+            <>
+              <Link to="/register"
+                className="inline-flex items-center space-x-2 bg-purple-600 hover:bg-purple-500 text-white font-black px-10 py-5 rounded-2xl transition-all shadow-[0_0_50px_rgba(124,58,237,0.4)] active:scale-95 text-sm uppercase tracking-widest">
+                <span>Start for Free</span>
+                <ChevronRight size={18} />
+              </Link>
+              <Link to="/login"
+                className="inline-flex items-center space-x-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold px-10 py-5 rounded-2xl transition-all text-sm">
+                <span>Sign In</span>
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </section>
 
   </div>
 );
+};
 
 export default LandingPage;
