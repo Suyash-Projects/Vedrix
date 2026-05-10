@@ -10,18 +10,38 @@ describe('LandingPage', () => {
         <LandingPage />
       </BrowserRouter>
     );
-    
-    expect(screen.getByText(/Better Interviews/i)).toBeInTheDocument();
-    expect(screen.getByText(/Get Started/i)).toBeInTheDocument();
+
+    expect(screen.getByText(/Smarter Interviews/i)).toBeInTheDocument();
+    expect(screen.getByText(/Better Hires/i)).toBeInTheDocument();
   });
 
-  it('contains the "Next-Gen" badge', () => {
+  it('contains the AI-Powered badge', () => {
     render(
       <BrowserRouter>
         <LandingPage />
       </BrowserRouter>
     );
-    
-    expect(screen.getByText(/Structured AI Interview Workflows/i)).toBeInTheDocument();
+
+    expect(screen.getByText(/AI-Powered Interview Platform/i)).toBeInTheDocument();
+  });
+
+  it('shows Get Started button', () => {
+    render(
+      <BrowserRouter>
+        <LandingPage />
+      </BrowserRouter>
+    );
+
+    expect(screen.getByText(/Get Started Free/i)).toBeInTheDocument();
+  });
+
+  it('shows Sign In link', () => {
+    render(
+      <BrowserRouter>
+        <LandingPage />
+      </BrowserRouter>
+    );
+
+    expect(screen.getAllByText(/Sign In/i).length).toBeGreaterThan(0);
   });
 });

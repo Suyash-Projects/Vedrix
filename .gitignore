@@ -77,6 +77,9 @@ target/
 # Jupyter Notebook
 .ipynb_checkpoints
 .github
+.opencode
+.claude
+
 
 # IPython
 profile_default/
@@ -138,10 +141,10 @@ reference/
  Prototype/
 Vedrix/frontend/node_modules/
 Vedrix/frontend/dist/
-*.db
+
 *.sqlite
 *.sqlite3
-interview_agent.db
+
 
 # Uploaded files
 static/uploads/
@@ -160,8 +163,7 @@ uploads/
 ._*
 .Spotlight-V100
 .Trashes
-ehthumbs.db
-Thumbs.db
+
 
 # Logs
 logs/
