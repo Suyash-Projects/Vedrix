@@ -72,27 +72,15 @@ class VoiceService:
 
     async def speak_text(self, text: str) -> str:
         """
-        Convert text -> base64-encoded MP3/WAV audio.
-        Returns empty string if no provider is available (silent fallback).
+        Convert text -> base64-encoded MP3 audio.
+        Uses Browser Web Speech API (via frontend). Backend sends the text,
+        frontend handles synthesis for zero-cost TTS.
+        Returns empty string — frontend uses Web Speech API.
         """
-        if not text.strip():
-            return ""
-
-        # Priority 1: OpenAI TTS (High quality, reliable)
-        if self._openai:
-            try:
-                response = await self._openai.audio.speech.create(
-                    model="tts-1",
-                    voice="alloy",  # professional neutral voice
-                    input=text[:4096],
-                )
-                # response.content is raw bytes
-                return base64.b64encode(response.content).decode("utf-8")
-            except Exception as e:
-                logger.error(f"OpenAI TTS error: {e}")
-
-        # Priority 2: Fallback (Silent for now, or add other providers)
-        logger.warning("TTS: No active provider or all providers failed. Falling back to silent mode.")
+        # TTS is handled by the frontend using the free Browser Web Speech API.
+        # This method is kept as a placeholder for potential future server-side
+        # TTS (e.g. Coqui TTS, XTTS, or Bark). For now, returns empty to signal
+        # the frontend to use its built-in speech synthesis.
         return ""
 
 

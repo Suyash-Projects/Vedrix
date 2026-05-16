@@ -539,6 +539,12 @@ async def list_hr_interviews(
             "created_at": row[0].created_at,
             "drive_title": row[1],
             "job_role": row[2],
+            # Phase 1A: Advisor fields
+            "advisor_ready_to_close": row[0].advisor_ready_to_close,
+            "advisor_confidence": row[0].advisor_confidence,
+            "advisor_reason": row[0].advisor_reason,
+            "advisor_reason_category": row[0].advisor_reason_category,
+            "advisor_suggested_at": row[0].advisor_suggested_at,
         }
         for row in rows
     ]
@@ -626,3 +632,47 @@ async def export_interview_pdf(
             "Content-Disposition": f"attachment; filename=Vedrix_Report_{session.id}.pdf"
         }
     )
+
+
+# ── Phase 1A: HR Close Interview Endpoint ─────────────────────────────────────
+
+@router.post("/interviews/{session_id}/close")
+async def hr_close_interview(
+    session_id: int,
+    body: dict = None,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr)
+) -> Any:
+    """
+    HR closes an active interview session.
+    Updates status to 'hr_closed' and marks advisor action as taken.
+    """
+    hr_profile = await _get_hr_profile(db, current_hr.id)
+
+    result = await db.execute(
+        select(InterviewSession).join(
+            JobDrive, InterviewSession.job_drive_id == JobDrive.id
+        ).where(
+            InterviewSession.id == session_id,
+            JobDrive.hr_id == hr_profile.id,
+            InterviewSession.status == "in_progress"
+        )
+    )
+    session = result.scalars().first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Active interview session not found")
+
+    session.status = "hr_closed"
+    session.end_time = datetime.now(timezone.utc)
+    session.advisor_action_taken = True
+    if body and body.get("message"):
+        session.advisor_reason = body.get("message")
+
+    db.add(session)
+    await db.commit()
+
+    return {
+        "status": "closed",
+        "session_id": session_id,
+        "message": "Interview closed by HR",
+    }

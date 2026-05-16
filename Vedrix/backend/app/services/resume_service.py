@@ -6,7 +6,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
 
-from app.services.interview_engine.providers import get_fast_llm
+from app.services.interview_engine.model_router import get_resume_llm
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class ResumeParser:
         """AI-based skill extraction — async to avoid blocking the event loop."""
         if not text:
             return []
-        llm = get_fast_llm()
+        llm = get_resume_llm()
         parser = JsonOutputParser(pydantic_object=SkillsSchema)
         system_prompt = (
             "You are an expert recruiter. Extract a comprehensive list of technical and soft skills "

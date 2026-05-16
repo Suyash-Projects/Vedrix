@@ -116,6 +116,7 @@ const AdminDashboard = () => {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
   }, []);
 
@@ -215,7 +216,7 @@ const AdminDashboard = () => {
   const handleResetPassword = async (userId, username) => {
     if (!window.confirm(`Reset password for "${username}"? A new password will be generated and sent to their email.`)) return;
     try {
-      const res = await apiClient.post(`/admin/users/${userId}/reset-password`);
+      await apiClient.post(`/admin/users/${userId}/reset-password`);
       showMsg('success', `Password reset for ${username}. New credentials sent to email.`);
     } catch (err) {
       showMsg('error', err.response?.data?.detail || 'Failed to reset password');
@@ -229,7 +230,7 @@ const AdminDashboard = () => {
       await apiClient.patch(`/admin/drives/${driveId}/toggle`);
       showMsg('success', 'Drive status toggled');
       await fetchData();
-    } catch (err) {
+    } catch {
       showMsg('error', 'Failed to toggle drive');
     }
   };
@@ -240,7 +241,7 @@ const AdminDashboard = () => {
       await apiClient.delete(`/admin/drives/${driveId}`);
       showMsg('success', 'Drive deleted');
       await fetchData();
-    } catch (err) {
+    } catch {
       showMsg('error', 'Failed to delete drive');
     }
   };
@@ -285,7 +286,7 @@ const AdminDashboard = () => {
       await apiClient.delete(`/admin/templates/${templateId}`);
       showMsg('success', 'Template deleted');
       await fetchData();
-    } catch (err) {
+    } catch {
       showMsg('error', 'Failed to delete template');
     }
   };

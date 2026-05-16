@@ -12,6 +12,8 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.core.rate_limit import limiter
 from app.core.logging_config import setup_logging, get_logger
 from app.core.metrics import router as metrics_router
+from app.core.csrf import CSRFMiddleware
+from app.services.session_cleanup import session_cleanup
 import uuid
 import time
 from sqlalchemy import text
@@ -25,9 +27,12 @@ async def lifespan(app: FastAPI):
     # Startup logic
     await init_db()
     await init_cache()
-    logger.info("Vedrix backend started — DB and cache initialized")
+    # Phase 1.4: Start session cleanup service
+    await session_cleanup.start_cleanup_loop(interval_seconds=300)  # Every 5 minutes
+    logger.info("Vedrix backend started — DB, cache, and session cleanup initialized")
     yield
     # Shutdown logic
+    await session_cleanup.stop_cleanup_loop()
     await close_cache()
     logger.info("Vedrix backend shutting down")
 
@@ -41,6 +46,9 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+# CSRF Protection — must be after SlowAPI but before CORS
+app.add_middleware(CSRFMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

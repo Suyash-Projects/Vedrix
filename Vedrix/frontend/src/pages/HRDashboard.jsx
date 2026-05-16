@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -10,6 +10,7 @@ import {
 import apiClient from '../services/api';
 import useAuthStore from '../store/useAuthStore';
 import SkillMatrixTab from '../components/SkillMatrixTab';
+import AdvisorBadge from '../components/AdvisorBadge';
 
 /* ── CREATE/EDIT DRIVE MODAL ── */
 const DriveModal = ({ onClose, onSaved, drive = null }) => {
@@ -267,14 +268,12 @@ const TakeoverModal = ({ session, onClose }) => {
 /* ── CANDIDATE LIST MODAL ── */
 const CandidateListModal = ({ drive, onClose }) => {
   const [candidates, setCandidates] = useState([]);
-  const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     apiClient.get(`/hr/drives/${drive.id}/candidates`)
       .then(res => {
         setCandidates(res.data.candidates || []);
-        setSessions(res.data.sessions || []);
       })
       .catch(() => alert('Failed to fetch candidates'))
       .finally(() => setLoading(false));
@@ -578,8 +577,43 @@ const HRDashboard = () => {
   const [copiedId, setCopiedId] = useState(null);
   const [activeMenuId, setActiveMenuId] = useState(null);
 
+  // Phase 1A: Track dismissed advisor suggestions
+  const [dismissedAdvisors, setDismissedAdvisors] = useState(new Set());
+
   const handleViewReport = (sessionId) => {
     navigate(`/report/${sessionId}`);
+  };
+
+  // Phase 1A: Extract advisor suggestions from live sessions (derived state)
+  const advisorSuggestions = useMemo(() => {
+    return liveSessions
+      .filter(s => s.advisor_ready_to_close && !s.advisor_action_taken && !dismissedAdvisors.has(s.id))
+      .map(s => ({
+        sessionId: s.id,
+        candidateName: s.candidate_name || s.candidate_email || `Session #${s.id}`,
+        ready_to_close: true,
+        confidence: s.advisor_confidence || 0,
+        reason: s.advisor_reason || 'AI suggests this interview is ready to close.',
+        reason_category: s.advisor_reason_category || 'strong_performance',
+      }));
+  }, [liveSessions, dismissedAdvisors]);
+
+  // Phase 1A: Handle closing an interview from advisor badge
+  const handleCloseInterview = async (sessionId) => {
+    try {
+      await apiClient.post(`/hr/interviews/${sessionId}/close`, {
+        message: 'Interview closed by HR via AI Advisor suggestion',
+      });
+      // Refresh data
+      fetchData();
+    } catch (err) {
+      console.error('Failed to close interview:', err);
+      alert('Failed to close interview. Please try again.');
+    }
+  };
+
+  const handleDismissAdvisor = (sessionId) => {
+    setDismissedAdvisors(prev => new Set([...prev, sessionId]));
   };
 
   const fetchData = async () => {
@@ -624,11 +658,11 @@ const HRDashboard = () => {
 
   // Preflight HR profile check
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchProfileCheck();
   }, []);
 
   useEffect(() => { 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData(); 
     // Basic polling for live sessions could be added here
     const interval = setInterval(fetchData, 15000);
@@ -648,7 +682,7 @@ const HRDashboard = () => {
 
   const [sortConfig, setSortConfig] = useState({ key: 'overall_score', direction: 'desc' });
 
-  const sortedInterviews = React.useMemo(() => {
+  const sortedInterviews = useMemo(() => {
     let sortableInterviews = [...interviews];
     sortableInterviews.sort((a, b) => {
       let aValue = a[sortConfig.key];
@@ -684,6 +718,16 @@ const HRDashboard = () => {
         {bulkInviteDrive && <BulkInviteModal drive={bulkInviteDrive} onClose={() => setBulkInviteDrive(null)} />}
         {takeoverSession && <TakeoverModal session={takeoverSession} onClose={() => setTakeoverSession(null)} />}
       </AnimatePresence>
+
+      {/* Phase 1A: Advisor Badges for each session ready to close */}
+      {advisorSuggestions.map(suggestion => (
+        <AdvisorBadge
+          key={suggestion.sessionId}
+          suggestion={suggestion}
+          onCloseInterview={() => handleCloseInterview(suggestion.sessionId)}
+          onDismiss={() => handleDismissAdvisor(suggestion.sessionId)}
+        />
+      ))}
 
       {/* Sidebar */}
       <div className="w-72 bg-[#0a0f1e] border-r border-white/5 p-8 flex-col space-y-10 hidden lg:flex">

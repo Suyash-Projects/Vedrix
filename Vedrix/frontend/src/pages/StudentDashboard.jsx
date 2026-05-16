@@ -14,7 +14,13 @@ const StudentDashboard = () => {
   const [stats, setStats] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [profile, setProfile] = useState(null);
-  const [editProfile, setEditProfile] = useState({ university: '', degree: '', graduation_year: '', skills: '' });
+  const [editProfile, setEditProfile] = useState({
+    university: '', degree: '', graduation_year: '', gpa: '', major: '', minor: '',
+    skills: '', experience_level: '', work_experience: '', internships: '',
+    projects: '', certifications: '', languages: '',
+    linkedin_url: '', github_url: '', portfolio_url: '', hackathons: '',
+    expected_salary: '', preferred_locations: '', availability: '', interests: ''
+  });
   const [completion, setCompletion] = useState(0);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -297,10 +303,31 @@ const StudentDashboard = () => {
                 <div className="flex gap-2">
                   <button onClick={() => {
                     setEditProfile({
+                      // Academic
                       university: profile?.university ?? '',
                       degree: profile?.degree ?? '',
                       graduation_year: profile?.graduation_year ?? '',
-                      skills: profile?.skills ?? ''
+                      gpa: profile?.gpa ?? '',
+                      major: profile?.major ?? '',
+                      minor: profile?.minor ?? '',
+                      // Skills & Experience
+                      skills: profile?.skills ?? '',
+                      experience_level: profile?.experience_level ?? '',
+                      work_experience: profile?.work_experience ?? '',
+                      internships: profile?.internships ?? '',
+                      // Additional
+                      projects: profile?.projects ?? '',
+                      certifications: profile?.certifications ?? '',
+                      languages: profile?.languages ?? '',
+                      linkedin_url: profile?.linkedin_url ?? '',
+                      github_url: profile?.github_url ?? '',
+                      portfolio_url: profile?.portfolio_url ?? '',
+                      hackathons: profile?.hackathons ?? '',
+                      // Preferences
+                      expected_salary: profile?.expected_salary ?? '',
+                      preferred_locations: profile?.preferred_locations ?? '',
+                      availability: profile?.availability ?? '',
+                      interests: profile?.interests ?? '',
                     });
                     setProfileModalOpen(true);
                   }}
@@ -338,37 +365,77 @@ const StudentDashboard = () => {
         </div>
 
         {profileModalOpen && (
-          <div className="fixed inset-0 z-[200] bg-black/70 flex items-center justify-center p-6">
-            <div className="bg-[#0f172a] border border-white/10 rounded-[2rem] w-full max-w-xl p-8 space-y-6">
+          <div className="fixed inset-0 z-[200] bg-black/70 flex items-center justify-center p-4">
+            <div className="bg-[#0f172a] border border-white/10 rounded-[2rem] w-full max-w-2xl p-6 space-y-6 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-2xl font-black text-white">Edit Student Profile</h2>
-                  <p className="text-slate-500 text-sm">Save essential profile details to access interviews.</p>
+                  <p className="text-slate-500 text-sm">Complete your profile to get personalized interview questions.</p>
                 </div>
                 <button onClick={() => setProfileModalOpen(false)} className="text-slate-400 hover:text-white">Close</button>
               </div>
-              {[
-                { label: 'University', key: 'university', placeholder: 'e.g. University of XYZ' },
-                { label: 'Degree', key: 'degree', placeholder: 'e.g. B.Sc. Computer Science' },
-                { label: 'Graduation Year', key: 'graduation_year', placeholder: 'e.g. 2026', type: 'number' },
-                { label: 'Top Skills', key: 'skills', placeholder: 'e.g. Python, React, SQL' },
-              ].map(({ label, key, placeholder, type }) => (
-                <div key={key}>
-                  <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">{label}</label>
-                  <input
-                    type={type || 'text'}
-                    value={editProfile[key] ?? ''}
-                    onChange={(e) => setEditProfile({
-                      ...editProfile,
-                      [key]: type === 'number'
-                        ? (e.target.value === '' ? null : Number(e.target.value))
-                        : e.target.value,
-                    })}
-                    placeholder={placeholder}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all"
-                  />
+
+              {/* Academic Section */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-black uppercase text-purple-400 tracking-widest">Academic</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <input type="text" placeholder="University" value={editProfile.university} onChange={e => setEditProfile({...editProfile, university: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />
+                  <input type="text" placeholder="Major (e.g. CS)" value={editProfile.major} onChange={e => setEditProfile({...editProfile, major: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />
+                  <input type="text" placeholder="Degree (e.g. B.Sc. CS)" value={editProfile.degree} onChange={e => setEditProfile({...editProfile, degree: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />
+                  <input type="text" placeholder="Minor" value={editProfile.minor} onChange={e => setEditProfile({...editProfile, minor: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />
+                  <input type="number" placeholder="Graduation Year" value={editProfile.graduation_year} onChange={e => setEditProfile({...editProfile, graduation_year: e.target.value ? Number(e.target.value) : null})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />
+                  <input type="number" step="0.01" placeholder="GPA (e.g. 3.8)" value={editProfile.gpa} onChange={e => setEditProfile({...editProfile, gpa: e.target.value ? Number(e.target.value) : null})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />
                 </div>
-              ))}
+              </div>
+
+              {/* Skills & Experience Section */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-black uppercase text-purple-400 tracking-widest">Skills & Experience</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <input type="text" placeholder="Technical Skills (Python, React, SQL)" value={editProfile.skills} onChange={e => setEditProfile({...editProfile, skills: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none col-span-2" />
+                  <select value={editProfile.experience_level} onChange={e => setEditProfile({...editProfile, experience_level: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none">
+                    <option value="">Experience Level</option>
+                    <option value="entry">Entry Level</option>
+                    <option value="mid">Mid Level</option>
+                    <option value="senior">Senior Level</option>
+                  </select>
+                  <input type="text" placeholder="Availability (e.g. Immediately)" value={editProfile.availability} onChange={e => setEditProfile({...editProfile, availability: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />
+                  <input type="text" placeholder="Work Experience (Company, Role, Years)" value={editProfile.work_experience} onChange={e => setEditProfile({...editProfile, work_experience: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none col-span-2" />
+                  <input type="text" placeholder="Internships" value={editProfile.internships} onChange={e => setEditProfile({...editProfile, internships: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none col-span-2" />
+                </div>
+              </div>
+
+              {/* Projects & Certifications Section */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-black uppercase text-purple-400 tracking-widest">Projects & Certifications</h3>
+                <div className="space-y-4">
+                  <input type="text" placeholder="Projects (e.g. E-commerce site - React, Node)" value={editProfile.projects} onChange={e => setEditProfile({...editProfile, projects: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />
+                  <input type="text" placeholder="Certifications (e.g. AWS Certified, Google Analytics)" value={editProfile.certifications} onChange={e => setEditProfile({...editProfile, certifications: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />
+                  <input type="text" placeholder="Hackathons (e.g. HackMIT 2024, NASA Space Apps)" value={editProfile.hackathons} onChange={e => setEditProfile({...editProfile, hackathons: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />
+                </div>
+              </div>
+
+              {/* Links Section */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-black uppercase text-purple-400 tracking-widest">Links</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <input type="text" placeholder="LinkedIn URL" value={editProfile.linkedin_url} onChange={e => setEditProfile({...editProfile, linkedin_url: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />
+                  <input type="text" placeholder="GitHub URL" value={editProfile.github_url} onChange={e => setEditProfile({...editProfile, github_url: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />
+                  <input type="text" placeholder="Portfolio URL" value={editProfile.portfolio_url} onChange={e => setEditProfile({...editProfile, portfolio_url: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none col-span-2" />
+                </div>
+              </div>
+
+              {/* Languages & Interests Section */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-black uppercase text-purple-400 tracking-widest">Languages & Preferences</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <input type="text" placeholder="Languages (e.g. English-Native, Spanish-Intermediate)" value={editProfile.languages} onChange={e => setEditProfile({...editProfile, languages: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />
+                  <input type="text" placeholder="Expected Salary" value={editProfile.expected_salary} onChange={e => setEditProfile({...editProfile, expected_salary: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />
+                  <input type="text" placeholder="Preferred Locations (Remote, NYC, SF)" value={editProfile.preferred_locations} onChange={e => setEditProfile({...editProfile, preferred_locations: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none col-span-2" />
+                  <input type="text" placeholder="Interests (e.g. AI, Web Dev, Systems)" value={editProfile.interests} onChange={e => setEditProfile({...editProfile, interests: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none col-span-2" />
+                </div>
+              </div>
+
               <div className="flex justify-end gap-3 pt-2">
                 <button onClick={() => setProfileModalOpen(false)} className="px-6 py-3 rounded-2xl border border-white/10 text-slate-300 hover:bg-white/5 transition-all">Cancel</button>
                 <button onClick={() => handleProfileSave(editProfile)} className="px-6 py-3 rounded-2xl bg-purple-600 text-white font-bold hover:bg-purple-500 transition-all">Save Profile</button>

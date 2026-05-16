@@ -22,13 +22,14 @@ async def get_student_stats(
     )
     sessions = result.scalars().all()
     completed = [s for s in sessions if s.status == "completed" and s.overall_score is not None]
-    avg_score = round(sum(s.overall_score for s in completed) / len(completed), 1) if completed else None
+    scores = [s.overall_score for s in completed if s.overall_score is not None]
+    avg_score = round(sum(scores) / len(scores), 1) if scores else None
 
     return {
         "total_interviews": len(sessions),
         "completed_interviews": len(completed),
         "avg_score": avg_score,
-        "best_score": max((s.overall_score for s in completed), default=None),
+        "best_score": max(scores, default=None),
     }
 
 

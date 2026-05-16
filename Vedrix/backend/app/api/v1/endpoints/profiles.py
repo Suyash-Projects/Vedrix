@@ -12,15 +12,61 @@ from pydantic import BaseModel
 router = APIRouter()
 
 class StudentProfileCreate(BaseModel):
+    # Academic
     university: Optional[str] = None
     degree: Optional[str] = None
     graduation_year: Optional[int] = None
+    gpa: Optional[float] = None
+    major: Optional[str] = None
+    minor: Optional[str] = None
+
+    # Skills & Experience
     skills: Optional[str] = None
+    experience_level: Optional[str] = None
+    work_experience: Optional[str] = None
+    internships: Optional[str] = None
+
+    # Resume
+    resume_file: Optional[str] = None
+    resume_text: Optional[str] = None
+
+    # Additional Profile Fields
+    projects: Optional[str] = None
+    certifications: Optional[str] = None
+    languages: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    github_url: Optional[str] = None
+    portfolio_url: Optional[str] = None
+    hackathons: Optional[str] = None
+
+    # Additional Info
+    expected_salary: Optional[str] = None
+    preferred_locations: Optional[str] = None
+    availability: Optional[str] = None
+    interests: Optional[str] = None
 
 class HRProfileCreate(BaseModel):
+    # Company Info
     company_name: str
+    company_website: Optional[str] = None
+    company_size: Optional[str] = None
+    company_industry: Optional[str] = None
+
+    # HR Info
     department: Optional[str] = None
     position: Optional[str] = None
+
+    # LinkedIn & Social
+    linkedin_url: Optional[str] = None
+
+    # Recruiting Info
+    hiring_volume: Optional[str] = None
+    common_roles: Optional[str] = None
+    tech_stack: Optional[str] = None
+
+    # Interview Preferences
+    interview_duration: Optional[int] = None
+    include_coding_challenge: Optional[bool] = None
 
 @router.post("/student", response_model=dict)
 async def create_student_profile(
@@ -46,6 +92,15 @@ async def create_student_profile(
     await db.commit()
     return {"status": "success", "message": "Student profile updated"}
 
+@router.put("/student", response_model=dict)
+async def update_student_profile(
+    profile_in: StudentProfileCreate,
+    current_user: User = Depends(deps.get_current_user),
+    db: AsyncSession = Depends(get_session)
+) -> Any:
+    """Update a student profile."""
+    return await create_student_profile(profile_in, current_user, db)
+
 @router.get("/student", response_model=dict)
 async def get_student_profile(
     current_user: User = Depends(deps.get_current_user),
@@ -59,23 +114,35 @@ async def get_student_profile(
     profile = result.scalars().first()
     if not profile:
         return {
-            "university": None,
-            "degree": None,
-            "graduation_year": None,
-            "skills": None,
-            "resume_file": None,
-            "resume_text": None,
-            "experience_level": None,
+            # Academic
+            "university": None, "degree": None, "graduation_year": None, "gpa": None, "major": None, "minor": None,
+            # Skills & Experience
+            "skills": None, "experience_level": None, "work_experience": None, "internships": None,
+            # Resume
+            "resume_file": None, "resume_text": None,
+            # Additional Profile Fields
+            "projects": None, "certifications": None, "languages": None,
+            "linkedin_url": None, "github_url": None, "portfolio_url": None, "hackathons": None,
+            # Additional Info
+            "expected_salary": None, "preferred_locations": None, "availability": None, "interests": None,
         }
 
     return {
-        "university": profile.university,
-        "degree": profile.degree,
-        "graduation_year": profile.graduation_year,
-        "skills": profile.skills,
-        "resume_file": profile.resume_file,
-        "resume_text": profile.resume_text,
-        "experience_level": profile.experience_level,
+        # Academic
+        "university": profile.university, "degree": profile.degree, "graduation_year": profile.graduation_year,
+        "gpa": profile.gpa, "major": profile.major, "minor": profile.minor,
+        # Skills & Experience
+        "skills": profile.skills, "experience_level": profile.experience_level,
+        "work_experience": profile.work_experience, "internships": profile.internships,
+        # Resume
+        "resume_file": profile.resume_file, "resume_text": profile.resume_text,
+        # Additional Profile Fields
+        "projects": profile.projects, "certifications": profile.certifications, "languages": profile.languages,
+        "linkedin_url": profile.linkedin_url, "github_url": profile.github_url,
+        "portfolio_url": profile.portfolio_url, "hackathons": profile.hackathons,
+        # Additional Info
+        "expected_salary": profile.expected_salary, "preferred_locations": profile.preferred_locations,
+        "availability": profile.availability, "interests": profile.interests,
     }
 
 @router.post("/hr", response_model=dict)
@@ -100,3 +167,40 @@ async def create_hr_profile(
     
     await db.commit()
     return {"status": "success", "message": "HR profile updated"}
+
+@router.put("/hr", response_model=dict)
+async def update_hr_profile(
+    profile_in: HRProfileCreate,
+    current_user: User = Depends(deps.get_current_user),
+    db: AsyncSession = Depends(get_session)
+) -> Any:
+    """Update an HR profile."""
+    return await create_hr_profile(profile_in, current_user, db)
+
+@router.get("/hr", response_model=dict)
+async def get_hr_profile(
+    current_user: User = Depends(deps.get_current_user),
+    db: AsyncSession = Depends(get_session)
+) -> Any:
+    """Retrieve the current HR's profile."""
+    if current_user.user_type != 'hr':
+        raise HTTPException(status_code=400, detail="User is not registered as HR")
+
+    result = await db.execute(select(HRProfile).where(HRProfile.user_id == current_user.id))
+    profile = result.scalars().first()
+    if not profile:
+        return {
+            "company_name": None, "company_website": None, "company_size": None, "company_industry": None,
+            "department": None, "position": None, "linkedin_url": None,
+            "hiring_volume": None, "common_roles": None, "tech_stack": None,
+            "interview_duration": None, "include_coding_challenge": None,
+        }
+
+    return {
+        "company_name": profile.company_name, "company_website": profile.company_website,
+        "company_size": profile.company_size, "company_industry": profile.company_industry,
+        "department": profile.department, "position": profile.position,
+        "linkedin_url": profile.linkedin_url,
+        "hiring_volume": profile.hiring_volume, "common_roles": profile.common_roles, "tech_stack": profile.tech_stack,
+        "interview_duration": profile.interview_duration, "include_coding_challenge": profile.include_coding_challenge,
+    }

@@ -1,5 +1,6 @@
 import logging
 import re
+import random
 from typing import Dict, Any, List
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import JsonOutputParser
@@ -71,6 +72,72 @@ class CompletionSchema(BaseModel):
 
 
 # ── Helper Functions ───────────────────────────────────────────────────────────
+
+# ── Human-like Response Templates ───────────────────────────────────────
+CONVERSATIONAL_ACKNOWLEDGMENTS = [
+    "Great, thanks for sharing that. ",
+    "I appreciate you telling me about that. ",
+    "That's helpful context. ",
+    "Understood, let's build on that. ",
+    "Got it, moving on. ",
+    "Thanks for that perspective. ",
+    "Good to know. ",
+    "That's interesting — ",
+    "Makes sense. ",
+    "Interesting! Let me follow up on that. ",
+]
+
+PHASE_TRANSITIONS = {
+    ("greeting", "welcome"): "Wonderful! It's great to have you here today. ",
+    ("welcome", "warmup"): "I enjoy hearing about your journey. ",
+    ("warmup", "technical"): "Now let's dig a bit deeper into your technical background. ",
+    ("technical", "stress"): "Alright, let me challenge you a little. ",
+    ("stress", "behavioral"): "That was a good exercise. Now let's talk about how you work with others. ",
+    ("behavioral", "closing"): "We're almost done. I appreciate your patience. ",
+}
+
+GREETING_MESSAGES = [
+    "Hey! I'm really glad you could make it today.",
+    "Hi there! Welcome — thank you for joining.",
+    "Hello! I'm excited to speak with you today.",
+    "Good to see you! I appreciate you taking the time.",
+]
+
+
+def _get_conversational_ack(score: float, topic: str, should_deep_dive: bool = False) -> str:
+    """Build a natural acknowledgment based on the previous answer quality."""
+    if should_deep_dive:
+        ack_options = [
+            "That's a really strong answer. ",
+            "Excellent response — you've clearly thought this through. ",
+            "Impressive. You really know your stuff here. ",
+            "Love that depth. You nailed it. ",
+            "That's exactly the kind of insight I was looking for. ",
+        ]
+    elif score >= 6.0:
+        ack_options = [
+            "Good answer. ",
+            "That's a solid response. ",
+            "Right, that makes sense. ",
+            "Good, I like where you're going with this. ",
+            "Okay, that's a reasonable perspective. ",
+        ]
+    elif score >= 4.0:
+        ack_options = [
+            "I see what you mean. Let me ask about that differently. ",
+            "Interesting approach. Let me dig a bit deeper. ",
+            "That's one way to look at it — let's explore it further. ",
+            "I hear you. Let me probe a bit more on this. ",
+        ]
+    else:
+        ack_options = [
+            "No worries, let me rephrase. ",
+            "That's okay — let me try a simpler angle. ",
+            "No problem at all. Let's approach this differently. ",
+            "I understand. Let me help you with this one. ",
+        ]
+    return random.choice(ack_options)
+
 
 def _strip_markdown(text: str) -> str:
     """Remove markdown code fences from LLM output before JSON parsing."""
@@ -180,55 +247,73 @@ async def generate_question_node(state: InterviewState) -> Dict[str, Any]:
     covered_skills = state.get('covered_skills', [])
     pending_skills = state.get('pending_skills', [])
 
-    # Phase guides with natural flow
+    # Build a natural conversational opening based on previous answer
+    conversational_opening = ""
+    if last_eval and messages:
+        prev_score = last_eval.get('score', 5.0)
+        prev_topic = last_eval.get('topic', 'topic')
+        conversational_opening = _get_conversational_ack(prev_score, prev_topic, should_deep_dive)
+        # Add specific acknowledgment that acknowledges what they actually said
+        last_answer = messages[-1]['content'] if messages and messages[-1]['role'] == 'user' else ""
+        if len(last_answer) < 100:
+            conversational_opening += f"I hear you. "
+        elif len(last_answer) < 300:
+            conversational_opening += f"Got it. "
+
+    # Phase guides with NATURAL flow — sound like a real human interviewer
     phase_guides = {
-        "greeting": "Start with a warm, welcoming greeting. Introduce yourself briefly. Make the candidate feel comfortable. Ask a simple ice-breaker question about their day or how they're feeling.",
-        "welcome": "Thank them for joining. Ask an easy opening question about their background, experience, and what excites them about this opportunity. Keep it conversational.",
-        "warmup": "Ease into the interview. Ask about their recent role, favorite projects, or what they enjoyed most about their work. Build rapport.",
-        "technical": "Transition to deeper technical concepts. Based on their previous answers, ask relevant follow-up questions. Test their depth of knowledge.",
-        "stress": "Present challenging scenarios. Test problem-solving under pressure. Ask about difficult situations they've faced.",
-        "behavioral": "Explore soft skills and interpersonal scenarios. Ask about teamwork, conflict resolution, and leadership experiences.",
-        "closing": "Wrap up warmly. Ask if they have questions. Let them share final thoughts. Thank them for their time."
+        "greeting": "Start with genuine warmth. Introduce yourself casually, like 'Hey, I'm Alex — thanks for making time for this.' Then casually ask something simple like 'How's your day going?' or 'How are you feeling about this?' Don't sound like a robot.",
+        "welcome": "Express genuine interest in their story. Say something like 'I'd love to hear a bit about your background — what brought you here?' Make it feel like a conversation, not an interrogation. Use their name if you know it.",
+        "warmup": "Ease into it naturally. Ask about their recent work in a way that lets them open up — 'What's been the most interesting thing you've worked on recently?' or 'Tell me about a project you're proud of.' Let them relax.",
+        "technical": "Make the technical questions feel like a discussion, not a test. Say something like 'So I want to dig into some of the technical stuff you've worked on' or 'Let me ask you about some of the things you mentioned in your background.'",
+        "stress": "Acknowledge the shift: 'Alright, things are about to get a bit more interesting' or 'Let me push you a little here.' Make it feel like a challenge between two professionals, not an interrogation.",
+        "behavioral": "Transition naturally: 'Now let's talk about you as a person — how you work with teams, handle difficult situations, that kind of thing.' Sound like you genuinely want to understand who they are.",
+        "closing": "Make it feel like the natural end of a good conversation. 'We're almost done here' or 'Almost through — I appreciate your patience.' Then give them space for any final thoughts. End warmly."
     }
 
-    phase_guide = phase_guides.get(current_phase, "Ask a relevant question.")
+    phase_guide = phase_guides.get(current_phase, "Ask a relevant question in a conversational way.")
 
     # Build context-aware instructions
     context_instructions = []
 
-    # First question
+    # First question - natural greeting
     if idx == 0:
-        context_instructions.append("CRITICAL: This is the FIRST question. Start with a greeting, then ask them to introduce themselves and share their background.")
+        greeting = random.choice(GREETING_MESSAGES)
+        context_instructions.append(f"FIRST IMPRESSION: Start with a warm, human greeting like '{greeting}' Then ask them to introduce themselves naturally. Use their name if known. Sound like a real person, not a script.")
 
-    # Phase transition
-    if phase_transition:
-        context_instructions.append(f"TRANSITION: We're moving from {previous_phase} to {current_phase} phase. Make this transition smooth and natural.")
+    # Phase transition - natural bridge
+    if phase_transition and previous_phase and current_phase:
+        bridge = PHASE_TRANSITIONS.get((previous_phase, current_phase), "")
+        if bridge:
+            context_instructions.append(f"PHASE TRANSITION: Begin your response with something natural like '{bridge}' This should feel like a smooth, conversational shift.")
 
-    # Skills coverage
+    # Skills coverage - naturally weave in
     if pending_skills and current_phase in ["technical", "stress"]:
-        skill_context = f"IMPORTANT: We still need to cover these skills: {', '.join(pending_skills[:3])}. When asking questions, try to probe these areas naturally."
+        skill_context = f"IMPORTANT: These skills still need coverage: {', '.join(pending_skills[:3])}. Find natural ways to weave questions about these into the conversation."
         context_instructions.append(skill_context)
 
-    # Adaptive based on last response
+    # Adaptive based on last response - conversational adaptation
     if last_eval:
         score = last_eval.get('score', 5.0)
         topic = last_eval.get('topic', 'previous topic')
+        skill_identified = last_eval.get('skill_identified', topic)
 
         if should_deep_dive:
-            context_instructions.append(f"DEEP DIVE: They showed strength in '{topic}'. Ask a more challenging follow-up to test their limits.")
+            context_instructions.append(f"DEEP DIVE: They showed strength in '{skill_identified}'. Acknowledge their good answer naturally, then push them further with a more challenging angle.")
         elif needs_easier:
-            context_instructions.append(f"EASIER PATH: They struggled with '{topic}'. Ask a SIMPLER clarifying question that builds confidence.")
+            context_instructions.append(f"SIMPLER PATH: They seemed to struggle a bit with '{skill_identified}'. Back off the complexity. Acknowledge their answer warmly, then ask an easier version that still lets them shine.")
         elif score >= 7.5:
-            context_instructions.append(f"EXCELLENT: Great response on '{topic}'. Increase difficulty - ask a more complex version or explore deeper.")
+            context_instructions.append(f"STRONG ANSWER: They did well on '{skill_identified}'. Acknowledge it naturally like 'Nice answer,' then either increase difficulty or explore a related angle.")
 
     # Natural follow-up instruction
     if state.get('follow_up_requested'):
-        context_instructions.append("They asked a question or sought clarification. Answer briefly and naturally, then continue the interview.")
+        context_instructions.append("They asked a clarifying question. Answer it conversationally and briefly (1-2 sentences max), then smoothly return to the interview flow.")
 
-    # Build system prompt
+    # Build system prompt — sounds like a real, thoughtful human interviewer
     context_str = "\n".join(context_instructions)
+    conversational_str = conversational_opening if conversational_opening else ""
 
-    system_prompt = f"""You are an expert technical interviewer conducting a natural, conversational interview.
+    system_prompt = f"""You are a senior interviewer conducting a CONVERSATIONAL, NATURAL interview — not a rigid Q&A. You sound like an intelligent, empathetic human who is genuinely curious about the candidate. Think of yourself as a thoughtful senior engineer having a real conversation.
 
 JOB ROLE: {state['job_role']}
 
@@ -236,31 +321,41 @@ CURRENT PHASE: {current_phase}
 QUESTION NUMBER: {idx + 1}
 CURRENT DIFFICULTY: {state['difficulty']}
 
-PHASE INSTRUCTION: {phase_guide}
-
-SKILLS COVERED SO FAR: {', '.join(covered_skills) if covered_skills else 'None yet'}
-SKILLS PENDING: {', '.join(pending_skills) if pending_skills else 'All covered'}
+YOUR APPROACH: {phase_guide}
 
 {context_str}
 
-RESUME CONTEXT (for relevant questions):
+YOUR PREVIOUS RESPONSE ACKNOWLEDGMENT (include naturally at the start of your response):
+{conversational_str}
+
+SKILLS COVERED: {', '.join(covered_skills) if covered_skills else 'None yet'}
+SKILLS STILL TO COVER: {', '.join(pending_skills) if pending_skills else 'All covered'}
+
+RESUME CONTEXT (for relevant, personalized questions):
 {state['resume_text'][:1500]}
 
-CONVERSATION HISTORY:
+RECENT CONVERSATION:
 {history}
 
-RESPONSE RULES:
-1. Acknowledge their previous answer naturally (1-2 sentences max)
-2. Ask ONE clear, conversational question at a time
-3. Make questions flow naturally from their responses
-4. If difficulty='easy', use simple, concrete questions
-5. If difficulty='hard', ask complex multi-part questions
-6. Never repeat questions already asked
-7. For 'easy' difficulty after multiple good answers, increase to 'medium'
-8. For 'hard' difficulty after struggles, decrease to 'medium'
-9. OUTPUT JSON ONLY
-10. Include 'skill_tested' field for coverage tracking
-11. Include 'follow_up_topic' for potential follow-up
+IMPORTANT RULES — READ CAREFULLY:
+1. Your response should sound like a REAL HUMAN SPEAKING. Use casual but professional language.
+2. Include a brief acknowledgment of their previous answer naturally (1-3 sentences).
+3. Then ask ONE clear, conversational question at a time.
+4. Never sound robotic. Avoid: "I would like to ask", "Moving on to", "Next question", etc.
+5. Use phrases that sound human: "Tell me about...", "What are your thoughts on...", "How did you approach...", "Walk me through..."
+6. If difficulty='easy', ask simple, concrete questions that let them shine.
+7. If difficulty='hard', ask multi-part challenges that probe depth.
+8. Never repeat questions already asked.
+9. OUTPUT JSON ONLY with these fields: id, question, category, difficulty, time_limit, skill_tested, follow_up_topic
+10. The 'question' field should be natural, human-sounding text only — no prefix like "Question:" or "My next question is:"
+
+BIAS MITIGATION — CRITICAL:
+- Evaluate candidates solely on their demonstrated skills and knowledge.
+- Never make assumptions about a candidate's abilities based on their background, gender, age, or communication style.
+- Ask the same core competency questions to all candidates for the same role.
+- Focus on what the candidate CAN do, not what they haven't had the opportunity to learn.
+- Avoid questions that assume specific cultural or socioeconomic experiences.
+- If a candidate struggles with a question, offer an alternative approach rather than assuming lack of ability.
 
 {parser.get_format_instructions()}"""
 
@@ -382,6 +477,14 @@ Also identify:
 - Whether you should follow up for deeper evaluation
 - Whether they need an easier question
 - If the answer is low effort (too short or meaningless)
+
+BIAS MITIGATION — CRITICAL:
+- Evaluate solely on demonstrated skills and knowledge in this answer.
+- Do not penalize for communication style differences, cultural background, or non-native English.
+- Focus on substance over eloquence — a technically correct but brief answer can still score well.
+- Consider that candidates may express knowledge differently based on their background.
+- Never assume lack of experience equals lack of ability.
+- Score based on what IS present in the answer, not what is absent.
 
 {parser.get_format_instructions()}"""
 
@@ -593,3 +696,44 @@ async def update_memory_node(state: InterviewState) -> Dict[str, Any]:
             "interview_complete": state['current_question_index'] + 1 >= state.get('max_questions', 15),
             "completion_reason": "Maximum questions reached",
         }
+
+
+# ── AI Advisor Monitor Node (Phase 1A) ─────────────────────────────────────────
+
+async def advisor_monitor_node(state: InterviewState) -> Dict[str, Any]:
+    """
+    Silent advisor that monitors interview and notifies HR when ready to close.
+    Never forces termination — only suggests to interviewer.
+
+    This node runs after update_memory_node and before the should_continue check.
+    It analyzes interview signals and returns advisor state fields.
+    """
+    from .advisor_service import assess_interview_advisor
+
+    # Don't suggest before question 6 (minimum data needed)
+    if state.get('current_question_index', 0) < 6:
+        return {
+            "advisor_ready_to_close": False,
+            "advisor_notified": False,
+        }
+
+    # Don't suggest again if already notified and interviewer hasn't acted
+    if state.get('advisor_notified') and not state.get('advisor_action_taken'):
+        return {}  # No change — already notified
+
+    try:
+        decision = await assess_interview_advisor(state)
+
+        return {
+            "advisor_ready_to_close": decision.ready_to_close,
+            "advisor_confidence": decision.confidence,
+            "advisor_reason": decision.reason,
+            "advisor_reason_category": decision.reason_category,
+            "advisor_notified": decision.ready_to_close,
+            "advisor_action_taken": False,
+        }
+    except Exception as e:
+        logger.error(f"advisor_monitor_node failed: {e}")
+        # Return empty dict — no advisor suggestion on failure
+        # Interview continues normally
+        return {}

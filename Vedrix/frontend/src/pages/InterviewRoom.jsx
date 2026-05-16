@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -143,9 +143,9 @@ const InterviewRoom = () => {
   const [questionTimeLeft, setQuestionTimeLeft] = useState(0); // Per-question countdown
 
   // Auto-submit and timeout handling
-  const [lastUserActivity, setLastUserActivity] = useState(Date.now());
+  // eslint-disable-next-line react-hooks/purity
+  const lastUserActivityRef = useRef(Date.now());
   const [showTimeoutConfirm, setShowTimeoutConfirm] = useState(false);
-  const silenceTimerRef = useRef(null);
   const noResponseTimerRef = useRef(null);
 
   // ... (rest of states)
@@ -204,9 +204,11 @@ const InterviewRoom = () => {
 
   // Initialize video on mount
   useEffect(() => {
+    let localStream = null;
     const initVideo = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localStream = stream;
         setVideoStream(stream);
       } catch {
         console.log('Camera not available, continuing without video');
@@ -215,11 +217,12 @@ const InterviewRoom = () => {
     };
     if (ready) initVideo();
     return () => {
-      if (videoStream) {
-        videoStream.getTracks().forEach(track => track.stop());
+      // Clean up the stream captured in this effect's closure, not from state
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
       }
     };
-  }, [ready, videoStream]);
+  }, [ready]); // removed videoStream from deps — it caused an infinite re-render loop
 
   // Toggle video function
   const toggleVideo = async () => {
@@ -252,24 +255,56 @@ const InterviewRoom = () => {
   const socketUrlRef = useRef('');
   const isIntentionalClose = useRef(false);
 
+  // ── FREE TTS via Browser Web Speech API ────────────────────────────────
+  const speakWithBrowserTTS = (text) => {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.95;
+    utterance.pitch = 1.0;
+    // Pick a good English voice if available
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(v =>
+      (v.name.includes('Google') && v.lang.startsWith('en')) ||
+      (v.name.includes('Samantha') && v.lang.startsWith('en')) ||
+      (v.name.includes('Karen') && v.lang.startsWith('en'))
+    );
+    if (preferred) utterance.voice = preferred;
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Pre-load voices (Chrome needs this async load)
+  useEffect(() => {
+    const load = () => window.speechSynthesis?.getVoices();
+    load();
+    window.speechSynthesis?.addEventListener('voiceschanged', load);
+    return () => window.speechSynthesis?.removeEventListener('voiceschanged', load);
+  }, []);
+
   const playAudio = (base64) => {
+    // If no base64 audio from backend, use free browser TTS
+    if (!base64) return;
     try {
       setIsSpeaking(true);
-      // Try to detect format, default to opus if detection fails
       let mime = 'audio/opus';
       try {
         const binary = atob(base64.slice(0, 12));
-        // Check for WAV RIFF header ('R' = 0x52)
         const isWav = binary.charCodeAt(0) === 0x52;
         mime = isWav ? 'audio/wav' : 'audio/opus';
-      } catch {
-        // Default to opus if detection fails
-        mime = 'audio/opus';
-      }
+      } catch { mime = 'audio/opus'; }
       const audio = new Audio(`data:${mime};base64,${base64}`);
       audio.onended = () => setIsSpeaking(false);
-      audio.onerror = () => { console.error('Audio playback error'); setIsSpeaking(false); };
-      audio.play().catch(e => { console.error('Audio play() failed:', e); setIsSpeaking(false); });
+      audio.onerror = () => {
+        console.warn('Backend audio decode failed — falling back to browser TTS');
+        setIsSpeaking(false);
+      };
+      audio.play().catch(e => {
+        console.error('Audio play() failed:', e);
+        setIsSpeaking(false);
+      });
     } catch (e) {
       console.error('playAudio error:', e);
       setIsSpeaking(false);
@@ -304,7 +339,13 @@ const InterviewRoom = () => {
         setIsCodingMode(payload.is_coding || false);
         if (payload.language) setCodeLanguage(payload.language);
         setAgentStatus('Question ready. We are waiting for your response.');
-        if (payload.audio) playAudio(payload.audio);
+        if (payload.audio) {
+          playAudio(payload.audio);
+        } else {
+          // Free browser TTS fallback — works on every device, zero cost
+          const q = payload.data?.question;
+          if (q) speakWithBrowserTTS(q);
+        }
       } else if (payload.type === 'status') {
         setAgentStatus(payload.data);
       } else if (payload.type === 'execution_result') {
@@ -319,22 +360,28 @@ const InterviewRoom = () => {
         if (document.fullscreenElement) {
           document.exitFullscreen();
         }
-        // Check if this is a practice session (no drive_id/token) - skip showing report
-        const isPractice = !searchParams.get('drive_id') && !searchParams.get('token');
-        if (isPractice) {
-          // For practice, exit immediately without showing report
-          navigate('/dashboard');
-        } else {
-          // For scheduled interviews, show report after delay
-          setTimeout(() => {
-            if (document.fullscreenElement) {
-              document.exitFullscreen();
-            }
+        // Navigate to report for all session types — practice sessions have reports too
+        setTimeout(() => {
+          if (document.fullscreenElement) {
+            document.exitFullscreen();
+          }
+          if (sid) {
             navigate(`/report/${sid}`);
-          }, 3000);
-        }
+          } else {
+            navigate('/dashboard');
+          }
+        }, 2000);
       } else if (payload.type === 'error') {
         setAgentStatus(`⚠ ${payload.data}`);
+      } else if (payload.type === 'metrics_update') {
+        // Real-time metrics update during interview
+        setAgentStatus('Metrics updated based on your response.');
+        // Could display live metrics in a dedicated UI element
+        console.log('Metrics update:', payload.data);
+      } else if (payload.type === 'advisor_suggestion') {
+        // Phase 1A: Advisor suggestion received (primarily for HR, but candidate sees status)
+        // Candidate continues normally — HR decides when to close
+        console.log('Advisor suggestion:', payload.data);
       }
     };
   };
@@ -395,7 +442,7 @@ const InterviewRoom = () => {
 
   const toggleRecording = async () => {
     // Track user activity for timeout
-    setLastUserActivity(Date.now());
+    lastUserActivityRef.current = Date.now();
     setShowTimeoutConfirm(false);
     clearTimeout(noResponseTimerRef.current);
 
@@ -441,12 +488,27 @@ const InterviewRoom = () => {
     toggleRecordingRef.current = toggleRecording;
   });
 
+  const handleEndInterview = useCallback(() => {
+    isIntentionalClose.current = true;
+    clearTimeout(reconnectTimer.current);
+    ws.current?.close();
+    // Exit fullscreen on interview end
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    }
+    if (completedSessionId) {
+      navigate(`/report/${completedSessionId}`);
+    } else {
+      navigate('/');
+    }
+  }, [completedSessionId, navigate]);
+
   // Auto-submit on text change and timeout detection
   useEffect(() => {
     const checkActivity = setInterval(() => {
       if (!isConnected || !currentQuestion) return;
 
-      const timeSinceActivity = Date.now() - lastUserActivity;
+      const timeSinceActivity = Date.now() - lastUserActivityRef.current;
 
       // After 5 seconds of no activity, show confirmation
       if (timeSinceActivity > 5000 && !showTimeoutConfirm) {
@@ -463,17 +525,17 @@ const InterviewRoom = () => {
     }, 1000);
 
     return () => clearInterval(checkActivity);
-  }, [isConnected, currentQuestion, lastUserActivity, showTimeoutConfirm]);
+  }, [isConnected, currentQuestion, showTimeoutConfirm, handleEndInterview]);
 
   // Update activity timestamp on user interactions
-  const updateActivity = () => {
-    setLastUserActivity(Date.now());
+  const updateActivity = useCallback(() => {
+    lastUserActivityRef.current = Date.now();
     if (showTimeoutConfirm) {
       setShowTimeoutConfirm(false);
       clearTimeout(noResponseTimerRef.current);
       setAgentStatus('Welcome back! Continuing interview...');
     }
-  };
+  }, [showTimeoutConfirm]);
 
   // Add activity listeners
   useEffect(() => {
@@ -484,7 +546,7 @@ const InterviewRoom = () => {
       window.removeEventListener('click', handleActivity);
       window.removeEventListener('keypress', handleActivity);
     };
-  }, [showTimeoutConfirm]);
+  }, [updateActivity]);
 
   const submitCode = () => {
     updateActivity();
@@ -501,21 +563,6 @@ const InterviewRoom = () => {
       setAgentStatus('Text answer submitted. Reviewing your response.');
       setManualText('');
       setShowTextInput(false);
-    }
-  };
-
-  const handleEndInterview = () => {
-    isIntentionalClose.current = true;
-    clearTimeout(reconnectTimer.current);
-    ws.current?.close();
-    // Exit fullscreen on interview end
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    }
-    if (completedSessionId) {
-      navigate(`/report/${completedSessionId}`);
-    } else {
-      navigate('/');
     }
   };
 
@@ -727,18 +774,25 @@ const InterviewRoom = () => {
               className={`px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all ${isRecording ? 'bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500 hover:text-white' : 'bg-purple-600 text-white hover:bg-purple-500 shadow-xl shadow-purple-500/20'}`}>
               {isRecording ? 'Stop & Send' : 'Start Responding'}
             </button>
-            
-            <div className="flex flex-col items-end space-y-2">
+
+            <div className="relative flex flex-col items-end space-y-2">
               <AnimatePresence>
                 {showTextInput && (
-                  <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-                    className="absolute bottom-32 right-12 w-96 bg-[#0a0f1e] border border-white/10 p-6 rounded-3xl shadow-2xl z-[60]">
+                  <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute top-[-220px] right-0 w-96 bg-[#0a0f1e] border border-white/10 p-6 rounded-3xl shadow-2xl z-[60]">
+                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Type Your Answer</p>
                     <textarea
                       autoFocus
                       className="w-full h-32 bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-white focus:ring-2 focus:ring-purple-500 outline-none resize-none mb-4"
                       placeholder="Type your answer here..."
                       value={manualText}
                       onChange={(e) => setManualText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          submitTextAnswer();
+                        }
+                      }}
                     />
                     <div className="flex justify-end space-x-3">
                       <button onClick={() => setShowTextInput(false)} className="px-4 py-2 text-[10px] font-black uppercase text-slate-500 hover:text-white transition-colors">Cancel</button>
@@ -748,7 +802,7 @@ const InterviewRoom = () => {
                 )}
               </AnimatePresence>
 
-              <button 
+              <button
                 onClick={() => setShowTextInput(!showTextInput)}
                 className="flex items-center space-x-2 text-slate-500 font-black uppercase tracking-widest text-[10px] hover:text-white transition-colors"
               >

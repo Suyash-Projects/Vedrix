@@ -5,7 +5,8 @@ from .nodes import (
     generate_question_node, 
     evaluate_answer_node, 
     evaluate_code_node, 
-    update_memory_node
+    update_memory_node,
+    advisor_monitor_node,  # Phase 1A: AI Advisor
 )
 
 
@@ -28,6 +29,7 @@ def create_interview_graph():
     workflow.add_node("evaluate_answer", evaluate_answer_node)
     workflow.add_node("evaluate_code", evaluate_code_node)
     workflow.add_node("update_memory", update_memory_node)
+    workflow.add_node("advisor_monitor", advisor_monitor_node)  # Phase 1A: AI Advisor
 
     workflow.set_entry_point("generate_question")
     
@@ -43,9 +45,10 @@ def create_interview_graph():
     
     workflow.add_edge("evaluate_answer", "update_memory")
     workflow.add_edge("evaluate_code", "update_memory")
+    workflow.add_edge("update_memory", "advisor_monitor")  # Phase 1A: Advisor runs after memory
 
     workflow.add_conditional_edges(
-        "update_memory",
+        "advisor_monitor",  # Phase 1A: Changed from "update_memory"
         should_continue,
         {"continue": "generate_question", END: END}
     )

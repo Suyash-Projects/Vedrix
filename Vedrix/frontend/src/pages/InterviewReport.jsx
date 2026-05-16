@@ -175,7 +175,7 @@ const InterviewReport = () => {
               <Share2 size={18} />
               <span>Share with Team</span>
             </button>
-            {report?.overall_score >= 60 && (
+            {report?.overall_score >= 6 && (
               <button
                 onClick={handleDownloadCertificate}
                 disabled={exporting}

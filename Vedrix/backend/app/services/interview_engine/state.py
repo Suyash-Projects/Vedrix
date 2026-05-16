@@ -61,3 +61,13 @@ class InterviewState(TypedDict):
     # Natural follow-up tracking
     follow_up_requested: bool  # When candidate asks for clarification
     previous_topic: Optional[str]  # Track for natural continuation
+
+    # ── AI Advisor Tracking (Phase 1A) ─────────────────────────────────────
+    # Advisor monitors interview and suggests to HR when ready to close.
+    # HR always retains control — AI never forces termination.
+    advisor_ready_to_close: bool  # AI suggests ready to close
+    advisor_confidence: Optional[float]  # Confidence in suggestion
+    advisor_reason: Optional[str]  # Human-readable reason
+    advisor_reason_category: Optional[str]  # Categorized reason
+    advisor_notified: bool  # Has interviewer been notified?
+    advisor_action_taken: bool  # Has interviewer acted on suggestion?

@@ -34,6 +34,9 @@ class JobDrive(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+    # Phase 1.5: Soft delete support
+    deleted_at: Optional[datetime] = Field(default=None)
+
     hr: "HRProfile" = Relationship(back_populates="job_drives")
     interview_sessions: List["InterviewSession"] = Relationship(back_populates="job_drive")
 
@@ -73,6 +76,17 @@ class InterviewSession(SQLModel, table=True):
     # Bias mitigation and fairness metrics
     bias_metrics: Optional[Any] = Field(default=None, sa_column=Column(JSON))
     question_difficulty: Optional[Any] = Field(default=None, sa_column=Column(JSON))
+
+    # Phase 1A: AI Interview Advisor fields
+    advisor_ready_to_close: bool = Field(default=False)
+    advisor_confidence: Optional[float] = None
+    advisor_reason: Optional[str] = Field(default=None, sa_column=Column(Text))
+    advisor_reason_category: Optional[str] = None
+    advisor_suggested_at: Optional[datetime] = None
+    advisor_action_taken: bool = Field(default=False)
+
+    # Phase 1.5: Soft delete support
+    deleted_at: Optional[datetime] = Field(default=None)
 
     # Relationships — must match back_populates on User and JobDrive
     candidate: "User" = Relationship(back_populates="interview_sessions")

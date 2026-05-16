@@ -23,6 +23,21 @@ def create_access_token(subject: Union[str, Any], expires_delta: timedelta = Non
     return encoded_jwt
 
 
+def create_refresh_token(subject: Union[str, Any], expires_delta: timedelta = None) -> str:
+    """Create a refresh token with longer expiry."""
+    expire = (
+        datetime.now(timezone.utc) + expires_delta
+        if expires_delta
+        else datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    )
+    encoded_jwt = jwt.encode(
+        {"exp": expire, "sub": str(subject), "type": "refresh"},
+        settings.SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+    return encoded_jwt
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
@@ -35,6 +50,17 @@ def decode_token(token: str) -> Optional[int]:
     """Decodes a JWT and returns the user ID, or None if invalid."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+        return int(payload.get("sub"))
+    except Exception:
+        return None
+
+
+def decode_refresh_token(token: str) -> Optional[int]:
+    """Decodes a refresh token and returns the user ID, or None if invalid."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "refresh":
+            return None
         return int(payload.get("sub"))
     except Exception:
         return None

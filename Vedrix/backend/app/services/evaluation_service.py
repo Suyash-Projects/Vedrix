@@ -4,7 +4,7 @@ from typing import List, Dict, Any
 from langchain_core.messages import SystemMessage, HumanMessage
 from pydantic import BaseModel, Field
 
-from .interview_engine.providers import get_strong_llm
+from .interview_engine.model_router import get_report_llm
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class DetailedEvaluationSchema(BaseModel):
 class EvaluationService:
 
     def __init__(self):
-        self.llm = get_strong_llm()
+        self.llm = get_report_llm()
 
     async def generate_final_report(
         self, job_role: str, history: List[Dict[str, str]]

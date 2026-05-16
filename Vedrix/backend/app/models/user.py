@@ -18,6 +18,14 @@ class User(SQLModel, table=True):
     phone: Optional[str] = None
     profile_photo: Optional[str] = None
     is_active: bool = Field(default=True)
+
+    # Account security — failed login tracking and lockout
+    failed_login_attempts: int = Field(default=0)
+    locked_until: Optional[datetime] = Field(default=None)
+
+    # Phase 1.5: Soft delete support
+    deleted_at: Optional[datetime] = Field(default=None)
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

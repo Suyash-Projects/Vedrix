@@ -4,14 +4,24 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from pydantic import BaseModel
 
 from app.api import deps
 from app.db.session import get_session
 from app.models.user import User
-from app.models.interview import InterviewSession
+from app.models.interview import InterviewSession, JobDrive
 from app.schemas.user import UserRead
 from app.core import security
 from app.services.pdf_service import generate_certificate
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class ChangeUsernameRequest(BaseModel):
+    new_username: str
 
 router = APIRouter()
 
@@ -106,11 +116,18 @@ async def get_session_certificate(
     if current_user.user_type == "student" and session.candidate_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    if session.overall_score < 60:
-        raise HTTPException(status_code=400, detail="Score must be >= 60% to generate certificate")
+    if (session.overall_score or 0) < 6:
+        raise HTTPException(status_code=400, detail="Score must be >= 6/10 to generate certificate")
 
     candidate_name = current_user.username
-    job_role = session.job_role or "General Candidate"
+
+    # Resolve job_role from the linked JobDrive (InterviewSession has no job_role column)
+    job_role = "General Candidate"
+    if session.job_drive_id:
+        drive_res = await db.execute(select(JobDrive).where(JobDrive.id == session.job_drive_id))
+        drive = drive_res.scalars().first()
+        if drive:
+            job_role = drive.job_role
     overall_score = float(session.overall_score or 0)
     date_completed = session.end_time.strftime("%B %d, %Y") if session.end_time else datetime.now().strftime("%B %d, %Y")
 
@@ -133,21 +150,20 @@ async def change_password(
     *,
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(deps.get_current_user),
-    current_password: str,
-    new_password: str,
+    body: ChangePasswordRequest,
 ) -> Any:
     """Change user's own password (requires current password verification)."""
-    if not security.verify_password(current_password, current_user.password_hash):
+    if not security.verify_password(body.current_password, current_user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
 
-    if len(new_password) < 4:
+    if len(body.new_password) < 4:
         raise HTTPException(status_code=400, detail="New password must be at least 4 characters")
 
     # Re-fetch user in this session
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalars().first()
     if user:
-        user.password_hash = security.get_password_hash(new_password)
+        user.password_hash = security.get_password_hash(body.new_password)
         await db.commit()
 
     return {"status": "success", "message": "Password changed successfully"}
@@ -158,9 +174,10 @@ async def update_username(
     *,
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(deps.get_current_user),
-    new_username: str,
+    body: ChangeUsernameRequest,
 ) -> Any:
     """Change user's own username (must be unique)."""
+    new_username = body.new_username
     if len(new_username) < 3:
         raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
 

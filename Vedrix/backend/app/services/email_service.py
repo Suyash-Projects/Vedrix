@@ -493,7 +493,7 @@ def _build_credentials_email(first_name: str, username: str, password: str, user
         f"""
         <div style="padding: 20px 0;">
           <p style="color:#a78bfa;font-size:14px;margin-bottom:24px;">
-            Your Vedrix account has been created by an administrator. Here are your login credentials:
+            Hi {first_name}, your Vedrix account has been created by an administrator. Here are your login credentials:
           </p>
 
           <!-- CREDENTIALS BOX -->
@@ -542,4 +542,42 @@ async def send_credentials_email(to: str, first_name: str, username: str, passwo
         to,
         "Your Vedrix Login Credentials",
         _build_credentials_email(first_name, username, password, user_type),
+    )
+
+
+def _build_password_reset_email(first_name: str, reset_token: str, frontend_url: str) -> str:
+    """Build HTML email for password reset."""
+    reset_link = f"{frontend_url}/reset-password?token={reset_token}"
+    return (
+        f"""
+        <div style="font-family:system-ui,sans-serif;max-width:480px;margin:auto;">
+          <h2 style="color:#1e293b;">Reset Your Password</h2>
+          <p>Hi {first_name},</p>
+          <p>We received a request to reset your password. Click the button below to create a new one:</p>
+          <a href="{reset_link}"
+             style="display:inline-block;padding:12px 24px;background:#7c3aed;color:#fff;
+                    text-decoration:none;border-radius:8px;font-weight:bold;margin:16px 0;">
+            Reset Password
+          </a>
+          <p style="color:#64748b;font-size:13px;">
+            Or copy this link:<br>
+            <code style="background:#f1f5f9;padding:4px 8px;border-radius:4px;word-break:break-all;">
+              {reset_link}
+            </code>
+          </p>
+          <p style="color:#64748b;font-size:13px;">This link expires in <strong>1 hour</strong>.</p>
+          <p style="color:#64748b;font-size:12px;margin-top:24px;">
+            If you didn't request this, you can safely ignore this email.
+          </p>
+        </div>
+        """
+    )
+
+
+async def send_password_reset_email(to: str, first_name: str, reset_token: str, frontend_url: str) -> None:
+    """Send password reset email with time-limited token."""
+    await _send(
+        to,
+        "Reset Your Vedrix Password",
+        _build_password_reset_email(first_name, reset_token, frontend_url),
     )

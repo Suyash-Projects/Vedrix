@@ -1,5 +1,6 @@
 from typing import Optional
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict, field_validator
+import re
 
 class UserBase(BaseModel):
     email: Optional[EmailStr] = None
@@ -16,6 +17,22 @@ class UserCreate(UserBase):
     last_name: str
     user_type: str
     company_name: Optional[str] = None  # used for HR auto-profile creation
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        """Enforce strong password requirements."""
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not re.search(r"\d", v):
+            raise ValueError("Password must contain at least one number")
+        if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", v):
+            raise ValueError("Password must contain at least one special character (!@#$%^&* etc.)")
+        return v
 
 class UserUpdate(UserBase):
     password: Optional[str] = None

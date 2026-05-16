@@ -37,7 +37,7 @@ class TestAdmin:
             json={
                 "email": "created@example.com",
                 "username": "createduser",
-                "password": "password123",
+                "password": "SecureP@ss123",
                 "first_name": "Created",
                 "last_name": "User",
                 "user_type": "student"

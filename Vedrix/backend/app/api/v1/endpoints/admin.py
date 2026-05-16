@@ -288,6 +288,37 @@ async def get_system_stats(
     }
 
 
+@router.get("/ai-health")
+async def get_ai_provider_health(
+    current_admin: User = Depends(deps.get_current_admin),
+) -> Any:
+    """
+    Get health status of all AI providers and circuit breakers.
+    Shows which providers are available, which are in circuit-breaker state,
+    and the current fallback chain status.
+    """
+    from app.services.interview_engine.circuit_breaker import get_all_circuit_breaker_statuses
+    from app.services.interview_engine.model_router import TaskType, _get_routes
+
+    # Get circuit breaker statuses
+    circuit_statuses = get_all_circuit_breaker_statuses()
+
+    # Get route configurations
+    routes = _get_routes()
+    route_info = {}
+    for task_type, route in routes.items():
+        route_info[task_type.value] = {
+            "description": route.description,
+            "providers": [f"{s.provider}/{s.model_id}" for s in route.chain],
+        }
+
+    return {
+        "circuit_breakers": circuit_statuses,
+        "routes": route_info,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.get("/interviews")
 async def list_all_interviews(
     db: AsyncSession = Depends(get_session),

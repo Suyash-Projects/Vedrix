@@ -8,7 +8,7 @@ async def test_end_to_end_hr_drive_invite(client: AsyncClient):
     hr = {
         "email": "hr_test@example.com",
         "username": "hr_test",
-        "password": "testpass",
+        "password": "TestP@ss1",
         "first_name": "Test",
         "last_name": "HR",
         "user_type": "hr",
@@ -17,15 +17,18 @@ async def test_end_to_end_hr_drive_invite(client: AsyncClient):
     resp = await client.post("/api/v1/auth/register", json=hr)
     assert resp.status_code == 200, resp.text
 
-    # 2) Login HR
-    # OAuth2 login uses form data
+    # 2) Login HR — cookies are set automatically on the client
     login_data = {"username": hr["username"], "password": hr["password"]}
     resp = await client.post("/api/v1/auth/login", data=login_data)
     assert resp.status_code == 200
-    token = resp.json().get("access_token")
-    assert token
+    # Verify cookies were set
+    assert "access_token" in resp.cookies
+    assert "csrf_token" in resp.cookies
 
-    headers = {"Authorization": f"Bearer {token}"}
+    # Subsequent requests use cookies automatically — no headers needed
+    # But for CSRF-protected endpoints, we need to include the CSRF token
+    csrf_token = resp.cookies.get("csrf_token")
+    headers = {"X-CSRF-Token": csrf_token}
 
     # 3) Create Drive
     drive = {

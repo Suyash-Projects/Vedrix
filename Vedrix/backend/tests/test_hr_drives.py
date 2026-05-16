@@ -1,11 +1,20 @@
 import pytest
 
+
+async def _login_and_get_headers(client, username, password):
+    """Helper: login and return headers with CSRF token for cookie-based auth."""
+    resp = await client.post("/api/v1/auth/login", data={"username": username, "password": password})
+    assert resp.status_code == 200
+    csrf_token = resp.cookies.get("csrf_token")
+    return {"X-CSRF-Token": csrf_token}
+
+
 @pytest.mark.asyncio
 async def test_hr_drive_happy_path(client):
     hr = {
         "email": "hr_test2@example.com",
         "username": "hr_test2",
-        "password": "testpass2",
+        "password": "TestP@ss2",
         "first_name": "Test2",
         "last_name": "HR2",
         "user_type": "hr",
@@ -14,12 +23,7 @@ async def test_hr_drive_happy_path(client):
     resp = await client.post("/api/v1/auth/register", json=hr)
     assert resp.status_code == 200, resp.text
 
-    login = {"username": hr["username"], "password": hr["password"]}
-    resp = await client.post("/api/v1/auth/login", data=login)
-    assert resp.status_code == 200
-    token = resp.json().get("access_token")
-    assert token
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = await _login_and_get_headers(client, hr["username"], hr["password"])
 
     drive = {
         "title": "Backend Systems Engineer",
@@ -42,18 +46,15 @@ async def test_hr_drive_unauthorized_by_student(client):
     student = {
         "email": "student1@example.com",
         "username": "student1",
-        "password": "studpass",
+        "password": "StudP@ss1",
         "first_name": "Student",
         "last_name": "One",
         "user_type": "student",
     }
     resp = await client.post("/api/v1/auth/register", json=student)
     assert resp.status_code == 200, resp.text
-    login = {"username": student["username"], "password": student["password"]}
-    resp = await client.post("/api/v1/auth/login", data=login)
-    assert resp.status_code == 200
-    token = resp.json().get("access_token")
-    headers = {"Authorization": f"Bearer {token}"}
+
+    headers = await _login_and_get_headers(client, student["username"], student["password"])
 
     drive = {
         "title": "Frontend Engineer",
@@ -73,17 +74,14 @@ async def test_hr_drive_missing_title_422(client):
     hr = {
         "email": "hr_edge@example.com",
         "username": "hr_edge",
-        "password": "edgepass",
+        "password": "EdgeP@ss1",
         "first_name": "Edge",
         "last_name": "Case",
         "user_type": "hr",
         "company_name": "EdgeCo"
     }
     await client.post("/api/v1/auth/register", json=hr)
-    login = {"username": hr["username"], "password": hr["password"]}
-    resp = await client.post("/api/v1/auth/login", data=login)
-    token = resp.json().get("access_token")
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = await _login_and_get_headers(client, hr["username"], hr["password"])
 
     # Missing required field: title
     drive = {
@@ -111,17 +109,14 @@ async def test_hr_drive_lifecycle(client):
     hr = {
         "email": "hr_lifecycle@example.com",
         "username": "hr_lifecycle",
-        "password": "lifepassword",
+        "password": "LifeP@ss1",
         "first_name": "Life",
         "last_name": "Cycle",
         "user_type": "hr",
         "company_name": "LifeCo"
     }
     await client.post("/api/v1/auth/register", json=hr)
-    login = {"username": hr["username"], "password": hr["password"]}
-    resp = await client.post("/api/v1/auth/login", data=login)
-    token = resp.json().get("access_token")
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = await _login_and_get_headers(client, hr["username"], hr["password"])
 
     # 2. Create Drive
     drive_data = {"title": "Initial Title", "job_role": "Tester", "is_active": True}
@@ -153,4 +148,3 @@ async def test_hr_drive_lifecycle(client):
     resp = await client.delete(f"/api/v1/hr/drives/{drive_id}", headers=headers)
     assert resp.status_code == 200
     assert resp.json()["status"] == "deleted"
-

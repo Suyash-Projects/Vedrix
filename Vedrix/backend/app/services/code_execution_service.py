@@ -26,11 +26,24 @@ class CodeExecutionService:
     Executes code via Judge0 CE (Community Edition) API.
     Uses the free public instance at judge0-ce.p.rapidapi.com
     or a self-hosted instance configured via JUDGE0_URL in settings.
+
+    FALLBACK: When JUDGE0_API_KEY is not set, uses a free public Judge0 CE
+    instance (render.com hosted). Rate-limited but works for interviews.
     """
+
+    # Free public Judge0 CE instances (no API key needed)
+    FREE_INSTANCES = [
+        "https://judge0-ce.onrender.com",
+        "https://ce.judge0.com",
+    ]
 
     def __init__(self):
         self.base_url = getattr(settings, "JUDGE0_URL", "https://judge0-ce.p.rapidapi.com")
         self.api_key = getattr(settings, "JUDGE0_API_KEY", "")
+        self._free_mode = not self.api_key
+        if self._free_mode:
+            self.base_url = "https://judge0-ce.onrender.com"
+            logger.info("CodeExecutionService: Running in FREE mode (no API key). Using public Judge0 CE.")
         self.headers = {
             "Content-Type": "application/json",
             "X-RapidAPI-Key": self.api_key,

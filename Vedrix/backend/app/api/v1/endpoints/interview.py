@@ -6,6 +6,7 @@ import asyncio
 import logging
 import traceback
 from app.core.rate_limit import limiter
+from app.services.session_cleanup import session_cleanup
 
 from jose import jwt, JWTError
 from sqlalchemy import select
@@ -217,12 +218,57 @@ async def websocket_endpoint(
                             job_role = drive.job_role
                             resume_text = f"Applying for: {drive.job_role}. Required skills: {drive.skills_required or 'General'}"
                 else:
-                    # Fetch resume text from student profile for practice
+                    # Fetch full student profile for practice interview
                     profile_res = await db.execute(select(StudentProfile).where(StudentProfile.user_id == user_id))
                     profile = profile_res.scalars().first()
-                    if profile and profile.resume_text:
-                        resume_text = profile.resume_text
-                        job_role = f"Software Engineer (Skills: {profile.skills or 'General'})"
+                    if profile:
+                        # Build comprehensive profile context for the interview agent
+                        profile_parts = []
+                        if profile.university:
+                            profile_parts.append(f"University: {profile.university}")
+                        if profile.degree:
+                            profile_parts.append(f"Degree: {profile.degree} (Graduation: {profile.graduation_year})")
+                        if profile.major:
+                            profile_parts.append(f"Major: {profile.major}")
+                        if profile.gpa:
+                            profile_parts.append(f"GPA: {profile.gpa}")
+                        if profile.skills:
+                            profile_parts.append(f"Skills: {profile.skills}")
+                        if profile.work_experience:
+                            profile_parts.append(f"Work Experience: {profile.work_experience}")
+                        if profile.internships:
+                            profile_parts.append(f"Internships: {profile.internships}")
+                        if profile.projects:
+                            profile_parts.append(f"Projects: {profile.projects}")
+                        if profile.certifications:
+                            profile_parts.append(f"Certifications: {profile.certifications}")
+                        if profile.languages:
+                            profile_parts.append(f"Languages: {profile.languages}")
+                        if profile.github_url:
+                            profile_parts.append(f"GitHub: {profile.github_url}")
+                        if profile.linkedin_url:
+                            profile_parts.append(f"LinkedIn: {profile.linkedin_url}")
+                        if profile.portfolio_url:
+                            profile_parts.append(f"Portfolio: {profile.portfolio_url}")
+                        if profile.hackathons:
+                            profile_parts.append(f"Hackathons: {profile.hackathons}")
+                        if profile.interests:
+                            profile_parts.append(f"Interests: {profile.interests}")
+                        if profile.experience_level:
+                            profile_parts.append(f"Experience Level: {profile.experience_level}")
+                        if profile.availability:
+                            profile_parts.append(f"Availability: {profile.availability}")
+                        if profile.expected_salary:
+                            profile_parts.append(f"Expected Salary: {profile.expected_salary}")
+                        if profile.preferred_locations:
+                            profile_parts.append(f"Preferred Locations: {profile.preferred_locations}")
+
+                        full_profile_context = " | ".join(profile_parts) if profile_parts else "No profile information available"
+                        resume_text = profile.resume_text or full_profile_context
+
+                        # Create better job role from profile
+                        skills = profile.skills or "General"
+                        job_role = f"Candidate for {profile.degree or 'Software'} role (Skills: {skills})"
 
                     new_session = InterviewSession(
                         candidate_id=user_id, session_type="practice",
@@ -318,10 +364,16 @@ async def websocket_endpoint(
         # ── 4. Main Communication Loop ────────────────────────────────────
         all_questions = [current_values["next_question"]]  # track for #18
 
+        # Phase 1.4: Register session for timeout tracking
+        session_cleanup.record_activity(session_id)
+
         while True:
             message = await websocket.receive()
             if message.get("type") == "websocket.disconnect":
                 break
+
+            # Phase 1.4: Record activity for timeout tracking
+            session_cleanup.record_activity(session_id)
 
             user_answer = ""
             user_code = ""
@@ -333,6 +385,23 @@ async def websocket_endpoint(
                         user_answer = payload.get("data", "")
                     elif payload.get("type") == "code":
                         user_code = payload.get("data", "")
+                    # ── Phase 1A: HR closes interview smoothly ──────────────────
+                    elif payload.get("type") == "hr_close_interview":
+                        # HR triggered smooth closing — transition to closing phase
+                        closing_msg = payload.get("data", {}).get("message", "")
+                        if closing_msg:
+                            await manager.send_json({
+                                "type": "status",
+                                "data": closing_msg,
+                            }, session_id)
+                        # Mark interview complete with advisor action
+                        await interview_graph.aupdate_state(config, {
+                            "interview_complete": True,
+                            "completion_reason": "Interviewer closed the interview",
+                            "advisor_action_taken": True,
+                        })
+                        await manager.send_json({"type": "status", "data": "Interview closing..."}, session_id)
+                        continue  # Skip normal processing, next loop will see interview_complete
                 except (json.JSONDecodeError, ValueError) as e:
                     await manager.send_json({"type": "error", "data": "Invalid message format. Send valid JSON."}, session_id)
                     logger.warning(f"Invalid JSON from session {session_id}: {e}")
@@ -408,6 +477,39 @@ async def websocket_endpoint(
                                 await manager.send_json(response_data, session_id)
 
                     final_state = await interview_graph.aget_state(config)
+
+                    # ── Phase 1A: Advisor Notification ──────────────────────────────
+                    # If advisor suggests closing, notify HR and persist to DB
+                    if (final_state.values.get("advisor_ready_to_close")
+                            and not final_state.values.get("advisor_action_taken")):
+                        # Persist advisor suggestion to DB for HR dashboard polling
+                        if db_session_id:
+                            try:
+                                async with async_session() as db:
+                                    res = await db.execute(select(InterviewSession).where(InterviewSession.id == db_session_id))
+                                    rec = res.scalars().first()
+                                    if rec and not rec.advisor_ready_to_close:
+                                        rec.advisor_ready_to_close = True
+                                        rec.advisor_confidence = final_state.values.get("advisor_confidence")
+                                        rec.advisor_reason = final_state.values.get("advisor_reason")
+                                        rec.advisor_reason_category = final_state.values.get("advisor_reason_category")
+                                        rec.advisor_suggested_at = datetime.now(timezone.utc)
+                                        db.add(rec)
+                                        await db.commit()
+                            except Exception as db_err:
+                                logger.warning(f"Failed to persist advisor state: {db_err}")
+
+                        await manager.send_json({
+                            "type": "advisor_suggestion",
+                            "data": {
+                                "ready_to_close": True,
+                                "confidence": final_state.values.get("advisor_confidence"),
+                                "reason": final_state.values.get("advisor_reason"),
+                                "reason_category": final_state.values.get("advisor_reason_category"),
+                                "recommended_closing_message": final_state.values.get("advisor_reason"),
+                            }
+                        }, session_id)
+
                     if final_state.values.get("interview_complete"):
                         await manager.send_json({"type": "status", "data": "Assessment complete. Generating report..."}, session_id)
 
@@ -431,6 +533,14 @@ async def websocket_endpoint(
                                     rec.ai_feedback = report_dict          # native JSON
                                     rec.overall_score = report.overall_score
                                     rec.skill_matrix = final_state.values.get("topic_scores") # #19: persist scores
+                                    # Phase 1A: Persist advisor fields
+                                    if final_state.values.get("advisor_ready_to_close"):
+                                        rec.advisor_ready_to_close = True
+                                        rec.advisor_confidence = final_state.values.get("advisor_confidence")
+                                        rec.advisor_reason = final_state.values.get("advisor_reason")
+                                        rec.advisor_reason_category = final_state.values.get("advisor_reason_category")
+                                        rec.advisor_suggested_at = datetime.now(timezone.utc)
+                                        rec.advisor_action_taken = final_state.values.get("advisor_action_taken", False)
                                     db.add(rec)
                                     await db.commit()
 
@@ -438,6 +548,10 @@ async def websocket_endpoint(
                             "type": "complete",
                             "report": report_dict,
                             "session_id": db_session_id,
+                            # Phase 1A: Include advisor metadata
+                            "termination_reason": final_state.values.get("completion_reason"),
+                            "termination_category": final_state.values.get("advisor_reason_category"),
+                            "assessment_confidence": final_state.values.get("advisor_confidence"),
                         }, session_id)
 
                         if candidate_email:
@@ -453,11 +567,13 @@ async def websocket_endpoint(
 
     except WebSocketDisconnect:
         manager.disconnect(session_id)
+        session_cleanup.remove_session(session_id)
     except Exception as e:
         logger.error(f"WebSocket fatal error [{session_id}]: {e}")
         traceback.print_exc()
         await manager.send_json({"type": "error", "data": str(e)}, session_id)
         manager.disconnect(session_id)
+        session_cleanup.remove_session(session_id)
     finally:
         if db_session_id:
             try:
