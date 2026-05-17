@@ -8,6 +8,9 @@ import AdminDashboard from './pages/AdminDashboard';
 import HRDashboard from './pages/HRDashboard';
 import StudentDashboard from './pages/StudentDashboard';
 import InterviewReport from './pages/InterviewReport';
+import InterviewReplay from './pages/InterviewReplay';
+import SkillGapAnalysis from './pages/SkillGapAnalysis';
+import TeamAnalytics from './pages/TeamAnalytics';
 import CertificateVerification from './pages/CertificateVerification';
 import LandingPage from './pages/LandingPage';
 import Navbar from './components/Navbar';
@@ -33,7 +36,10 @@ function App() {
   const isInterviewRoom = location.pathname === '/interview';
   const isReport = location.pathname.startsWith('/report');
   const isVerify = location.pathname.startsWith('/verify');
-  const showNavbar = !isInterviewRoom && !isReport && !isVerify;
+  const isReplay = location.pathname.startsWith('/replay');
+  const isSkillGap = location.pathname.startsWith('/skill-gap');
+  const isTeamAnalytics = location.pathname.startsWith('/analytics/team');
+  const showNavbar = !isInterviewRoom && !isReport && !isVerify && !isReplay && !isSkillGap && !isTeamAnalytics;
 
   return (
     <div className="min-h-screen bg-[#020617] text-white">
@@ -86,6 +92,27 @@ function App() {
           <Route path="/report/:sessionId" element={
             <ProtectedRoute>
               <InterviewReport />
+            </ProtectedRoute>
+          } />
+
+          {/* Protected Replay Route */}
+          <Route path="/replay/:sessionId" element={
+            <ProtectedRoute>
+              <InterviewReplay />
+            </ProtectedRoute>
+          } />
+
+          {/* Protected Skill Gap Analysis Route */}
+          <Route path="/skill-gap/:sessionId" element={
+            <ProtectedRoute>
+              <SkillGapAnalysis />
+            </ProtectedRoute>
+          } />
+
+          {/* Protected Team Analytics Route (Admin only) */}
+          <Route path="/analytics/team" element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <TeamAnalytics />
             </ProtectedRoute>
           } />
 

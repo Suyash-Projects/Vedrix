@@ -894,3 +894,212 @@ async def send_user_credentials(
         "status": "success",
         "message": f"Credentials sent to {user.email}",
     }
+
+
+# ── Phase 3: Team Analytics & Reporting ─────────────────────────────────────
+
+@router.get("/analytics/team")
+async def get_team_analytics(
+    db: AsyncSession = Depends(get_session),
+    current_admin: User = Depends(deps.get_current_admin),
+) -> Any:
+    """Get aggregate team analytics across all drives and interviews."""
+    # Overall stats
+    total_sessions = (await db.execute(select(func.count(InterviewSession.id)))).scalar() or 0
+    completed_sessions = (await db.execute(
+        select(func.count(InterviewSession.id)).where(InterviewSession.status == "completed")
+    )).scalar() or 0
+    in_progress = (await db.execute(
+        select(func.count(InterviewSession.id)).where(InterviewSession.status == "in_progress")
+    )).scalar() or 0
+    scheduled = (await db.execute(
+        select(func.count(InterviewSession.id)).where(InterviewSession.status == "scheduled")
+    )).scalar() or 0
+
+    # Average scores for completed sessions
+    completed = await db.execute(
+        select(InterviewSession).where(
+            InterviewSession.status == "completed",
+            InterviewSession.overall_score.isnot(None)
+        )
+    )
+    completed_list = completed.scalars().all()
+
+    avg_score = 0.0
+    pass_count = 0
+    fail_count = 0
+    if completed_list:
+        scores = [s.overall_score for s in completed_list if s.overall_score is not None]
+        avg_score = round(sum(scores) / len(scores), 2) if scores else 0.0
+        pass_count = sum(1 for s in scores if s >= 6.0)
+        fail_count = len(scores) - pass_count
+
+    pass_rate = round((pass_count / max(len(completed_list), 1)) * 100, 1)
+    completion_rate = round((completed_sessions / max(total_sessions, 1)) * 100, 1)
+
+    # Role breakdown
+    drives_result = await db.execute(select(JobDrive))
+    drives = drives_result.scalars().all()
+
+    role_map = {}
+    for drive in drives:
+        sessions_for_drive = await db.execute(
+            select(InterviewSession).where(InterviewSession.job_drive_id == drive.id)
+        )
+        drive_sessions = sessions_for_drive.scalars().all()
+        drive_completed = [s for s in drive_sessions if s.status == "completed" and s.overall_score]
+
+        role = drive.job_role
+        if role not in role_map:
+            role_map[role] = {"total": 0, "completed": 0, "scores": []}
+        role_map[role]["total"] += len(drive_sessions)
+        role_map[role]["completed"] += len(drive_completed)
+        role_map[role]["scores"].extend([s.overall_score for s in drive_completed])
+
+    role_breakdown = []
+    for role, data in role_map.items():
+        avg = round(sum(data["scores"]) / len(data["scores"]), 2) if data["scores"] else 0
+        passes = sum(1 for s in data["scores"] if s >= 6.0)
+        role_breakdown.append({
+            "job_role": role,
+            "total": data["total"],
+            "completed": data["completed"],
+            "avg_score": avg,
+            "pass_rate": round((passes / max(data["completed"], 1)) * 100, 1),
+        })
+
+    # Score distribution (histogram buckets)
+    score_buckets = {"0-2": 0, "2-4": 0, "4-6": 0, "6-8": 0, "8-10": 0}
+    for s in completed_list:
+        if s.overall_score is not None:
+            if s.overall_score < 2:
+                score_buckets["0-2"] += 1
+            elif s.overall_score < 4:
+                score_buckets["2-4"] += 1
+            elif s.overall_score < 6:
+                score_buckets["4-6"] += 1
+            elif s.overall_score < 8:
+                score_buckets["6-8"] += 1
+            else:
+                score_buckets["8-10"] += 1
+
+    # Hiring funnel
+    total_users = (await db.execute(select(func.count(User.id)))).scalar() or 0
+    total_invites = (await db.execute(select(func.count(DriveInviteToken.id)))).scalar() or 0
+    hired_count = pass_count  # Approximation: passed = potentially hired
+
+    funnel = {
+        "invited": total_invites,
+        "started": total_sessions,
+        "completed": completed_sessions,
+        "passed": pass_count,
+        "hired": hired_count,
+    }
+
+    # Average time-to-hire (approximate from session duration)
+    durations = [s.duration for s in completed_list if s.duration]
+    avg_duration = round(sum(durations) / len(durations) / 60, 1) if durations else 0  # in minutes
+
+    # Recent trend (last 30 days)
+    from datetime import timedelta
+    thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+    recent_sessions = await db.execute(
+        select(InterviewSession).where(
+            InterviewSession.status == "completed",
+            InterviewSession.created_at >= thirty_days_ago,
+            InterviewSession.overall_score.isnot(None)
+        )
+    )
+    recent_list = recent_sessions.scalars().all()
+    recent_avg = 0.0
+    if recent_list:
+        recent_scores = [s.overall_score for s in recent_list if s.overall_score]
+        recent_avg = round(sum(recent_scores) / len(recent_scores), 2) if recent_scores else 0.0
+
+    # Daily trend for last 14 days
+    daily_trend = []
+    for i in range(13, -1, -1):
+        day = datetime.now(timezone.utc) - timedelta(days=i)
+        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        day_sessions = await db.execute(
+            select(InterviewSession).where(
+                InterviewSession.status == "completed",
+                InterviewSession.created_at >= day_start,
+                InterviewSession.created_at < day_end,
+                InterviewSession.overall_score.isnot(None)
+            )
+        )
+        day_list = day_sessions.scalars().all()
+        day_avg = 0.0
+        if day_list:
+            day_scores = [s.overall_score for s in day_list if s.overall_score]
+            day_avg = round(sum(day_scores) / len(day_scores), 2) if day_scores else 0.0
+        daily_trend.append({
+            "date": day.strftime("%Y-%m-%d"),
+            "count": len(day_list),
+            "avg_score": day_avg,
+        })
+
+    return {
+        "summary": {
+            "total_sessions": total_sessions,
+            "completed_sessions": completed_sessions,
+            "in_progress": in_progress,
+            "scheduled": scheduled,
+            "avg_score": avg_score,
+            "pass_rate": pass_rate,
+            "completion_rate": completion_rate,
+            "total_candidates": total_users,
+            "avg_duration_minutes": avg_duration,
+            "recent_30d_avg": recent_avg,
+        },
+        "funnel": funnel,
+        "score_distribution": score_buckets,
+        "role_breakdown": role_breakdown,
+        "daily_trend": daily_trend,
+        "pass_fail": {"pass": pass_count, "fail": fail_count},
+    }
+
+
+@router.get("/analytics/export/csv")
+async def export_analytics_csv(
+    db: AsyncSession = Depends(get_session),
+    current_admin: User = Depends(deps.get_current_admin),
+) -> Any:
+    """Export all platform interview data as CSV."""
+    from app.services.export_service import export_service
+
+    # Fetch all interviews
+    result = await db.execute(
+        select(InterviewSession, User, JobDrive)
+        .join(User, InterviewSession.candidate_id == User.id)
+        .join(JobDrive, InterviewSession.job_drive_id == JobDrive.id, isouter=True)
+    )
+    rows = result.all()
+
+    interviews = []
+    for session, user, drive in rows:
+        interviews.append({
+            "id": session.id,
+            "candidate_email": user.email,
+            "candidate_name": f"{user.first_name} {user.last_name}".strip(),
+            "job_role": drive.job_role if drive else "Practice",
+            "drive_title": drive.title if drive else "Practice",
+            "overall_score": session.overall_score,
+            "ai_feedback": session.ai_feedback,
+            "skill_matrix": session.skill_matrix,
+            "status": session.status,
+            "duration": session.duration,
+            "created_at": session.created_at,
+        })
+
+    csv_content = export_service.interviews_to_csv(interviews)
+
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=vedrix_platform_export.csv"
+        }
+    )

@@ -5,7 +5,8 @@ import {
   Briefcase, Plus, Link as LinkIcon, Activity,
   ChevronRight, Copy, CheckCircle2, Clock, LayoutDashboard,
   LogOut, Settings, MoreVertical, X, Loader2, Mail, Send,
-  ChevronDown, Radio, MessageSquareText, Home
+  ChevronDown, Radio, MessageSquareText, Home, Download,
+  Play, Target
 } from 'lucide-react';
 import apiClient from '../services/api';
 import useAuthStore from '../store/useAuthStore';
@@ -584,6 +585,30 @@ const HRDashboard = () => {
     navigate(`/report/${sessionId}`);
   };
 
+  const handleViewReplay = (sessionId) => {
+    navigate(`/replay/${sessionId}`);
+  };
+
+  const handleViewSkillGap = (sessionId) => {
+    navigate(`/skill-gap/${sessionId}`);
+  };
+
+  const handleExportCSV = async () => {
+    try {
+      const res = await apiClient.get('/hr/analytics/export/csv', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'vedrix_interviews_export.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      alert('Export failed. Ensure you have HR permissions.');
+    }
+  };
+
   // Phase 1A: Extract advisor suggestions from live sessions (derived state)
   const advisorSuggestions = useMemo(() => {
     return liveSessions
@@ -961,15 +986,27 @@ const HRDashboard = () => {
             </div>
           </div>
         ) : activeTab === 'Evaluation Reports' ? (
-          <div className="bg-white/2 border border-white/5 rounded-[2.5rem] overflow-hidden">
-            <div className="px-8 py-6 border-b border-white/5 bg-white/2">
+          <div className="space-y-6">
+            {/* Export bar */}
+            <div className="flex justify-end">
+              <button
+                onClick={handleExportCSV}
+                className="flex items-center space-x-2 bg-white/5 border border-white/10 text-slate-300 px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-white/10 transition-all"
+              >
+                <Download size={16} />
+                <span>Export CSV</span>
+              </button>
+            </div>
+            <div className="bg-white/2 border border-white/5 rounded-[2.5rem] overflow-hidden">
+              <div className="px-8 py-6 border-b border-white/5 bg-white/2">
               <div className="grid grid-cols-12 gap-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 items-center">
                 <div className="col-span-3">Candidate</div>
                 <div className="col-span-2">Role / Drive</div>
-                <div className="col-span-2 text-center cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('overall_score')}>Overall Score {sortConfig.key === 'overall_score' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
-                <div className="col-span-2 text-center cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('technical_accuracy')}>Technical {sortConfig.key === 'technical_accuracy' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
-                <div className="col-span-2 text-center cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('communication_clarity')}>Comm. {sortConfig.key === 'communication_clarity' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
-                <div className="col-span-1"></div>
+                <div className="col-span-1 text-center cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('overall_score')}>Score {sortConfig.key === 'overall_score' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                <div className="col-span-1 text-center cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('technical_accuracy')}>Tech</div>
+                <div className="col-span-1 text-center cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('communication_clarity')}>Comm</div>
+                <div className="col-span-1 text-center">Actions</div>
+                <div className="col-span-3"></div>
               </div>
             </div>
             <div className="divide-y divide-white/5">
@@ -993,7 +1030,7 @@ const HRDashboard = () => {
                       <p className="text-slate-300 font-bold text-xs truncate">{interview.job_role || 'Unknown Role'}</p>
                       <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest mt-0.5 truncate">{interview.drive_title || 'Unknown Drive'}</p>
                     </div>
-                    <div className="col-span-2 text-center">
+                    <div className="col-span-1 text-center">
                       <span className={`text-lg font-black ${
                         interview.overall_score >= 8 ? 'text-emerald-400' : 
                         interview.overall_score >= 5 ? 'text-purple-400' : 'text-amber-400'
@@ -1001,27 +1038,46 @@ const HRDashboard = () => {
                         {interview.overall_score?.toFixed(1) || '—'}
                       </span>
                     </div>
-                    <div className="col-span-2 text-center">
+                    <div className="col-span-1 text-center">
                       <span className="text-sm font-bold text-slate-300">
                         {interview.ai_feedback?.technical_accuracy?.toFixed(1) || '—'}
                       </span>
                     </div>
-                    <div className="col-span-2 text-center">
+                    <div className="col-span-1 text-center">
                       <span className="text-sm font-bold text-slate-300">
                         {interview.ai_feedback?.communication_clarity?.toFixed(1) || '—'}
                       </span>
                     </div>
-                    <div className="col-span-1 text-right">
+                    <div className="col-span-1 text-center">
+                      <div className="flex items-center justify-center space-x-1">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleViewReplay(interview.id); }}
+                          className="p-1.5 bg-white/5 border border-white/10 rounded-lg text-slate-400 hover:text-blue-400 hover:bg-blue-600/10 transition-all"
+                          title="Replay"
+                        >
+                          <Play size={12} />
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleViewSkillGap(interview.id); }}
+                          className="p-1.5 bg-white/5 border border-white/10 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-amber-600/10 transition-all"
+                          title="Skill Gap"
+                        >
+                          <Target size={12} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="col-span-3 text-right">
                       <button 
                         onClick={() => handleViewReport(interview.id)}
-                        className="p-2 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white hover:bg-purple-600 transition-all group-hover:scale-110">
-                        <ChevronRight size={16} />
+                        className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white hover:bg-purple-600 transition-all text-xs font-bold">
+                        View Report
                       </button>
                     </div>
                   </div>
                 ))
               )}
             </div>
+          </div>
           </div>
         ) : activeTab === 'Skill Matrix' ? (
           <SkillMatrixTab interviews={interviews} />

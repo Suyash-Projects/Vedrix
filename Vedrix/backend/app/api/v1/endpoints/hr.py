@@ -676,3 +676,277 @@ async def hr_close_interview(
         "session_id": session_id,
         "message": "Interview closed by HR",
     }
+
+
+# ── Phase 3: Analytics & Reporting ──────────────────────────────────────────
+
+@router.get("/interviews/{session_id}/skill-gap")
+async def get_skill_gap_analysis(
+    session_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr)
+) -> Any:
+    """Get detailed skill gap analysis for a completed interview session."""
+    hr_profile = await _get_hr_profile(db, current_hr.id)
+
+    result = await db.execute(
+        select(InterviewSession, JobDrive)
+        .join(JobDrive, InterviewSession.job_drive_id == JobDrive.id, isouter=True)
+        .where(
+            InterviewSession.id == session_id,
+            JobDrive.hr_id == hr_profile.id
+        )
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+
+    session, drive = row
+
+    if session.status != "completed" or not session.overall_score:
+        raise HTTPException(status_code=400, detail="Session is not completed yet")
+
+    # Get candidate skills from skill_matrix
+    skill_matrix = session.skill_matrix or {}
+    if isinstance(skill_matrix, str):
+        try:
+            import json
+            skill_matrix = json.loads(skill_matrix)
+        except (json.JSONDecodeError, TypeError):
+            skill_matrix = {}
+
+    # Get required skills from drive
+    required_skills = {}
+    if drive and drive.skills_required:
+        for skill in drive.skills_required.split(","):
+            skill = skill.strip().lower()
+            if skill:
+                required_skills[skill] = 8.0  # Default required level
+
+    # If no drive skills defined, infer from ai_feedback
+    ai_feedback = session.ai_feedback or {}
+    if isinstance(ai_feedback, str):
+        try:
+            import json
+            ai_feedback = json.loads(ai_feedback)
+        except (json.JSONDecodeError, TypeError):
+            ai_feedback = {}
+
+    # Build candidate skill scores
+    candidate_skills = {}
+    for topic, score in (skill_matrix or {}).items():
+        topic_lower = topic.lower()
+        candidate_skills[topic_lower] = round(float(score), 1)
+
+    # Also include metrics from ai_feedback
+    metric_map = {
+        "technical_accuracy": "Technical Accuracy",
+        "communication_clarity": "Communication",
+        "depth_of_knowledge": "Depth of Knowledge",
+    }
+    for metric_key, display_name in metric_map.items():
+        val = ai_feedback.get(metric_key)
+        if val is not None:
+            candidate_skills[display_name.lower()] = round(float(val), 1)
+
+    # Calculate gaps
+    gaps = {}
+    all_skills = set(list(candidate_skills.keys()) + list(required_skills.keys()))
+    for skill in all_skills:
+        candidate_score = candidate_skills.get(skill, 0)
+        required_score = required_skills.get(skill, 0)
+        gaps[skill] = round(candidate_score - required_score, 1)
+
+    # Generate recommendations
+    recommendations = []
+    weaknesses = ai_feedback.get("weaknesses", [])
+    if weaknesses:
+        for w in weaknesses:
+            recommendations.append(f"Focus on: {w}")
+
+    for skill, gap in sorted(gaps.items(), key=lambda x: x[1]):
+        if gap < -1.0:
+            recommendations.append(f"Significant gap in {skill} (gap: {gap}). Consider targeted practice.")
+        elif gap < 0:
+            recommendations.append(f"Minor gap in {skill} (gap: {gap}). Review fundamentals.")
+
+    if not recommendations:
+        recommendations.append("Candidate meets or exceeds role requirements across all assessed areas.")
+
+    return {
+        "session_id": session_id,
+        "job_role": drive.job_role if drive else "General",
+        "candidate_skills": candidate_skills,
+        "required_skills": required_skills,
+        "gaps": gaps,
+        "overall_match_score": round(
+            sum(1 for g in gaps.values() if g >= 0) / max(len(gaps), 1) * 100, 1
+        ),
+        "recommendations": recommendations,
+    }
+
+
+@router.get("/interviews/{session_id}/replay")
+async def get_interview_replay(
+    session_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr)
+) -> Any:
+    """Get full interview transcript with timestamps for replay."""
+    hr_profile = await _get_hr_profile(db, current_hr.id)
+
+    result = await db.execute(
+        select(InterviewSession, User, JobDrive)
+        .join(User, InterviewSession.candidate_id == User.id)
+        .join(JobDrive, InterviewSession.job_drive_id == JobDrive.id, isouter=True)
+        .where(
+            InterviewSession.id == session_id,
+            JobDrive.hr_id == hr_profile.id
+        )
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+
+    session, candidate, drive = row
+
+    if session.status != "completed":
+        raise HTTPException(status_code=400, detail="Session is not completed yet")
+
+    # Get transcript (responses)
+    responses = session.responses or []
+    if isinstance(responses, str):
+        try:
+            import json
+            responses = json.loads(responses)
+        except (json.JSONDecodeError, TypeError):
+            responses = []
+
+    # Get questions
+    questions = session.questions or []
+    if isinstance(questions, str):
+        try:
+            import json
+            questions = json.loads(questions)
+        except (json.JSONDecodeError, TypeError):
+            questions = []
+
+    # Get skill matrix
+    skill_matrix = session.skill_matrix or {}
+    if isinstance(skill_matrix, str):
+        try:
+            import json
+            skill_matrix = json.loads(skill_matrix)
+        except (json.JSONDecodeError, TypeError):
+            skill_matrix = {}
+
+    # Get AI feedback
+    ai_feedback = session.ai_feedback or {}
+    if isinstance(ai_feedback, str):
+        try:
+            import json
+            ai_feedback = json.loads(ai_feedback)
+        except (json.JSONDecodeError, TypeError):
+            ai_feedback = {}
+
+    # Build replay steps
+    steps = []
+    q_idx = 0
+    for msg in responses:
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+
+        if role == "assistant":
+            # This is an AI question
+            step = {
+                "type": "question",
+                "speaker": "AI Interviewer",
+                "content": content,
+                "question_index": q_idx,
+            }
+            # Attach question metadata if available
+            if q_idx < len(questions):
+                q_meta = questions[q_idx]
+                if isinstance(q_meta, dict):
+                    step["category"] = q_meta.get("category", "")
+                    step["difficulty"] = q_meta.get("difficulty", "")
+                    step["skill_tested"] = q_meta.get("skill_tested", "")
+            steps.append(step)
+        elif role == "user":
+            # This is a candidate answer
+            step = {
+                "type": "answer",
+                "speaker": "Candidate",
+                "content": content,
+                "question_index": q_idx - 1 if q_idx > 0 else 0,
+            }
+            # Try to attach evaluation if available from ai_feedback
+            steps.append(step)
+            q_idx += 1
+
+    # Calculate timing info
+    start_time = session.start_time
+    end_time = session.end_time
+    duration_secs = session.duration or 0
+
+    return {
+        "session_id": session_id,
+        "candidate_name": f"{candidate.first_name} {candidate.last_name}".strip(),
+        "candidate_email": candidate.email,
+        "job_role": drive.job_role if drive else "General",
+        "drive_title": drive.title if drive else "Practice Interview",
+        "overall_score": session.overall_score,
+        "start_time": start_time.isoformat() if start_time else None,
+        "end_time": end_time.isoformat() if end_time else None,
+        "duration_seconds": duration_secs,
+        "steps": steps,
+        "ai_feedback": ai_feedback,
+        "skill_matrix": skill_matrix,
+    }
+
+
+@router.get("/analytics/export/csv")
+async def export_interviews_csv(
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr)
+) -> Any:
+    """Export all HR's interview data as CSV."""
+    from app.services.export_service import export_service
+
+    hr_profile = await _get_hr_profile(db, current_hr.id)
+
+    # Fetch all interviews for this HR's drives
+    query = (
+        select(InterviewSession, User, JobDrive)
+        .join(User, InterviewSession.candidate_id == User.id)
+        .join(JobDrive, InterviewSession.job_drive_id == JobDrive.id)
+        .where(JobDrive.hr_id == hr_profile.id)
+    )
+    result = await db.execute(query)
+    rows = result.all()
+
+    interviews = []
+    for session, user, drive in rows:
+        interviews.append({
+            "id": session.id,
+            "candidate_email": user.email,
+            "candidate_name": f"{user.first_name} {user.last_name}".strip(),
+            "job_role": drive.job_role,
+            "drive_title": drive.title,
+            "overall_score": session.overall_score,
+            "ai_feedback": session.ai_feedback,
+            "skill_matrix": session.skill_matrix,
+            "status": session.status,
+            "duration": session.duration,
+            "created_at": session.created_at,
+        })
+
+    csv_content = export_service.interviews_to_csv(interviews)
+
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=vedrix_interviews_export.csv"
+        }
+    )

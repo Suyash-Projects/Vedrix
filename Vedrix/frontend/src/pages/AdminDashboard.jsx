@@ -360,6 +360,13 @@ const AdminDashboard = () => {
           </div>
           <div className="flex items-center space-x-3">
             <button
+              onClick={() => navigate('/analytics/team')}
+              className="flex items-center space-x-2 bg-emerald-600/10 border border-emerald-500/20 text-emerald-400 px-4 py-2 rounded-xl text-sm font-bold hover:bg-emerald-600/20 transition-all"
+            >
+              <BarChart3 size={16} />
+              <span>Team Analytics</span>
+            </button>
+            <button
               onClick={fetchData}
               disabled={loading}
               className="flex items-center space-x-2 bg-white/5 border border-white/10 text-slate-300 px-4 py-2 rounded-xl text-sm font-bold hover:bg-white/10 transition-all disabled:opacity-50"
