@@ -9,6 +9,9 @@ import {
 import useAuthStore from '../store/useAuthStore';
 import apiClient from '../services/api';
 import Editor from '@monaco-editor/react';
+import { useIsMobile } from '../hooks/useDeviceDetection';
+import DesktopOnlyBanner from '../components/DesktopOnlyBanner';
+import InterviewProgressBar from '../components/InterviewProgressBar';
 
 /* ── WAVEFORM HEIGHTS — pre-generated for stability ────────────────────── */
 const waveformHeights = Array.from({ length: 60 }, () => Math.random() * 50 + 10);
@@ -129,6 +132,9 @@ const InterviewRoom = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
+  // Phase 2.1: Mobile detection — block interviews on mobile/tablet
+  const isMobile = useIsMobile(1024);
+
   const [resolvedSessionId] = useState(() =>
     `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
   );
@@ -189,6 +195,13 @@ const InterviewRoom = () => {
   const [code, setCode] = useState("# Write your solution here...\n");
   const [isCodingMode, setIsCodingMode] = useState(false);
   const [codeLanguage, setCodeLanguage] = useState("python");
+
+  // Phase 2.2: Progress tracking state
+  const [totalQuestions] = useState(15); // Default max questions
+  const [skillsCovered, setSkillsCovered] = useState(0);
+  const [totalSkills] = useState(8); // Default skills to cover
+  const [advisorReady, setAdvisorReady] = useState(false);
+  const [advisorConfidence, setAdvisorConfidence] = useState(0);
 
   // Video state
   const [isVideoOn, setIsVideoOn] = useState(true);
@@ -339,6 +352,13 @@ const InterviewRoom = () => {
         setIsCodingMode(payload.is_coding || false);
         if (payload.language) setCodeLanguage(payload.language);
         setAgentStatus('Question ready. We are waiting for your response.');
+        // Phase 2.2: Update skills covered from question data
+        if (payload.data?.skill_tested) {
+          setSkillsCovered(prev => {
+            // Increment if this is a new skill (simplified tracking)
+            return Math.min(prev + 1, totalSkills);
+          });
+        }
         if (payload.audio) {
           playAudio(payload.audio);
         } else {
@@ -382,6 +402,11 @@ const InterviewRoom = () => {
         // Phase 1A: Advisor suggestion received (primarily for HR, but candidate sees status)
         // Candidate continues normally — HR decides when to close
         console.log('Advisor suggestion:', payload.data);
+        // Phase 2.2: Update progress bar advisor state
+        if (payload.data?.ready_to_close) {
+          setAdvisorReady(true);
+          setAdvisorConfidence(payload.data.confidence || 0);
+        }
       }
     };
   };
@@ -568,6 +593,11 @@ const InterviewRoom = () => {
 
   const formatTimer = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
+  // Phase 2.1: Show desktop banner on mobile (after all hooks are called)
+  if (isMobile) {
+    return <DesktopOnlyBanner />;
+  }
+
   if (!ready) return <ReadyCheckWizard onReady={() => setReady(true)} />;
 
   return (
@@ -590,12 +620,17 @@ const InterviewRoom = () => {
         </div>
 
         <div className="flex items-center space-x-8">
-          <div className="text-right">
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 flex items-center justify-end">
-              Interview Session
-              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full ml-2 inline-block animate-pulse" />
-            </p>
-            <p className="text-xs font-bold text-white uppercase tracking-wider">Voice and typed answers supported</p>
+          {/* Phase 2.2: Progress bar in top nav */}
+          <div className="w-80">
+            <InterviewProgressBar
+              currentQuestion={currentQuestion?.id || 1}
+              totalQuestions={totalQuestions}
+              skillsCovered={skillsCovered}
+              totalSkills={totalSkills}
+              timeElapsed={timeLeft}
+              advisorReady={advisorReady}
+              advisorConfidence={advisorConfidence}
+            />
           </div>
 
           <button onClick={handleEndInterview}
