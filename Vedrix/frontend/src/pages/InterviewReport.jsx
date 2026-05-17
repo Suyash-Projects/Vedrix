@@ -6,7 +6,8 @@ import {
 } from 'recharts';
 import { 
   ChevronLeft, Download, Share2, Award, AlertTriangle, 
-  CheckCircle2, Target, MessageSquare, BookOpen, ShieldCheck, Loader2
+  CheckCircle2, Target, MessageSquare, BookOpen, ShieldCheck, Loader2,
+  Linkedin, Twitter, Link2, Image
 } from 'lucide-react';
 import apiClient from '../services/api';
 
@@ -16,6 +17,9 @@ const InterviewReport = () => {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  // Phase 2.4: Certificate sharing state
+  const [shareData, setShareData] = useState(null);
+  const [showShareMenu, setShowShareMenu] = useState(false);
 
   const handleBack = () => {
     navigate(-1); // Go back to previous page
@@ -41,11 +45,7 @@ const InterviewReport = () => {
     }
   };
 
-  const handleShare = () => {
-    navigator.clipboard.writeText(window.location.href);
-    alert("Report link copied to clipboard!");
-  };
-
+  // Phase 2.4: Download certificate as PNG
   const handleDownloadCertificate = async () => {
     setExporting(true);
     try {
@@ -63,6 +63,61 @@ const InterviewReport = () => {
     } finally {
       setExporting(false);
     }
+  };
+
+  const handleDownloadCertificatePNG = async () => {
+    setExporting(true);
+    try {
+      const res = await apiClient.get(`/users/sessions/${sessionId}/certificate/png`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Vedrix_Certificate_${sessionId}.png`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      alert('Failed to download certificate image.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Phase 2.4: Generate shareable link
+  const handleGenerateShareLink = async () => {
+    try {
+      const res = await apiClient.get(`/users/sessions/${sessionId}/share-link`);
+      setShareData(res.data);
+      setShowShareMenu(true);
+    } catch {
+      alert('Failed to generate share link.');
+    }
+  };
+
+  // Phase 2.4: Copy verification link to clipboard
+  const handleCopyShareLink = () => {
+    if (shareData?.share_url) {
+      const fullUrl = `${window.location.origin}${shareData.share_url}`;
+      navigator.clipboard.writeText(fullUrl);
+      alert('Verification link copied to clipboard!');
+    }
+  };
+
+  // Phase 2.4: Share to LinkedIn
+  const handleShareToLinkedIn = () => {
+    const url = encodeURIComponent(`${window.location.origin}/verify/${shareData?.verification_token}`);
+    const linkedinUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${url}`;
+    window.open(linkedinUrl, '_blank', 'width=600,height=400');
+  };
+
+  // Phase 2.4: Share to Twitter/X
+  const handleShareToTwitter = () => {
+    const score = report?.overall_score || 0;
+    const text = encodeURIComponent(`I scored ${score}/10 on Vedrix AI Interview! Check my certificate:`);
+    const url = encodeURIComponent(`${window.location.origin}/verify/${shareData?.verification_token}`);
+    const twitterUrl = `https://twitter.com/intent/tweet?text=${text}&url=${url}`;
+    window.open(twitterUrl, '_blank', 'width=600,height=400');
   };
 
   useEffect(() => {
@@ -168,13 +223,73 @@ const InterviewReport = () => {
               {exporting ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
               <span>{exporting ? 'Generating...' : 'Export PDF'}</span>
             </button>
-            <button
-              onClick={handleShare}
-              className="flex items-center space-x-2 bg-purple-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-purple-500 transition-all shadow-lg shadow-purple-900/30 active:scale-95"
-            >
-              <Share2 size={18} />
-              <span>Share with Team</span>
-            </button>
+            {/* Phase 2.4: Certificate sharing dropdown */}
+            {report?.overall_score >= 6 && (
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    if (!shareData) {
+                      handleGenerateShareLink();
+                    } else {
+                      setShowShareMenu(!showShareMenu);
+                    }
+                  }}
+                  disabled={exporting}
+                  className="flex items-center space-x-2 bg-purple-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-purple-500 transition-all shadow-lg shadow-purple-900/30 active:scale-95 disabled:opacity-50"
+                >
+                  <Share2 size={18} />
+                  <span>Share Certificate</span>
+                </button>
+
+                {/* Share menu dropdown */}
+                {showShareMenu && shareData && (
+                  <div className="absolute right-0 top-full mt-2 w-72 bg-[#0a0f1e] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                    <div className="p-4 border-b border-white/5">
+                      <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Share your achievement</p>
+                      <div className="flex items-center space-x-2 bg-white/5 rounded-xl px-3 py-2">
+                        <Link2 size={14} className="text-purple-400 shrink-0" />
+                        <input
+                          readOnly
+                          value={`${window.location.origin}${shareData.share_url}`}
+                          className="flex-1 bg-transparent text-xs text-slate-300 outline-none"
+                          onClick={(e) => e.target.select()}
+                        />
+                        <button
+                          onClick={handleCopyShareLink}
+                          className="text-[10px] font-bold text-purple-400 hover:text-purple-300 shrink-0"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+                    <div className="p-3 space-y-2">
+                      <button
+                        onClick={handleShareToLinkedIn}
+                        className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl bg-blue-600/10 border border-blue-600/20 text-blue-400 hover:bg-blue-600/20 transition-all"
+                      >
+                        <Linkedin size={18} />
+                        <span className="text-sm font-bold">Share on LinkedIn</span>
+                      </button>
+                      <button
+                        onClick={handleShareToTwitter}
+                        className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl bg-slate-600/10 border border-slate-600/20 text-slate-400 hover:bg-slate-600/20 transition-all"
+                      >
+                        <Twitter size={18} />
+                        <span className="text-sm font-bold">Share on X (Twitter)</span>
+                      </button>
+                      <button
+                        onClick={handleDownloadCertificatePNG}
+                        disabled={exporting}
+                        className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl bg-amber-600/10 border border-amber-600/20 text-amber-400 hover:bg-amber-600/20 transition-all disabled:opacity-50"
+                      >
+                        <Image size={18} />
+                        <span className="text-sm font-bold">Download as PNG</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             {report?.overall_score >= 6 && (
               <button
                 onClick={handleDownloadCertificate}

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Mic, MicOff, Video, VideoOff, Send, Loader2, Maximize,
   CheckCircle2, Camera, User, PhoneOff, BrainCircuit, SignalHigh,
-  Play, Terminal
+  Play, Terminal, Save
 } from 'lucide-react';
 import useAuthStore from '../store/useAuthStore';
 import apiClient from '../services/api';
@@ -12,6 +12,8 @@ import Editor from '@monaco-editor/react';
 import { useIsMobile } from '../hooks/useDeviceDetection';
 import DesktopOnlyBanner from '../components/DesktopOnlyBanner';
 import InterviewProgressBar from '../components/InterviewProgressBar';
+import ConnectionStatus from '../components/ConnectionStatus';
+import { enqueueAnswer, syncQueue, getQueueLength, saveDraft } from '../services/offlineQueue';
 
 /* ── WAVEFORM HEIGHTS — pre-generated for stability ────────────────────── */
 const waveformHeights = Array.from({ length: 60 }, () => Math.random() * 50 + 10);
@@ -203,6 +205,14 @@ const InterviewRoom = () => {
   const [advisorReady, setAdvisorReady] = useState(false);
   const [advisorConfidence, setAdvisorConfidence] = useState(0);
 
+  // Phase 2.3: Offline & Reconnection state
+  const [connectionStatus, setConnectionStatus] = useState('connected'); // 'connected' | 'reconnecting' | 'offline' | 'syncing'
+  const [queuedCount, setQueuedCount] = useState(0);
+  const [syncProgress, setSyncProgress] = useState(null);
+  const [displayReconnectAttempts, setDisplayReconnectAttempts] = useState(0);
+  const disconnectStartTime = useRef(null);
+  const offlineThresholdMs = 30000; // 30 seconds before switching to offline mode
+
   // Video state
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [videoStream, setVideoStream] = useState(null);
@@ -331,16 +341,59 @@ const InterviewRoom = () => {
     ws.current.onopen = () => {
       setIsConnected(true);
       reconnectAttempts.current = 0;
+      setDisplayReconnectAttempts(0);
       setAgentStatus('Connected. Your interviewer is ready.');
+
+      // Phase 2.3: Handle reconnection — sync queued answers if any
+      if (disconnectStartTime.current) {
+        const offlineDuration = Date.now() - disconnectStartTime.current;
+        disconnectStartTime.current = null;
+
+        if (offlineDuration > offlineThresholdMs || getQueueLength() > 0) {
+          // Was offline long enough or has queued answers — sync them
+          setConnectionStatus('syncing');
+          setAgentStatus('Reconnected! Syncing queued answers...');
+          syncQueue(ws.current).then(({ synced, failed }) => {
+            setSyncProgress({ synced, total: synced + failed });
+            setQueuedCount(getQueueLength());
+            setTimeout(() => {
+              setConnectionStatus('connected');
+              setSyncProgress(null);
+              setAgentStatus(`Synced ${synced} answer(s). Interview resumed.`);
+            }, 2000);
+          });
+        } else {
+          // Brief disconnect — seamless resume
+          setConnectionStatus('connected');
+          setAgentStatus('Connection restored. Continuing interview...');
+        }
+      } else {
+        setConnectionStatus('connected');
+      }
     };
 
     ws.current.onclose = () => {
       setIsConnected(false);
       if (isIntentionalClose.current) return;
-      // Exponential back-off: 1s, 2s, 4s, 8s, max 16s
-      const delay = Math.min(1000 * 2 ** reconnectAttempts.current, 16000);
+
+      // Phase 2.3: Track disconnect start time
+      disconnectStartTime.current = Date.now();
+
+      // Exponential back-off: 1s, 2s, 4s, 8s, 16s, max 30s
+      const delay = Math.min(1000 * 2 ** reconnectAttempts.current, 30000);
       reconnectAttempts.current += 1;
-      setAgentStatus(`Connection lost. Reconnecting in ${delay / 1000}s...`);
+      setDisplayReconnectAttempts(reconnectAttempts.current);
+
+      // Phase 2.3: Update connection status based on duration
+      if (delay > offlineThresholdMs || reconnectAttempts.current > 4) {
+        setConnectionStatus('offline');
+        setQueuedCount(getQueueLength());
+        setAgentStatus(`Connection lost. Answers will be saved locally.`);
+      } else {
+        setConnectionStatus('reconnecting');
+        setAgentStatus(`Connection lost. Reconnecting in ${delay / 1000}s...`);
+      }
+
       reconnectTimer.current = setTimeout(() => connectWebSocket(url), delay);
     };
 
@@ -449,6 +502,9 @@ const InterviewRoom = () => {
       clearTimeout(reconnectTimer.current);
       ws.current?.close();
       clearInterval(timer);
+      // Phase 2.3: Reset connection state on cleanup
+      setConnectionStatus('connected');
+      disconnectStartTime.current = null;
     };
   }, [ready, resolvedSessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -481,10 +537,17 @@ const InterviewRoom = () => {
       setAgentStatus('Processing your answer...');
       setTimeout(() => {
         const blob = new Blob(audioChunks.current, { type: 'audio/webm' });
+        // Phase 2.3: Queue audio answer if offline, otherwise send via WS
         if (ws.current?.readyState === WebSocket.OPEN && audioChunks.current.length > 0) {
           ws.current.send(blob);
           audioChunks.current = [];
           setAgentStatus('Answer submitted. Reviewing your response...');
+        } else if (audioChunks.current.length > 0) {
+          // Offline — queue the audio answer as text placeholder
+          enqueueAnswer('audio_pending', { size: blob.size, type: blob.type });
+          audioChunks.current = [];
+          setQueuedCount(getQueueLength());
+          setAgentStatus('Answer saved locally. Will sync when reconnected.');
         }
       }, 1500);
     } else {
@@ -575,21 +638,52 @@ const InterviewRoom = () => {
 
   const submitCode = () => {
     updateActivity();
+    // Phase 2.3: Queue code if offline, otherwise send via WS
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type: 'code', data: code }));
       setAgentStatus('AI Evaluator: Analyzing logic...');
+    } else {
+      enqueueAnswer('code', code);
+      setQueuedCount(getQueueLength());
+      setAgentStatus('Code saved locally. Will sync when reconnected.');
     }
   };
 
   const submitTextAnswer = () => {
     updateActivity();
+    // Phase 2.3: Queue text answer if offline, otherwise send via WS
     if (manualText.trim() && ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify({ type: 'answer', data: manualText }));
       setAgentStatus('Text answer submitted. Reviewing your response.');
       setManualText('');
       setShowTextInput(false);
+    } else if (manualText.trim()) {
+      enqueueAnswer('answer', manualText);
+      setQueuedCount(getQueueLength());
+      setAgentStatus('Answer saved locally. Will sync when reconnected.');
+      setManualText('');
+      setShowTextInput(false);
     }
   };
+
+  // Phase 2.3: Save Draft handler
+  const handleSaveDraft = useCallback(() => {
+    const draft = {
+      sessionId: resolvedSessionId,
+      currentQuestion: currentQuestion,
+      code,
+      manualText,
+      timeLeft,
+      isCodingMode,
+      savedAt: Date.now(),
+    };
+    const success = saveDraft(draft);
+    if (success) {
+      setAgentStatus('Draft saved locally.');
+    } else {
+      setAgentStatus('Failed to save draft.');
+    }
+  }, [resolvedSessionId, currentQuestion, code, manualText, timeLeft, isCodingMode]);
 
   const formatTimer = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
@@ -613,9 +707,13 @@ const InterviewRoom = () => {
           <div className="h-8 w-px bg-white/10" />
           <div className="space-y-0.5">
             <h2 className="text-sm font-black uppercase tracking-widest text-white">{jobRole}</h2>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-              {isConnected ? 'Connected' : 'Connecting...'}
-            </p>
+            <ConnectionStatus
+              status={connectionStatus}
+              reconnectAttempts={displayReconnectAttempts}
+              queuedCount={queuedCount}
+              syncProgress={syncProgress}
+              onSaveDraft={handleSaveDraft}
+            />
           </div>
         </div>
 
@@ -656,7 +754,13 @@ const InterviewRoom = () => {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-purple-600/5 blur-[150px] rounded-full pointer-events-none" />
 
         <div className="absolute top-6 right-6 flex items-center space-x-2 bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl">
-          <SignalHigh size={14} className={isConnected ? 'text-emerald-500' : 'text-slate-500'} />
+          <SignalHigh size={14} className={
+            connectionStatus === 'connected' ? 'text-emerald-500' :
+            connectionStatus === 'reconnecting' ? 'text-amber-500 animate-pulse' :
+            connectionStatus === 'offline' ? 'text-red-500' :
+            connectionStatus === 'syncing' ? 'text-blue-500 animate-pulse' :
+            'text-slate-500'
+          } />
         </div>
 
         {/* Video Preview */}
@@ -837,13 +941,24 @@ const InterviewRoom = () => {
                 )}
               </AnimatePresence>
 
-              <button
-                onClick={() => setShowTextInput(!showTextInput)}
-                className="flex items-center space-x-2 text-slate-500 font-black uppercase tracking-widest text-[10px] hover:text-white transition-colors"
-              >
-                 <Send size={16} className="text-purple-500" />
-                 <span>{showTextInput ? 'Close Text Entry' : 'Manual Text Answer'}</span>
-              </button>
+              <div className="flex items-center space-x-4">
+                {/* Phase 2.3: Save Draft button */}
+                <button
+                  onClick={handleSaveDraft}
+                  className="flex items-center space-x-2 text-slate-500 font-black uppercase tracking-widest text-[10px] hover:text-white transition-colors"
+                >
+                  <Save size={16} className="text-amber-500" />
+                  <span>Save Draft</span>
+                </button>
+
+                <button
+                  onClick={() => setShowTextInput(!showTextInput)}
+                  className="flex items-center space-x-2 text-slate-500 font-black uppercase tracking-widest text-[10px] hover:text-white transition-colors"
+                >
+                   <Send size={16} className="text-purple-500" />
+                   <span>{showTextInput ? 'Close Text Entry' : 'Manual Text Answer'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

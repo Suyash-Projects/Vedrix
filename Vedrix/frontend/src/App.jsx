@@ -8,6 +8,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import HRDashboard from './pages/HRDashboard';
 import StudentDashboard from './pages/StudentDashboard';
 import InterviewReport from './pages/InterviewReport';
+import CertificateVerification from './pages/CertificateVerification';
 import LandingPage from './pages/LandingPage';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -31,7 +32,8 @@ function App() {
   // Determine if we should show the navbar/footer
   const isInterviewRoom = location.pathname === '/interview';
   const isReport = location.pathname.startsWith('/report');
-  const showNavbar = !isInterviewRoom && !isReport;
+  const isVerify = location.pathname.startsWith('/verify');
+  const showNavbar = !isInterviewRoom && !isReport && !isVerify;
 
   return (
     <div className="min-h-screen bg-[#020617] text-white">
@@ -87,12 +89,15 @@ function App() {
             </ProtectedRoute>
           } />
 
+          {/* Public Certificate Verification Route */}
+          <Route path="/verify/:token" element={<CertificateVerification />} />
+
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
 
-      {!isInterviewRoom && !isReport && (
+      {!isInterviewRoom && !isReport && !isVerify && (
         <footer className="py-12 border-t border-white/5 text-center bg-[#0a0f1e]">
           <div className="text-2xl font-black text-white mb-4 tracking-tighter">Vedrix</div>
           <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">© 2026 Vedrix. Interview operations and evaluation workflows.</p>

@@ -64,3 +64,29 @@ def decode_refresh_token(token: str) -> Optional[int]:
         return int(payload.get("sub"))
     except Exception:
         return None
+
+
+def generate_verification_token(session_id: int, candidate_name: str, expires_days: int = 365) -> str:
+    """Generate a verification token for certificate sharing. Valid for 1 year by default."""
+    expire = datetime.now(timezone.utc) + timedelta(days=expires_days)
+    encoded_jwt = jwt.encode(
+        {
+            "exp": expire,
+            "sub": str(session_id),
+            "name": candidate_name,
+            "type": "certificate_verify",
+        },
+        settings.SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+    return encoded_jwt
+
+
+def decode_verification_token(token: str) -> tuple[int, str]:
+    """Decode a certificate verification token. Returns (session_id, candidate_name)."""
+    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+    if payload.get("type") != "certificate_verify":
+        raise ValueError("Invalid token type")
+    session_id = int(payload.get("sub"))
+    candidate_name = payload.get("name", "Unknown")
+    return session_id, candidate_name

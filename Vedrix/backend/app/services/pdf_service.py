@@ -239,3 +239,115 @@ def generate_certificate(
     pdf.cell(0, 8, "Candidate", align="R", new_x="LMARGIN", new_y="NEXT")
 
     return bytes(pdf.output())
+
+
+def generate_certificate_png(
+    candidate_name: str,
+    job_role: str,
+    overall_score: float,
+    date_completed: str,
+    verification_token: str = "",
+) -> bytes:
+    """
+    Generates a high-resolution PNG certificate image suitable for social sharing.
+    Uses Pillow to render directly. Resolution: 1200x800.
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        import io
+    except ImportError:
+        # Fallback: return empty PNG if Pillow not available
+        import io
+        img = Image.new('RGB', (1200, 800), color=(2, 6, 23))
+        buffer = io.BytesIO()
+        img.save(buffer, format='PNG')
+        return buffer.getvalue()
+
+    # Certificate dimensions (LinkedIn optimal share image)
+    width, height = 1200, 800
+
+    # Create image with dark background
+    img = Image.new('RGB', (width, height), color=(2, 6, 23))  # #020617
+    draw = ImageDraw.Draw(img)
+
+    try:
+        font_title = ImageFont.truetype("arial.ttf", 48)
+        font_subtitle = ImageFont.truetype("arial.ttf", 24)
+        font_name = ImageFont.truetype("arial.ttf", 56)
+        font_score = ImageFont.truetype("arial.ttf", 72)
+        font_body = ImageFont.truetype("arial.ttf", 20)
+        font_small = ImageFont.truetype("arial.ttf", 16)
+        font_bold = ImageFont.truetype("arialbd.ttf", 20)
+    except (IOError, OSError):
+        font_title = ImageFont.load_default()
+        font_subtitle = ImageFont.load_default()
+        font_name = ImageFont.load_default()
+        font_score = ImageFont.load_default()
+        font_body = ImageFont.load_default()
+        font_small = ImageFont.load_default()
+        font_bold = ImageFont.load_default()
+
+    # Decorative border
+    draw.rectangle([20, 20, width - 20, height - 20], outline=(124, 58, 237), width=4)
+    draw.rectangle([30, 30, width - 30, height - 30], outline=(124, 58, 237), width=2)
+
+    # Top accent line
+    draw.rectangle([100, 50, width - 100, 54], fill=(124, 58, 237))
+
+    # VEDRIX logo text
+    draw.text((width // 2 - 120, 70), "VEDRIX", fill=(124, 58, 237), font=font_title)
+    draw.text((width // 2 - 100, 125), "AI Interview Platform", fill=(100, 100, 100), font=font_subtitle)
+
+    # Certificate title
+    draw.text((width // 2 - 180, 200), "Certificate of Completion", fill=(255, 255, 255), font=font_title)
+
+    # "This is to certify that"
+    draw.text((width // 2 - 120, 280), "This is to certify that", fill=(148, 163, 184), font=font_body)
+
+    # Candidate name
+    name_bbox = draw.textbbox((0, 0), candidate_name, font=font_name)
+    name_width = name_bbox[2] - name_bbox[0]
+    draw.text((width // 2 - name_width // 2, 320), candidate_name, fill=(167, 139, 250), font=font_name)
+
+    # Achievement text
+    draw.text((width // 2 - 180, 410), "has successfully completed the AI-powered interview", fill=(148, 163, 184), font=font_body)
+
+    # Job role
+    role_text = f"for the role of {job_role or 'General Candidate'}"
+    role_bbox = draw.textbbox((0, 0), role_text, font=font_bold)
+    role_width = role_bbox[2] - role_bbox[0]
+    draw.text((width // 2 - role_width // 2, 445), role_text, fill=(255, 255, 255), font=font_bold)
+
+    # Score label
+    draw.text((width // 2 - 120, 510), "with an overall performance score of", fill=(148, 163, 184), font=font_body)
+
+    # Score value with color based on performance
+    if overall_score >= 80:
+        score_color = (34, 197, 94)  # Green
+    elif overall_score >= 60:
+        score_color = (251, 191, 36)  # Amber
+    else:
+        score_color = (239, 68, 68)  # Red
+
+    score_text = f"{overall_score:.1f}%"
+    score_bbox = draw.textbbox((0, 0), score_text, font=font_score)
+    score_width = score_bbox[2] - score_bbox[0]
+    draw.text((width // 2 - score_width // 2, 545), score_text, fill=score_color, font=font_score)
+
+    # Date
+    draw.text((width // 2 - 100, 650), f"Date: {date_completed}", fill=(100, 100, 100), font=font_small)
+
+    # Verification token (if provided)
+    if verification_token:
+        verify_text = f"Verify at: vedrix.ai/verify/{verification_token}"
+        verify_bbox = draw.textbbox((0, 0), verify_text, font=font_small)
+        verify_width = verify_bbox[2] - verify_bbox[0]
+        draw.text((width // 2 - verify_width // 2, 680), verify_text, fill=(124, 58, 237), font=font_small)
+
+    # Bottom accent line
+    draw.rectangle([100, height - 60, width - 100, height - 56], fill=(124, 58, 237))
+
+    # Save as PNG
+    buffer = io.BytesIO()
+    img.save(buffer, format='PNG', quality=95)
+    return buffer.getvalue()

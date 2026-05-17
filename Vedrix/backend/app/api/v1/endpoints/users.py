@@ -12,7 +12,7 @@ from app.models.user import User
 from app.models.interview import InterviewSession, JobDrive
 from app.schemas.user import UserRead
 from app.core import security
-from app.services.pdf_service import generate_certificate
+from app.services.pdf_service import generate_certificate, generate_certificate_png
 
 
 class ChangePasswordRequest(BaseModel):
@@ -143,6 +143,145 @@ async def get_session_certificate(
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=Vedrix_Certificate_{session_id}.pdf"},
     )
+
+
+@router.get("/sessions/{session_id}/certificate/png")
+async def get_session_certificate_png(
+    session_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
+) -> Response:
+    """Generate and download a certificate as PNG for social sharing."""
+    import asyncio
+
+    result = await db.execute(
+        select(InterviewSession).where(InterviewSession.id == session_id)
+    )
+    session = result.scalars().first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if current_user.user_type == "student" and session.candidate_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if (session.overall_score or 0) < 6:
+        raise HTTPException(status_code=400, detail="Score must be >= 6/10 to generate certificate")
+
+    candidate_name = current_user.username
+
+    # Resolve job_role from the linked JobDrive
+    job_role = "General Candidate"
+    if session.job_drive_id:
+        drive_res = await db.execute(select(JobDrive).where(JobDrive.id == session.job_drive_id))
+        drive = drive_res.scalars().first()
+        if drive:
+            job_role = drive.job_role
+
+    overall_score = float(session.overall_score or 0)
+    date_completed = session.end_time.strftime("%B %d, %Y") if session.end_time else datetime.now().strftime("%B %d, %Y")
+
+    # Generate verification token
+    verification_token = security.generate_verification_token(session_id, candidate_name)
+
+    # Audit: Use to_thread for blocking PNG generation
+    png_bytes = await asyncio.to_thread(
+        generate_certificate_png,
+        candidate_name=candidate_name,
+        job_role=job_role,
+        overall_score=overall_score,
+        date_completed=date_completed,
+        verification_token=verification_token,
+    )
+
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={"Content-Disposition": f"attachment; filename=Vedrix_Certificate_{session_id}.png"},
+    )
+
+
+@router.get("/sessions/{session_id}/share-link")
+async def get_shareable_link(
+    session_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    """Generate a shareable verification link for the certificate."""
+    result = await db.execute(
+        select(InterviewSession).where(InterviewSession.id == session_id)
+    )
+    session = result.scalars().first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if current_user.user_type == "student" and session.candidate_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if (session.overall_score or 0) < 6:
+        raise HTTPException(status_code=400, detail="Score must be >= 6/10 to share certificate")
+
+    # Generate verification token
+    candidate_name = current_user.username
+    verification_token = security.generate_verification_token(session_id, candidate_name)
+
+    return {
+        "verification_token": verification_token,
+        "share_url": f"/verify/{verification_token}",
+        "linkedin_url": (
+            f"https://www.linkedin.com/sharing/share-offsite/?"
+            f"url=https://vedrix.ai/verify/{verification_token}"
+        ),
+        "certificate_data": {
+            "candidate_name": candidate_name,
+            "overall_score": session.overall_score,
+            "session_id": session_id,
+        },
+    }
+
+
+@router.get("/verify/{token}")
+async def verify_certificate(
+    token: str,
+    db: AsyncSession = Depends(get_session),
+) -> Any:
+    """Verify a certificate using the verification token. Public endpoint (no auth required)."""
+    # Decode the verification token
+    try:
+        session_id, candidate_name = security.decode_verification_token(token)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Invalid or expired verification token")
+
+    result = await db.execute(
+        select(InterviewSession).where(InterviewSession.id == session_id)
+    )
+    session = result.scalars().first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if (session.overall_score or 0) < 6:
+        raise HTTPException(status_code=404, detail="Certificate not available for this session")
+
+    # Resolve job_role
+    job_role = "General Candidate"
+    if session.job_drive_id:
+        drive_res = await db.execute(select(JobDrive).where(JobDrive.id == session.job_drive_id))
+        drive = drive_res.scalars().first()
+        if drive:
+            job_role = drive.job_role
+
+    # Get candidate name from user
+    user_result = await db.execute(select(User).where(User.id == session.candidate_id))
+    user = user_result.scalars().first()
+    actual_name = user.username if user else "Unknown"
+
+    return {
+        "valid": True,
+        "candidate_name": actual_name,
+        "job_role": job_role,
+        "overall_score": session.overall_score,
+        "date_completed": session.end_time.strftime("%B %d, %Y") if session.end_time else None,
+        "verified_at": datetime.now().isoformat(),
+    }
 
 
 @router.post("/change-password")
