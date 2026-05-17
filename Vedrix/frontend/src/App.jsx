@@ -12,6 +12,12 @@ import InterviewReplay from './pages/InterviewReplay';
 import SkillGapAnalysis from './pages/SkillGapAnalysis';
 import TeamAnalytics from './pages/TeamAnalytics';
 import CertificateVerification from './pages/CertificateVerification';
+import SystemHealth from './pages/SystemHealth';
+import AuditLogs from './pages/AuditLogs';
+import SystemConfig from './pages/SystemConfig';
+import CandidatePipeline from './pages/CandidatePipeline';
+import FeedbackSurvey from './pages/FeedbackSurvey';
+import HRFeedback from './pages/HRFeedback';
 import LandingPage from './pages/LandingPage';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -118,6 +124,44 @@ function App() {
 
           {/* Public Certificate Verification Route */}
           <Route path="/verify/:token" element={<CertificateVerification />} />
+
+          {/* Protected System Health Route (Admin only) */}
+          <Route path="/admin/health" element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <SystemHealth />
+            </ProtectedRoute>
+          } />
+
+          {/* Protected Audit Logs Route (Admin only) */}
+          <Route path="/admin/audit-logs" element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AuditLogs />
+            </ProtectedRoute>
+          } />
+
+          {/* Protected System Config Route (Admin only) */}
+          <Route path="/admin/config" element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <SystemConfig />
+            </ProtectedRoute>
+          } />
+
+          {/* Protected Candidate Pipeline Route (HR/Admin) */}
+          <Route path="/hr/pipeline" element={
+            <ProtectedRoute allowedRoles={['hr', 'admin']}>
+              <CandidatePipeline />
+            </ProtectedRoute>
+          } />
+
+          {/* Public Feedback Survey Route */}
+          <Route path="/feedback/survey" element={<FeedbackSurvey />} />
+
+          {/* Protected HR Feedback Route */}
+          <Route path="/hr/feedback/:sessionId" element={
+            <ProtectedRoute allowedRoles={['hr', 'admin']}>
+              <HRFeedback />
+            </ProtectedRoute>
+          } />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -68,7 +68,8 @@ async def init_db():
         # Import all models to ensure they are registered
         from app.models import (
             User, StudentProfile, HRProfile, JobDrive,
-            InterviewSession, DriveInviteToken, ScenarioTemplate
+            InterviewSession, DriveInviteToken, ScenarioTemplate, AuditLog,
+            CandidateFeedback, HRFeedback
         )
         await conn.run_sync(SQLModel.metadata.create_all)
     logger.info("Database initialized successfully")

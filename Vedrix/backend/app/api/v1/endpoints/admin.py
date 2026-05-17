@@ -1103,3 +1103,93 @@ async def export_analytics_csv(
             "Content-Disposition": "attachment; filename=vedrix_platform_export.csv"
         }
     )
+
+
+# ── Audit Logs ───────────────────────────────────────────────────────────────
+
+from app.models.audit import AuditLog
+from app.schemas.admin import AuditLogRead, AuditLogCreate
+
+
+@router.post("/audit-logs", response_model=AuditLogRead, status_code=201)
+async def create_audit_log(
+    *,
+    db: AsyncSession = Depends(get_session),
+    current_admin: User = Depends(deps.get_current_admin),
+    log_in: AuditLogCreate,
+) -> Any:
+    """Create an audit log entry (used by middleware and manual logging)."""
+    audit_log = AuditLog(**log_in.model_dump())
+    db.add(audit_log)
+    await db.commit()
+    await db.refresh(audit_log)
+    return audit_log
+
+
+@router.get("/audit-logs", response_model=List[AuditLogRead])
+async def list_audit_logs(
+    db: AsyncSession = Depends(get_session),
+    current_admin: User = Depends(deps.get_current_admin),
+    user_id: Optional[int] = None,
+    action: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> Any:
+    """List audit logs with optional filters."""
+    query = select(AuditLog)
+
+    if user_id:
+        query = query.where(AuditLog.user_id == user_id)
+    if action:
+        query = query.where(AuditLog.action.ilike(f"%{action}%"))
+    if start_date:
+        query = query.where(AuditLog.timestamp >= datetime.fromisoformat(start_date))
+    if end_date:
+        query = query.where(AuditLog.timestamp <= datetime.fromisoformat(end_date))
+
+    query = query.order_by(AuditLog.timestamp.desc()).limit(limit).offset(offset)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.get("/audit-logs/stats")
+async def get_audit_log_stats(
+    db: AsyncSession = Depends(get_session),
+    current_admin: User = Depends(deps.get_current_admin),
+) -> Any:
+    """Get audit log statistics."""
+    total = (await db.execute(select(func.count(AuditLog.id)))).scalar() or 0
+
+    # Actions breakdown
+    actions_result = await db.execute(
+        select(AuditLog.action, func.count(AuditLog.id))
+        .group_by(AuditLog.action)
+        .order_by(func.count(AuditLog.id).desc())
+        .limit(10)
+    )
+    actions = [{"action": row[0], "count": row[1]} for row in actions_result.all()]
+
+    # Users breakdown
+    users_result = await db.execute(
+        select(AuditLog.user_id, func.count(AuditLog.id))
+        .where(AuditLog.user_id.isnot(None))
+        .group_by(AuditLog.user_id)
+        .order_by(func.count(AuditLog.id).desc())
+        .limit(10)
+    )
+    users = [{"user_id": row[0], "count": row[1]} for row in users_result.all()]
+
+    # Recent activity (last 24 hours)
+    twenty_four_hours_ago = datetime.now(timezone.utc) - timedelta(hours=24)
+    recent = (await db.execute(
+        select(func.count(AuditLog.id)).where(AuditLog.timestamp >= twenty_four_hours_ago)
+    )).scalar() or 0
+
+    return {
+        "total_logs": total,
+        "recent_24h": recent,
+        "top_actions": actions,
+        "top_users": users,
+    }

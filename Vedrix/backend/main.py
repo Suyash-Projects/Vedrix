@@ -13,6 +13,7 @@ from app.core.rate_limit import limiter
 from app.core.logging_config import setup_logging, get_logger
 from app.core.metrics import router as metrics_router
 from app.core.csrf import CSRFMiddleware
+from app.middleware.audit import AuditLogMiddleware
 from app.services.session_cleanup import session_cleanup
 import uuid
 import time
@@ -49,6 +50,9 @@ app.add_middleware(SlowAPIMiddleware)
 
 # CSRF Protection — must be after SlowAPI but before CORS
 app.add_middleware(CSRFMiddleware)
+
+# Audit Logging — logs all state-changing actions
+app.add_middleware(AuditLogMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

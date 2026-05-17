@@ -950,3 +950,301 @@ async def export_interviews_csv(
             "Content-Disposition": "attachment; filename=vedrix_interviews_export.csv"
         }
     )
+
+
+# ── Bulk Import ─────────────────────────────────────────────────────────────
+
+@router.get("/import/template")
+async def get_import_template(
+    current_hr: User = Depends(deps.get_current_hr)
+) -> Any:
+    """Get CSV template for candidate import."""
+    from app.services.bulk_import import bulk_import_service
+
+    template = bulk_import_service.get_csv_template()
+    return Response(
+        content=template,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=candidate_import_template.csv"
+        }
+    )
+
+
+@router.post("/import/validate")
+async def validate_import(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr)
+) -> Any:
+    """Validate CSV import data before importing."""
+    from app.services.bulk_import import bulk_import_service
+    from app.models.user import User as UserModel
+
+    body = await request.json()
+    csv_content = body.get("csv_content", "")
+
+    if not csv_content:
+        raise HTTPException(status_code=400, detail="No CSV content provided")
+
+    # Get existing emails
+    result = await db.execute(select(UserModel.email))
+    existing_emails = {email.lower() for email in result.scalars().all()}
+
+    # Validate
+    import_result = bulk_import_service.process_import(
+        csv_content=csv_content,
+        existing_emails=existing_emails,
+        dry_run=True,
+    )
+
+    return import_result
+
+
+@router.post("/import/execute")
+async def execute_import(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr)
+) -> Any:
+    """Execute CSV import after validation."""
+    from app.services.bulk_import import bulk_import_service
+    from app.models.user import User as UserModel
+    from app.models.profile import StudentProfile
+    from app.core import security
+
+    body = await request.json()
+    csv_content = body.get("csv_content", "")
+
+    if not csv_content:
+        raise HTTPException(status_code=400, detail="No CSV content provided")
+
+    # Get existing emails
+    result = await db.execute(select(UserModel.email))
+    existing_emails = {email.lower() for email in result.scalars().all()}
+
+    # Validate first
+    import_result = bulk_import_service.process_import(
+        csv_content=csv_content,
+        existing_emails=existing_emails,
+        dry_run=False,
+    )
+
+    if import_result.invalid_rows > 0 or import_result.duplicate_rows > 0:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Import has validation errors",
+                "errors": import_result.errors,
+            },
+        )
+
+    # Create users
+    created_users = []
+    for candidate in import_result.candidates:
+        # Check again for race conditions
+        if candidate["email"] in existing_emails:
+            continue
+
+        user = User(
+            email=candidate["email"],
+            username=candidate["username"],
+            password_hash=security.get_password_hash(candidate["password"]),
+            first_name=candidate["first_name"],
+            last_name=candidate["last_name"],
+            user_type=candidate["role"],
+            is_active=True,
+        )
+        db.add(user)
+        created_users.append({
+            "email": candidate["email"],
+            "username": candidate["username"],
+            "password": candidate["password"],
+            "first_name": candidate["first_name"],
+            "last_name": candidate["last_name"],
+        })
+        existing_emails.add(candidate["email"])
+
+    await db.commit()
+
+    # Send credentials emails in background
+    for user_data in created_users:
+        background_tasks.add_task(
+            send_credentials_email,
+            user_data["email"],
+            user_data["first_name"],
+            user_data["username"],
+            user_data["password"],
+            "student",
+        )
+
+    return {
+        "status": "success",
+        "imported": len(created_users),
+        "users": created_users,
+    }
+
+
+# ── Feedback & Communication ────────────────────────────────────────────────
+
+@router.post("/feedback/candidate")
+async def submit_candidate_feedback(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+) -> Any:
+    """Submit candidate feedback survey after interview completion."""
+    from app.models.feedback import CandidateFeedback
+
+    body = await request.json()
+    session_id = body.get("session_id")
+    candidate_id = body.get("candidate_id")
+
+    if not session_id or not candidate_id:
+        raise HTTPException(status_code=400, detail="session_id and candidate_id are required")
+
+    # Check if feedback already exists
+    existing = await db.execute(
+        select(CandidateFeedback).where(
+            CandidateFeedback.session_id == session_id,
+            CandidateFeedback.candidate_id == candidate_id,
+        )
+    )
+    if existing.scalars().first():
+        raise HTTPException(status_code=400, detail="Feedback already submitted for this session")
+
+    feedback = CandidateFeedback(
+        session_id=session_id,
+        candidate_id=candidate_id,
+        rating=body.get("rating", 0),
+        questions_relevant=body.get("questions_relevant"),
+        interview_length=body.get("interview_length"),
+        would_recommend=body.get("would_recommend"),
+        additional_feedback=body.get("additional_feedback"),
+    )
+    db.add(feedback)
+    await db.commit()
+    await db.refresh(feedback)
+
+    return {"status": "success", "message": "Feedback submitted successfully"}
+
+
+@router.get("/feedback/candidate/{session_id}")
+async def get_candidate_feedback(
+    session_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr)
+) -> Any:
+    """Get candidate feedback for a specific session."""
+    from app.models.feedback import CandidateFeedback
+
+    result = await db.execute(
+        select(CandidateFeedback).where(CandidateFeedback.session_id == session_id)
+    )
+    feedback = result.scalars().first()
+    if not feedback:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+
+    return feedback
+
+
+@router.post("/feedback/hr")
+async def submit_hr_feedback(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr)
+) -> Any:
+    """Submit HR feedback for a candidate."""
+    from app.models.feedback import HRFeedback
+    from app.models.profile import HRProfile
+
+    hr_profile = await _get_hr_profile(db, current_hr.id)
+
+    body = await request.json()
+    session_id = body.get("session_id")
+    candidate_id = body.get("candidate_id")
+
+    if not session_id or not candidate_id:
+        raise HTTPException(status_code=400, detail="session_id and candidate_id are required")
+
+    # Check if feedback already exists
+    existing = await db.execute(
+        select(HRFeedback).where(
+            HRFeedback.session_id == session_id,
+            HRFeedback.hr_id == hr_profile.id,
+        )
+    )
+    existing_feedback = existing.scalars().first()
+
+    if existing_feedback:
+        # Update existing feedback
+        existing_feedback.strengths = body.get("strengths", existing_feedback.strengths)
+        existing_feedback.weaknesses = body.get("weaknesses", existing_feedback.weaknesses)
+        existing_feedback.hire_recommendation = body.get("hire_recommendation", existing_feedback.hire_recommendation)
+        existing_feedback.notes = body.get("notes", existing_feedback.notes)
+        existing_feedback.rating = body.get("rating", existing_feedback.rating)
+        existing_feedback.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(existing_feedback)
+        return {"status": "success", "message": "Feedback updated successfully"}
+
+    # Create new feedback
+    feedback = HRFeedback(
+        session_id=session_id,
+        candidate_id=candidate_id,
+        hr_id=hr_profile.id,
+        strengths=body.get("strengths"),
+        weaknesses=body.get("weaknesses"),
+        hire_recommendation=body.get("hire_recommendation"),
+        notes=body.get("notes"),
+        rating=body.get("rating"),
+    )
+    db.add(feedback)
+    await db.commit()
+    await db.refresh(feedback)
+
+    return {"status": "success", "message": "Feedback submitted successfully"}
+
+
+@router.get("/feedback/hr/{session_id}")
+async def get_hr_feedback(
+    session_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr)
+) -> Any:
+    """Get HR feedback for a specific session."""
+    from app.models.feedback import HRFeedback
+    from app.models.profile import HRProfile
+
+    hr_profile = await _get_hr_profile(db, current_hr.id)
+
+    result = await db.execute(
+        select(HRFeedback).where(
+            HRFeedback.session_id == session_id,
+            HRFeedback.hr_id == hr_profile.id,
+        )
+    )
+    feedback = result.scalars().first()
+    if not feedback:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+
+    return feedback
+
+
+@router.get("/feedback/hr/all")
+async def list_hr_feedback(
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr)
+) -> Any:
+    """List all HR feedback entries."""
+    from app.models.feedback import HRFeedback
+    from app.models.profile import HRProfile
+
+    hr_profile = await _get_hr_profile(db, current_hr.id)
+
+    result = await db.execute(
+        select(HRFeedback).where(HRFeedback.hr_id == hr_profile.id).order_by(HRFeedback.created_at.desc())
+    )
+    feedback_list = result.scalars().all()
+
+    return feedback_list
