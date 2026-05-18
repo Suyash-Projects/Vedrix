@@ -1,0 +1,57 @@
+version: 2
+updates:
+  # Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/Vedrix/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "Suyash-Projects"
+    labels:
+      - "dependencies"
+      - "python"
+
+  # Node.js dependencies
+  - package-ecosystem: "npm"
+    directory: "/Vedrix/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "Suyash-Projects"
+    labels:
+      - "dependencies"
+      - "javascript"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "ci-cd"
+    reviewers:
+      - "Suyash-Projects"
+
+  # Docker
+  - package-ecosystem: "docker"
+    directory: "/Vedrix/backend"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "docker"
+    reviewers:
+      - "Suyash-Projects"
+
+  - package-ecosystem: "docker"
+    directory: "/Vedrix/frontend"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "docker"
+    reviewers:
+      - "Suyash-Projects"
