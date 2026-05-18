@@ -59,9 +59,14 @@ function App() {
 
   return (
     <div className="min-h-screen bg-[#020617] text-white">
+      {/* Skip to main content link for accessibility */}
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
+
       {showNavbar && <Navbar />}
 
-      <main className={showNavbar ? 'pt-20' : 'pt-0'}>
+      <main id="main-content" className={showNavbar ? 'pt-20' : 'pt-0'}>
         <Routes>
           {/* Public Routes */}
           <Route path="/home" element={<LandingPage />} />
