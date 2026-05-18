@@ -14,6 +14,7 @@ from app.core.logging_config import setup_logging, get_logger
 from app.core.metrics import router as metrics_router
 from app.core.csrf import CSRFMiddleware
 from app.middleware.audit import AuditLogMiddleware
+from app.middleware.performance import PerformanceMonitoringMiddleware
 from app.services.session_cleanup import session_cleanup
 import uuid
 import time
@@ -53,6 +54,9 @@ app.add_middleware(CSRFMiddleware)
 
 # Audit Logging — logs all state-changing actions
 app.add_middleware(AuditLogMiddleware)
+
+# Performance Monitoring — tracks request latency and metrics
+app.add_middleware(PerformanceMonitoringMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

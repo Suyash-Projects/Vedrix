@@ -18,6 +18,7 @@ import SystemConfig from './pages/SystemConfig';
 import CandidatePipeline from './pages/CandidatePipeline';
 import FeedbackSurvey from './pages/FeedbackSurvey';
 import HRFeedback from './pages/HRFeedback';
+import Schedule from './pages/Schedule';
 import LandingPage from './pages/LandingPage';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -160,6 +161,13 @@ function App() {
           <Route path="/hr/feedback/:sessionId" element={
             <ProtectedRoute allowedRoles={['hr', 'admin']}>
               <HRFeedback />
+            </ProtectedRoute>
+          } />
+
+          {/* Protected Schedule Route (HR/Admin) */}
+          <Route path="/hr/schedule" element={
+            <ProtectedRoute allowedRoles={['hr', 'admin']}>
+              <Schedule />
             </ProtectedRoute>
           } />
 

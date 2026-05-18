@@ -1248,3 +1248,162 @@ async def list_hr_feedback(
     feedback_list = result.scalars().all()
 
     return feedback_list
+
+
+# ── Interview Scheduling ────────────────────────────────────────────────────
+
+@router.post("/interviews/schedule")
+async def schedule_interview(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr)
+) -> Any:
+    """Schedule a new interview session."""
+    from app.models.interview import InterviewSession
+    from app.models.profile import HRProfile
+
+    hr_profile = await _get_hr_profile(db, current_hr.id)
+
+    body = await request.json()
+    drive_id = body.get("drive_id")
+    candidate_email = body.get("candidate_email")
+    scheduled_time = body.get("scheduled_time")
+    notes = body.get("notes", "")
+
+    if not drive_id or not candidate_email or not scheduled_time:
+        raise HTTPException(status_code=400, detail="drive_id, candidate_email, and scheduled_time are required")
+
+    # Verify drive exists and belongs to this HR
+    drive_result = await db.execute(
+        select(JobDrive).where(JobDrive.id == drive_id, JobDrive.hr_id == hr_profile.id)
+    )
+    drive = drive_result.scalars().first()
+    if not drive:
+        raise HTTPException(status_code=404, detail="Drive not found or you don't have access")
+
+    # Check if candidate already exists
+    user_result = await db.execute(select(User).where(User.email == candidate_email.lower()))
+    user = user_result.scalars().first()
+
+    if not user:
+        # Create a new user for the candidate
+        import secrets
+        username = candidate_email.split('@')[0].lower()
+        # Ensure username is unique
+        base_username = username
+        counter = 1
+        while True:
+            check = await db.execute(select(User).where(User.username == username))
+            if not check.scalars().first():
+                break
+            username = f"{base_username}{counter}"
+            counter += 1
+
+        user = User(
+            email=candidate_email.lower(),
+            username=username,
+            password_hash=security.get_password_hash(secrets.token_urlsafe(8)),
+            first_name=candidate_email.split('@')[0].title(),
+            last_name="",
+            user_type="student",
+            is_active=True,
+        )
+        db.add(user)
+        await db.flush()
+
+    # Check if interview already scheduled for this drive and candidate
+    existing = await db.execute(
+        select(InterviewSession).where(
+            InterviewSession.job_drive_id == drive_id,
+            InterviewSession.candidate_id == user.id,
+            InterviewSession.status == "scheduled",
+        )
+    )
+    if existing.scalars().first():
+        raise HTTPException(status_code=400, detail="Interview already scheduled for this candidate")
+
+    # Create scheduled interview session
+    session = InterviewSession(
+        candidate_id=user.id,
+        job_drive_id=drive_id,
+        status="scheduled",
+        session_type="scheduled",
+        start_time=datetime.fromisoformat(scheduled_time),
+    )
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+
+    # Send invite email in background
+    if drive.is_active:
+        background_tasks.add_task(
+            send_invite_email,
+            candidate_email,
+            drive.job_role,
+            drive.title,
+            f"{settings.FRONTEND_URL}/interview?drive_id={drive_id}",
+            24,
+            drive.skills_required,
+        )
+
+    return {
+        "status": "success",
+        "message": "Interview scheduled successfully",
+        "session_id": session.id,
+        "candidate_email": candidate_email,
+        "scheduled_time": scheduled_time,
+    }
+
+
+@router.get("/interviews")
+async def list_hr_interviews(
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr)
+) -> Any:
+    """List all interviews for HR's drives."""
+    from app.models.profile import HRProfile
+
+    hr_profile = await _get_hr_profile(db, current_hr.id)
+
+    # Get all drives for this HR
+    drives_result = await db.execute(
+        select(JobDrive).where(JobDrive.hr_id == hr_profile.id)
+    )
+    drives = drives_result.scalars().all()
+    drive_ids = [d.id for d in drives]
+
+    if not drive_ids:
+        return {"interviews": []}
+
+    # Get all sessions for these drives
+    sessions_result = await db.execute(
+        select(InterviewSession).where(InterviewSession.job_drive_id.in_(drive_ids))
+    )
+    sessions = sessions_result.scalars().all()
+
+    interviews = []
+    for session in sessions:
+        user_result = await db.execute(select(User).where(User.id == session.candidate_id))
+        user = user_result.scalars().first()
+
+        drive_result = await db.execute(select(JobDrive).where(JobDrive.id == session.job_drive_id))
+        drive = drive_result.scalars().first()
+
+        interviews.append({
+            "id": session.id,
+            "candidate_id": session.candidate_id,
+            "candidate_name": f"{user.first_name} {user.last_name}".strip() if user else "Unknown",
+            "candidate_email": user.email if user else "",
+            "job_role": drive.job_role if drive else "",
+            "drive_title": drive.title if drive else "",
+            "status": session.status,
+            "overall_score": session.overall_score,
+            "scheduled_time": session.start_time.isoformat() if session.start_time else None,
+            "start_time": session.start_time.isoformat() if session.start_time else None,
+            "end_time": session.end_time.isoformat() if session.end_time else None,
+            "duration": session.duration,
+            "created_at": session.created_at.isoformat() if session.created_at else None,
+        })
+
+    return {"interviews": interviews}
