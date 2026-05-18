@@ -26,6 +26,10 @@ class User(SQLModel, table=True):
     # Phase 1.5: Soft delete support
     deleted_at: Optional[datetime] = Field(default=None)
 
+    # GDPR: Account deletion grace period
+    deletion_requested_at: Optional[datetime] = Field(default=None)
+    scheduled_deletion_at: Optional[datetime] = Field(default=None)
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

@@ -338,3 +338,222 @@ async def update_username(
         await db.commit()
 
     return {"status": "success", "message": f"Username changed to @{new_username}"}
+
+
+# ── GDPR Compliance ─────────────────────────────────────────────────────────
+
+@router.get("/export-data")
+async def export_my_data(
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    """
+    GDPR: Export all personal data as JSON.
+    Includes profile, interviews, feedback, and consent records.
+    """
+    from app.models.feedback import CandidateFeedback, HRFeedback
+    from app.models.consent import UserConsent
+
+    # Get user profile
+    user_data = {
+        "id": current_user.id,
+        "email": current_user.email,
+        "username": current_user.username,
+        "first_name": current_user.first_name,
+        "last_name": current_user.last_name,
+        "user_type": current_user.user_type,
+        "is_active": current_user.is_active,
+        "created_at": current_user.created_at.isoformat() if current_user.created_at else None,
+    }
+
+    # Get interviews
+    interviews_result = await db.execute(
+        select(InterviewSession).where(InterviewSession.candidate_id == current_user.id)
+    )
+    interviews = interviews_result.scalars().all()
+    interviews_data = []
+    for session in interviews:
+        drive = None
+        if session.job_drive_id:
+            drive_result = await db.execute(
+                select(JobDrive).where(JobDrive.id == session.job_drive_id)
+            )
+            drive = drive_result.scalars().first()
+
+        interviews_data.append({
+            "id": session.id,
+            "job_role": drive.job_role if drive else "Practice",
+            "drive_title": drive.title if drive else "Practice Interview",
+            "status": session.status,
+            "overall_score": session.overall_score,
+            "skill_matrix": session.skill_matrix,
+            "ai_feedback": session.ai_feedback,
+            "start_time": session.start_time.isoformat() if session.start_time else None,
+            "end_time": session.end_time.isoformat() if session.end_time else None,
+            "duration": session.duration,
+            "transcript": session.responses or [],
+            "created_at": session.created_at.isoformat() if session.created_at else None,
+        })
+
+    # Get candidate feedback
+    feedback_result = await db.execute(
+        select(CandidateFeedback).where(CandidateFeedback.candidate_id == current_user.id)
+    )
+    feedback_data = []
+    for fb in feedback_result.scalars().all():
+        feedback_data.append({
+            "id": fb.id,
+            "session_id": fb.session_id,
+            "rating": fb.rating,
+            "questions_relevant": fb.questions_relevant,
+            "interview_length": fb.interview_length,
+            "would_recommend": fb.would_recommend,
+            "additional_feedback": fb.additional_feedback,
+            "created_at": fb.created_at.isoformat() if fb.created_at else None,
+        })
+
+    # Get consent records
+    consent_result = await db.execute(
+        select(UserConsent).where(UserConsent.user_id == current_user.id)
+    )
+    consent_data = []
+    for consent in consent_result.scalars().all():
+        consent_data.append({
+            "id": consent.id,
+            "purpose": consent.purpose,
+            "granted": consent.granted,
+            "granted_at": consent.granted_at.isoformat() if consent.granted_at else None,
+            "withdrawn_at": consent.withdrawn_at.isoformat() if consent.withdrawn_at else None,
+        })
+
+    return {
+        "export_date": datetime.now().isoformat(),
+        "user": user_data,
+        "interviews": interviews_data,
+        "feedback": feedback_data,
+        "consent": consent_data,
+    }
+
+
+@router.post("/delete-account")
+async def request_account_deletion(
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    """
+    GDPR: Request account deletion.
+    Sets a deletion flag and schedules deletion after 30-day grace period.
+    """
+    from datetime import timedelta
+
+    # Mark user for deletion with 30-day grace period
+    current_user.is_active = False
+    current_user.deletion_requested_at = datetime.now()
+    current_user.scheduled_deletion_at = datetime.now() + timedelta(days=30)
+    await db.commit()
+
+    return {
+        "status": "success",
+        "message": "Account deletion requested. Your data will be permanently deleted in 30 days.",
+        "grace_period_ends": current_user.scheduled_deletion_at.isoformat(),
+    }
+
+
+@router.post("/cancel-deletion")
+async def cancel_account_deletion(
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    """Cancel a pending account deletion request."""
+    if not current_user.deletion_requested_at:
+        raise HTTPException(status_code=400, detail="No deletion request found")
+
+    current_user.deletion_requested_at = None
+    current_user.scheduled_deletion_at = None
+    current_user.is_active = True
+    await db.commit()
+
+    return {"status": "success", "message": "Account deletion cancelled"}
+
+
+# ── Consent Management ──────────────────────────────────────────────────────
+
+@router.get("/consent")
+async def get_my_consent(
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    """Get user's consent records for all purposes."""
+    from app.models.consent import UserConsent
+
+    result = await db.execute(
+        select(UserConsent).where(UserConsent.user_id == current_user.id)
+    )
+    consents = result.scalars().all()
+
+    # Return all consent purposes with their status
+    purposes = ["interview", "analytics", "marketing", "cookies_essential", "cookies_analytics", "cookies_marketing"]
+    consent_map = {c.purpose: c for c in consents}
+
+    return {
+        "consents": [
+            {
+                "purpose": purpose,
+                "granted": consent_map[purpose].granted if purpose in consent_map else False,
+                "granted_at": consent_map[purpose].granted_at.isoformat() if purpose in consent_map and consent_map[purpose].granted_at else None,
+                "withdrawn_at": consent_map[purpose].withdrawn_at.isoformat() if purpose in consent_map and consent_map[purpose].withdrawn_at else None,
+            }
+            for purpose in purposes
+        ]
+    }
+
+
+@router.post("/consent")
+async def update_consent(
+    request: dict,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    """Update user's consent for a specific purpose."""
+    from app.models.consent import UserConsent
+
+    purpose = request.get("purpose")
+    granted = request.get("granted", False)
+
+    if purpose not in ["interview", "analytics", "marketing", "cookies_essential", "cookies_analytics", "cookies_marketing"]:
+        raise HTTPException(status_code=400, detail="Invalid consent purpose")
+
+    # Essential cookies cannot be withdrawn
+    if purpose == "cookies_essential" and not granted:
+        raise HTTPException(status_code=400, detail="Essential cookies cannot be disabled")
+
+    # Get or create consent record
+    result = await db.execute(
+        select(UserConsent).where(
+            UserConsent.user_id == current_user.id,
+            UserConsent.purpose == purpose,
+        )
+    )
+    consent = result.scalars().first()
+
+    if consent:
+        consent.granted = granted
+        consent.granted_at = datetime.now() if granted else consent.granted_at
+        consent.withdrawn_at = datetime.now() if not granted else None
+    else:
+        consent = UserConsent(
+            user_id=current_user.id,
+            purpose=purpose,
+            granted=granted,
+            granted_at=datetime.now() if granted else None,
+        )
+        db.add(consent)
+
+    await db.commit()
+    await db.refresh(consent)
+
+    return {
+        "status": "success",
+        "purpose": purpose,
+        "granted": consent.granted,
+    }

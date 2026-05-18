@@ -19,8 +19,15 @@ import CandidatePipeline from './pages/CandidatePipeline';
 import FeedbackSurvey from './pages/FeedbackSurvey';
 import HRFeedback from './pages/HRFeedback';
 import Schedule from './pages/Schedule';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import TermsOfService from './pages/TermsOfService';
+import DataProcessingAgreement from './pages/DataProcessingAgreement';
+import AccessibilityStatement from './pages/AccessibilityStatement';
+import SettingsPage from './pages/SettingsPage';
 import LandingPage from './pages/LandingPage';
 import Navbar from './components/Navbar';
+import Footer from './components/Footer';
+import CookieConsent from './components/CookieConsent';
 import ProtectedRoute from './components/ProtectedRoute';
 import useAuthStore from './store/useAuthStore';
 
@@ -46,7 +53,9 @@ function App() {
   const isReplay = location.pathname.startsWith('/replay');
   const isSkillGap = location.pathname.startsWith('/skill-gap');
   const isTeamAnalytics = location.pathname.startsWith('/analytics/team');
-  const showNavbar = !isInterviewRoom && !isReport && !isVerify && !isReplay && !isSkillGap && !isTeamAnalytics;
+  const isLegalPage = ['/privacy', '/terms', '/dpa', '/accessibility'].includes(location.pathname);
+  const showNavbar = !isInterviewRoom && !isReport && !isVerify && !isReplay && !isSkillGap && !isTeamAnalytics && !isLegalPage;
+  const showFooter = !isInterviewRoom && !isReport && !isVerify;
 
   return (
     <div className="min-h-screen bg-[#020617] text-white">
@@ -171,17 +180,26 @@ function App() {
             </ProtectedRoute>
           } />
 
+          {/* Protected Settings Route */}
+          <Route path="/settings" element={
+            <ProtectedRoute>
+              <SettingsPage />
+            </ProtectedRoute>
+          } />
+
+          {/* Public Legal Pages */}
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/terms" element={<TermsOfService />} />
+          <Route path="/dpa" element={<DataProcessingAgreement />} />
+          <Route path="/accessibility" element={<AccessibilityStatement />} />
+
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
 
-      {!isInterviewRoom && !isReport && !isVerify && (
-        <footer className="py-12 border-t border-white/5 text-center bg-[#0a0f1e]">
-          <div className="text-2xl font-black text-white mb-4 tracking-tighter">Vedrix</div>
-          <p className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">© 2026 Vedrix. Interview operations and evaluation workflows.</p>
-        </footer>
-      )}
+      {showFooter && <Footer />}
+      <CookieConsent />
     </div>
   );
 }
