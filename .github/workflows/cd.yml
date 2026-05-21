@@ -60,8 +60,8 @@ jobs:
           push: true
           tags: vedrix/frontend:${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
-          args: |
-            --build-arg VITE_API_URL=${{ vars.API_URL }}
+          build-args: |
+            VITE_API_URL=${{ vars.API_URL }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

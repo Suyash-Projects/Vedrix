@@ -1,7 +1,12 @@
 # Frontend Dockerfile
-FROM node:20-alpine AS build
+FROM node:20-slim AS build
 
 WORKDIR /app
+
+# Declare the build-arg
+ARG VITE_API_URL
+# Expose it as an environment variable so npm run build can read it
+ENV VITE_API_URL=$VITE_API_URL
 
 # Copy package files first for better caching
 COPY package*.json ./
