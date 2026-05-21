@@ -89,6 +89,11 @@ async def websocket_endpoint(
     drive_title: Optional[str] = None
 
     try:
+        # Validate that authentication parameters are provided
+        if not (drive_id and token) and not auth_token:
+            await manager.send_json({"type": "error", "data": "Authentication parameters missing or invalid."}, session_id)
+            return
+
         # ── 1. Determine Context ──────────────────────────────────────────
         job_role = "Software Engineer"
         resume_text = "General software engineering background."
@@ -563,18 +568,20 @@ async def websocket_endpoint(
                 except Exception as e:
                     logger.error(f"Processing error [{session_id}]: {e}")
                     traceback.print_exc()
-                    await manager.send_json({"type": "error", "data": f"Processing Error: {str(e)}"}, session_id)
+                    await manager.send_json({"type": "error", "data": "An error occurred while processing your response."}, session_id)
 
     except WebSocketDisconnect:
-        manager.disconnect(session_id)
-        session_cleanup.remove_session(session_id)
+        pass
     except Exception as e:
         logger.error(f"WebSocket fatal error [{session_id}]: {e}")
         traceback.print_exc()
-        await manager.send_json({"type": "error", "data": str(e)}, session_id)
+        try:
+            await manager.send_json({"type": "error", "data": "Internal server error during interview session."}, session_id)
+        except Exception:
+            pass
+    finally:
         manager.disconnect(session_id)
         session_cleanup.remove_session(session_id)
-    finally:
         if db_session_id:
             try:
                 async with async_session() as db:

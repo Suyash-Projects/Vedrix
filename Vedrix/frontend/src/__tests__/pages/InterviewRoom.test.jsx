@@ -91,11 +91,10 @@ class MockWebSocket {
 }
 globalThis.WebSocket = MockWebSocket;
 
+import InterviewRoom from '../../pages/InterviewRoom';
 
 describe('InterviewRoom — ReadyCheckWizard', () => {
-  it('shows hardware validation step by default', async () => {
-    const { default: InterviewRoom } = await import('../../pages/InterviewRoom');
-
+  it('shows hardware validation step by default', () => {
     render(<InterviewRoom />);
 
     // Should show the wizard, not the interview room
@@ -103,18 +102,14 @@ describe('InterviewRoom — ReadyCheckWizard', () => {
     expect(screen.getByRole('heading', { name: /hardware validation/i })).toBeInTheDocument();
   });
 
-  it('has mic and cam validation boxes', async () => {
-    const { default: InterviewRoom } = await import('../../pages/InterviewRoom');
-
+  it('has mic and cam validation boxes', () => {
     render(<InterviewRoom />);
 
     expect(screen.getByText('Microphone')).toBeInTheDocument();
     expect(screen.getByText('Camera')).toBeInTheDocument();
   });
 
-  it('has begin interview button', async () => {
-    const { default: InterviewRoom } = await import('../../pages/InterviewRoom');
-
+  it('has begin interview button', () => {
     render(<InterviewRoom />);
 
     // Button should exist in step 2 (pre-interview checklist)
@@ -126,8 +121,7 @@ describe('InterviewRoom — ReadyCheckWizard', () => {
 
 
 describe('InterviewRoom — WebSocket Message Handling', () => {
-  it('question message updates current question', async () => {
-    await import('../../pages/InterviewRoom');
+  it('question message updates current question', () => {
 
     // Track state changes
     const TestWrapper = ({ children }) => children;

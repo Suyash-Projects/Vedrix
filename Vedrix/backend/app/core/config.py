@@ -70,3 +70,24 @@ if settings.DATABASE_URL.startswith("sqlite://"):
         f"Use 'sqlite+aiosqlite://' in your .env to silence this warning."
     )
     settings.DATABASE_URL = settings.DATABASE_URL.replace("sqlite://", "sqlite+aiosqlite://", 1)
+
+# Ensure SECRET_KEY is secure if default or empty
+if settings.SECRET_KEY == "change-me-in-production-use-env-file" or not settings.SECRET_KEY:
+    import secrets
+    import logging
+    settings.SECRET_KEY = secrets.token_hex(32)
+    logging.warning(
+        "config.py: SECRET_KEY was not configured or is set to default. "
+        "Generating a temporary random hex key for session safety. "
+        "Note: This will invalidate existing tokens/sessions if the server restarts."
+    )
+
+# Ensure CSRF_SECRET is secure if default or empty
+if settings.CSRF_SECRET == "change-me-csrf-secret-in-production" or not settings.CSRF_SECRET:
+    import secrets
+    import logging
+    settings.CSRF_SECRET = secrets.token_hex(32)
+    logging.warning(
+        "config.py: CSRF_SECRET was not configured or is set to default. "
+        "Generating a temporary random hex key for CSRF safety."
+    )

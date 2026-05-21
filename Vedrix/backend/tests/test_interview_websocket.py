@@ -96,9 +96,10 @@ class TestJWTValidation:
         from jose import jwt
         import datetime as dt
 
+        from app.core.config import settings
         # Create a real token
-        secret = "change-me-in-production-use-env-file"
-        payload = {"sub": "123", "exp": dt.datetime.utcnow() + dt.timedelta(hours=1)}
+        secret = settings.SECRET_KEY
+        payload = {"sub": "123", "exp": dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)}
         token = jwt.encode(payload, secret, algorithm="HS256")
 
         result = _verify_ws_token(token)
@@ -117,8 +118,9 @@ class TestJWTValidation:
         from jose import jwt
         import datetime as dt
 
-        secret = "change-me-in-production-use-env-file"
-        payload = {"sub": "999", "exp": dt.datetime.utcnow() - dt.timedelta(hours=1)}
+        from app.core.config import settings
+        secret = settings.SECRET_KEY
+        payload = {"sub": "999", "exp": dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)}
         token = jwt.encode(payload, secret, algorithm="HS256")
 
         result = _verify_ws_token(token)
@@ -130,8 +132,9 @@ class TestJWTValidation:
         from jose import jwt
         import datetime as dt
 
-        secret = "change-me-in-production-use-env-file"
-        payload = {"exp": dt.datetime.utcnow() + dt.timedelta(hours=1)}
+        from app.core.config import settings
+        secret = settings.SECRET_KEY
+        payload = {"exp": dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)}
         token = jwt.encode(payload, secret, algorithm="HS256")
 
         result = _verify_ws_token(token)

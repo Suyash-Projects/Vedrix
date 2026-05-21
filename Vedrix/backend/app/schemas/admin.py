@@ -3,7 +3,7 @@ Admin schemas for audit logs and system configuration.
 """
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class AuditLogBase(BaseModel):
@@ -23,8 +23,7 @@ class AuditLogRead(AuditLogBase):
     id: int
     timestamp: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SystemConfigUpdate(BaseModel):
