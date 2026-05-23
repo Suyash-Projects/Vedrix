@@ -50,6 +50,16 @@ class Settings(BaseSettings):
     # Redis for caching
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # Social Login (OAuth2)
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    
+    GITHUB_CLIENT_ID: str = ""
+    GITHUB_CLIENT_SECRET: str = ""
+    
+    LINKEDIN_CLIENT_ID: str = ""
+    LINKEDIN_CLIENT_SECRET: str = ""
+
     # Environment
     ENVIRONMENT: str = "development"  # "development" or "production"
 

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 from pydantic import BaseModel
 
 from app.api import deps
@@ -129,9 +130,12 @@ async def get_session_certificate(
         if drive:
             job_role = drive.job_role
     overall_score = float(session.overall_score or 0)
-    date_completed = session.end_time.strftime("%B %d, %Y") if session.end_time else datetime.now().strftime("%B %d, %Y")
+    date_completed = session.end_time.strftime("%B %d, %Y") if session.end_time else datetime.now(timezone.utc).strftime("%B %d, %Y")
 
-    pdf_bytes = generate_certificate(
+    # Audit: Use to_thread for blocking PDF generation
+    import asyncio
+    pdf_bytes = await asyncio.to_thread(
+        generate_certificate,
         candidate_name=candidate_name,
         job_role=job_role,
         overall_score=overall_score,
@@ -178,7 +182,7 @@ async def get_session_certificate_png(
             job_role = drive.job_role
 
     overall_score = float(session.overall_score or 0)
-    date_completed = session.end_time.strftime("%B %d, %Y") if session.end_time else datetime.now().strftime("%B %d, %Y")
+    date_completed = session.end_time.strftime("%B %d, %Y") if session.end_time else datetime.now(timezone.utc).strftime("%B %d, %Y")
 
     # Generate verification token
     verification_token = security.generate_verification_token(session_id, candidate_name)
@@ -280,7 +284,7 @@ async def verify_certificate(
         "job_role": job_role,
         "overall_score": session.overall_score,
         "date_completed": session.end_time.strftime("%B %d, %Y") if session.end_time else None,
-        "verified_at": datetime.now().isoformat(),
+        "verified_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -366,19 +370,16 @@ async def export_my_data(
         "created_at": current_user.created_at.isoformat() if current_user.created_at else None,
     }
 
-    # Get interviews
+    # Get interviews with joined JobDrive
     interviews_result = await db.execute(
-        select(InterviewSession).where(InterviewSession.candidate_id == current_user.id)
+        select(InterviewSession)
+        .options(joinedload(InterviewSession.job_drive))
+        .where(InterviewSession.candidate_id == current_user.id)
     )
     interviews = interviews_result.scalars().all()
     interviews_data = []
     for session in interviews:
-        drive = None
-        if session.job_drive_id:
-            drive_result = await db.execute(
-                select(JobDrive).where(JobDrive.id == session.job_drive_id)
-            )
-            drive = drive_result.scalars().first()
+        drive = session.job_drive
 
         interviews_data.append({
             "id": session.id,
@@ -427,7 +428,7 @@ async def export_my_data(
         })
 
     return {
-        "export_date": datetime.now().isoformat(),
+        "export_date": datetime.now(timezone.utc).isoformat(),
         "user": user_data,
         "interviews": interviews_data,
         "feedback": feedback_data,
@@ -448,8 +449,8 @@ async def request_account_deletion(
 
     # Mark user for deletion with 30-day grace period
     current_user.is_active = False
-    current_user.deletion_requested_at = datetime.now()
-    current_user.scheduled_deletion_at = datetime.now() + timedelta(days=30)
+    current_user.deletion_requested_at = datetime.now(timezone.utc)
+    current_user.scheduled_deletion_at = datetime.now(timezone.utc) + timedelta(days=30)
     await db.commit()
 
     return {
@@ -538,14 +539,14 @@ async def update_consent(
 
     if consent:
         consent.granted = granted
-        consent.granted_at = datetime.now() if granted else consent.granted_at
-        consent.withdrawn_at = datetime.now() if not granted else None
+        consent.granted_at = datetime.now(timezone.utc) if granted else consent.granted_at
+        consent.withdrawn_at = datetime.now(timezone.utc) if not granted else None
     else:
         consent = UserConsent(
             user_id=current_user.id,
             purpose=purpose,
             granted=granted,
-            granted_at=datetime.now() if granted else None,
+            granted_at=datetime.now(timezone.utc) if granted else None,
         )
         db.add(consent)
 

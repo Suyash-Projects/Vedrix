@@ -19,17 +19,16 @@ Vedrix is a high-fidelity, agentic AI interview system designed to conduct struc
 
 ## 📁 Directory Structure
 
+- `docs/`: Formal Project Documentation (SWRTS, SWADS, SWCDS, ERD).
 - `Vedrix/backend/`: FastAPI application.
   - `app/api/`: Versioned API endpoints (v1).
-  - `app/services/interview_engine/`: LangGraph agent logic.
+  - `app/services/interview_engine/`: LangGraph agent logic ([Architecture Docs](Vedrix/backend/app/services/interview_engine/ARCHITECTURE.md)).
   - `app/models/`: SQLModel data definitions.
   - `app/db/`: Database session and migration logic.
 - `Vedrix/frontend/`: React application.
   - `src/pages/`: Main views (InterviewRoom, Dashboards).
   - `src/components/`: Reusable UI elements.
   - `src/hooks/`: Custom hooks for Auth, MediaRecorder.
-- `Design/`: UI/UX design assets and reference images.
-- `Prototype/`: Early experimental versions.
 
 ## 🚀 Building and Running
 

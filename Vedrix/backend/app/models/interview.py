@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, Any, TYPE_CHECKING
 from sqlmodel import SQLModel, Field, Relationship
 from sqlalchemy import Column, JSON, Text, Index
+from app.core.encryption import EncryptedJSON
 
 if TYPE_CHECKING:
     from .user import User
@@ -18,6 +19,8 @@ class DriveInviteToken(SQLModel, table=True):
     is_used: bool = Field(default=False)
     expires_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    job_drive: "JobDrive" = Relationship(back_populates="invite_tokens")
 
 
 class JobDrive(SQLModel, table=True):
@@ -39,6 +42,7 @@ class JobDrive(SQLModel, table=True):
 
     hr: "HRProfile" = Relationship(back_populates="job_drives")
     interview_sessions: List["InterviewSession"] = Relationship(back_populates="job_drive")
+    invite_tokens: List["DriveInviteToken"] = Relationship(back_populates="job_drive")
 
 
 class InterviewSession(SQLModel, table=True):
@@ -64,13 +68,13 @@ class InterviewSession(SQLModel, table=True):
 
     # Native JSON columns — no more manual json.dumps/loads
     questions: Optional[Any] = Field(default=None, sa_column=Column(JSON))
-    responses: Optional[Any] = Field(default=None, sa_column=Column(JSON))
-    ai_feedback: Optional[Any] = Field(default=None, sa_column=Column(JSON))
+    responses: Optional[Any] = Field(default=None, sa_column=Column(EncryptedJSON))
+    ai_feedback: Optional[Any] = Field(default=None, sa_column=Column(EncryptedJSON))
     
     # Enhanced skill matrix and AI transparency fields (Phase 1)
-    skill_matrix: Optional[Any] = Field(default=None, sa_column=Column(JSON))
+    skill_matrix: Optional[Any] = Field(default=None, sa_column=Column(EncryptedJSON))
     confidence_scores: Optional[Any] = Field(default=None, sa_column=Column(JSON))
-    evidence_log: Optional[Any] = Field(default=None, sa_column=Column(JSON))
+    evidence_log: Optional[Any] = Field(default=None, sa_column=Column(EncryptedJSON))
     agent_states: Optional[Any] = Field(default=None, sa_column=Column(JSON))
     
     # Bias mitigation and fairness metrics

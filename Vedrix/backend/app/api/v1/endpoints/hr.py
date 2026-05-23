@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload, joinedload
 
 from app.api import deps
 from app.core.config import settings
@@ -199,21 +200,18 @@ async def list_job_drives(
     if not hr_profile:
         return []
 
-    drives_result = await db.execute(
-        select(JobDrive).where(JobDrive.hr_id == hr_profile.id)
+    query = select(JobDrive).where(JobDrive.hr_id == hr_profile.id).options(
+        selectinload(JobDrive.interview_sessions),
+        selectinload(JobDrive.invite_tokens)
     )
+    drives_result = await db.execute(query)
     drives = drives_result.scalars().all()
 
     enriched = []
     for drive in drives:
-        sessions_result = await db.execute(
-            select(InterviewSession).where(InterviewSession.job_drive_id == drive.id)
-        )
-        sessions = sessions_result.scalars().all()
-        tokens_result = await db.execute(
-            select(DriveInviteToken).where(DriveInviteToken.drive_id == drive.id)
-        )
-        tokens = tokens_result.scalars().all()
+        sessions = drive.interview_sessions
+        tokens = drive.invite_tokens
+        
         completed = [s for s in sessions if s.overall_score is not None]
         avg_score = (
             round(sum(s.overall_score for s in completed) / len(completed), 1)
@@ -536,6 +534,9 @@ async def list_hr_interviews(
             "overall_score": row[0].overall_score,
             "ai_feedback": row[0].ai_feedback,
             "skill_matrix": row[0].skill_matrix,
+            "start_time": row[0].start_time,
+            "end_time": row[0].end_time,
+            "duration": row[0].duration,
             "created_at": row[0].created_at,
             "drive_title": row[1],
             "job_role": row[2],
@@ -1047,10 +1048,13 @@ async def execute_import(
         if candidate["email"] in existing_emails:
             continue
 
+        # Audit: Use to_thread for password hashing (CPU intensive)
+        password_hash = await asyncio.to_thread(security.get_password_hash, candidate["password"])
+        
         user = User(
             email=candidate["email"],
             username=candidate["username"],
-            password_hash=security.get_password_hash(candidate["password"]),
+            password_hash=password_hash,
             first_name=candidate["first_name"],
             last_name=candidate["last_name"],
             user_type=candidate["role"],
@@ -1354,56 +1358,3 @@ async def schedule_interview(
         "candidate_email": candidate_email,
         "scheduled_time": scheduled_time,
     }
-
-
-@router.get("/interviews")
-async def list_hr_interviews(
-    db: AsyncSession = Depends(get_session),
-    current_hr: User = Depends(deps.get_current_hr)
-) -> Any:
-    """List all interviews for HR's drives."""
-    from app.models.profile import HRProfile
-
-    hr_profile = await _get_hr_profile(db, current_hr.id)
-
-    # Get all drives for this HR
-    drives_result = await db.execute(
-        select(JobDrive).where(JobDrive.hr_id == hr_profile.id)
-    )
-    drives = drives_result.scalars().all()
-    drive_ids = [d.id for d in drives]
-
-    if not drive_ids:
-        return {"interviews": []}
-
-    # Get all sessions for these drives
-    sessions_result = await db.execute(
-        select(InterviewSession).where(InterviewSession.job_drive_id.in_(drive_ids))
-    )
-    sessions = sessions_result.scalars().all()
-
-    interviews = []
-    for session in sessions:
-        user_result = await db.execute(select(User).where(User.id == session.candidate_id))
-        user = user_result.scalars().first()
-
-        drive_result = await db.execute(select(JobDrive).where(JobDrive.id == session.job_drive_id))
-        drive = drive_result.scalars().first()
-
-        interviews.append({
-            "id": session.id,
-            "candidate_id": session.candidate_id,
-            "candidate_name": f"{user.first_name} {user.last_name}".strip() if user else "Unknown",
-            "candidate_email": user.email if user else "",
-            "job_role": drive.job_role if drive else "",
-            "drive_title": drive.title if drive else "",
-            "status": session.status,
-            "overall_score": session.overall_score,
-            "scheduled_time": session.start_time.isoformat() if session.start_time else None,
-            "start_time": session.start_time.isoformat() if session.start_time else None,
-            "end_time": session.end_time.isoformat() if session.end_time else None,
-            "duration": session.duration,
-            "created_at": session.created_at.isoformat() if session.created_at else None,
-        })
-
-    return {"interviews": interviews}

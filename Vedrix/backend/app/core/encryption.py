@@ -7,10 +7,11 @@ import base64
 import hashlib
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from typing import Optional, Any
 import json
 import logging
+from sqlalchemy import TypeDecorator, Text
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class FieldEncryption:
         """Derive encryption key from secret using PBKDF2."""
         salt = b'vedrix_field_encryption_salt'  # Fixed salt for consistency
 
-        kdf = PBKDF2(
+        kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
             salt=salt,
@@ -174,7 +175,7 @@ class BackupEncryption:
         iv = os.urandom(16)
 
         # Derive key from password
-        kdf = PBKDF2(
+        kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
             salt=salt,
@@ -211,7 +212,7 @@ class BackupEncryption:
         encrypted = encrypted_data[32:]
 
         # Derive key from password
-        kdf = PBKDF2(
+        kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
             salt=salt,
@@ -232,3 +233,67 @@ class BackupEncryption:
         # Remove padding
         padding = decrypted[-1]
         return decrypted[:-padding]
+
+
+class EncryptedJSON(TypeDecorator):
+    """
+    Transparently encrypt/decrypt JSON data for database storage.
+    Ensures sensitive interview transcripts and feedback are encrypted at rest.
+    """
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        try:
+            json_str = json.dumps(value)
+            return FieldEncryption.encrypt(json_str)
+        except Exception as e:
+            logger.error(f"Failed to encrypt JSON for storage: {e}")
+            return None
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        
+        # Try to decrypt
+        try:
+            decrypted_str = FieldEncryption.decrypt(value)
+            return json.loads(decrypted_str)
+        except Exception:
+            # Fallback: maybe it's already plaintext JSON (for migration/dev)
+            try:
+                return json.loads(value)
+            except Exception:
+                logger.error("Failed to decrypt or parse JSON from database")
+                return value
+
+
+class EncryptedString(TypeDecorator):
+    """
+    Transparently encrypt/decrypt string data for database storage.
+    Useful for PII like resume text, phone numbers, or addresses.
+    """
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        try:
+            return FieldEncryption.encrypt(str(value))
+        except Exception as e:
+            logger.error(f"Failed to encrypt string for storage: {e}")
+            return str(value)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        
+        # Try to decrypt
+        try:
+            return FieldEncryption.decrypt(value)
+        except Exception:
+            # Fallback: maybe it's already plaintext (for migration/dev)
+            return value

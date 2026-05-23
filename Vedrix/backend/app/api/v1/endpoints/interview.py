@@ -138,9 +138,11 @@ async def websocket_endpoint(
                     # Generate secure random password for guest users
                     import secrets
                     guest_password = secrets.token_urlsafe(16)
+                    # Audit: Use to_thread for password hashing (CPU intensive)
+                    password_hash = await asyncio.to_thread(security.get_password_hash, guest_password)
                     user = User(
                         email=candidate_email, username=username,
-                        password_hash=security.get_password_hash(guest_password), user_type="student",
+                        password_hash=password_hash, user_type="student",
                         first_name="Guest", last_name="Candidate", is_active=True,
                     )
                     db.add(user)
@@ -190,6 +192,52 @@ async def websocket_endpoint(
                 if not user:
                     await manager.send_json({"type": "error", "data": "User not found."}, session_id)
                     return
+
+                # ── Security Audit: Enforce Thread Isolation ──────────────────
+                # Verify that the user has permission to access this session_id (thread_id)
+                # If scheduled_session_id is provided, check ownership.
+                if scheduled_session_id:
+                    session_res = await db.execute(
+                        select(InterviewSession).where(
+                            InterviewSession.id == scheduled_session_id,
+                            InterviewSession.candidate_id == user_id
+                        )
+                    )
+                    if not session_res.scalars().first():
+                        await manager.send_json({"type": "error", "data": "Access denied to this session."}, session_id)
+                        return
+                
+                # If this is a resume or join by session_id (used as thread_id), verify it belongs to user
+                # Note: session_id in the URL is our thread_id.
+                try:
+                    int_session_id = int(session_id)
+                    check_res = await db.execute(
+                        select(InterviewSession).where(
+                            InterviewSession.id == int_session_id
+                        )
+                    )
+                    existing_session = check_res.scalars().first()
+                    if existing_session and existing_session.candidate_id != user_id:
+                        # HR might be allowed to join for live proctoring (Phase 1.1)
+                        is_hr = user.user_type in ("hr", "admin")
+                        if is_hr:
+                            # Check if HR owns the drive
+                            drive_res = await db.execute(
+                                select(JobDrive).join(HRProfile).where(
+                                    JobDrive.id == existing_session.job_drive_id,
+                                    HRProfile.user_id == user_id
+                                )
+                            )
+                            if not drive_res.scalars().first():
+                                await manager.send_json({"type": "error", "data": "Access denied. You do not manage this session."}, session_id)
+                                return
+                        else:
+                            await manager.send_json({"type": "error", "data": "Access denied. Thread isolation violation."}, session_id)
+                            return
+                except (ValueError, TypeError):
+                    # For practice sessions, session_id might be a string (uuid), 
+                    # we still allow it as long as it's a new unique thread.
+                    pass
 
                 candidate_name = user.first_name
                 candidate_email = user.email

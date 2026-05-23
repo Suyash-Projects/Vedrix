@@ -10,9 +10,14 @@ class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     email: str = Field(unique=True, index=True, nullable=False)
     username: str = Field(unique=True, index=True, nullable=False)
-    password_hash: str = Field(nullable=False)
+    password_hash: Optional[str] = Field(default=None, nullable=True)
     user_type: str = Field(nullable=False)  # 'student', 'hr', 'admin'
     role: str = Field(default="user")
+    
+    # Social Login
+    provider: str = Field(default="local")  # 'local', 'google', 'github', 'linkedin'
+    provider_id: Optional[str] = Field(default=None, index=True)
+    
     first_name: str = Field(nullable=False)
     last_name: str = Field(nullable=False)
     phone: Optional[str] = None

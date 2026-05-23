@@ -81,6 +81,7 @@ zstandard==0.25.0
 
 fpdf2==2.7.9
 slowapi==0.1.9
+fastapi-sso==0.16.0
 
 # Monitoring & Metrics
 prometheus-client==0.21.1

@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 from typing import Optional, List, TYPE_CHECKING
 from sqlmodel import SQLModel, Field, Relationship
+from sqlalchemy import Column, Text
+from app.core.encryption import EncryptedString
 
 if TYPE_CHECKING:
     from .user import User
@@ -21,23 +23,23 @@ class StudentProfile(SQLModel, table=True):
     minor: Optional[str] = None  # e.g., Mathematics
 
     # Skills & Experience
-    skills: Optional[str] = None  # JSON string of skills list
+    skills: Optional[str] = Field(default=None, sa_column=Column(EncryptedString))
     experience_level: Optional[str] = None  # entry/mid/senior
-    work_experience: Optional[str] = None  # JSON string of work history
-    internships: Optional[str] = None  # JSON string of internships
+    work_experience: Optional[str] = Field(default=None, sa_column=Column(EncryptedString))
+    internships: Optional[str] = Field(default=None, sa_column=Column(EncryptedString))
 
     # Resume
     resume_file: Optional[str] = None
-    resume_text: Optional[str] = None
+    resume_text: Optional[str] = Field(default=None, sa_column=Column(EncryptedString))
 
     # Additional Profile Fields
-    projects: Optional[str] = None  # JSON string of project descriptions
-    certifications: Optional[str] = None  # JSON string of certifications
+    projects: Optional[str] = Field(default=None, sa_column=Column(EncryptedString))
+    certifications: Optional[str] = Field(default=None, sa_column=Column(EncryptedString))
     languages: Optional[str] = None  # JSON string e.g., ["English-Native", "Spanish-Conversational"]
     linkedin_url: Optional[str] = None
     github_url: Optional[str] = None
     portfolio_url: Optional[str] = None
-    hackathons: Optional[str] = None  # JSON string of hackathon participation
+    hackathons: Optional[str] = Field(default=None, sa_column=Column(EncryptedString))
 
     # Additional Info
     expected_salary: Optional[str] = None

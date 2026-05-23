@@ -1,16 +1,58 @@
-# React + Vite
+# 🎨 Vedrix Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The frontend for Vedrix is a modern, high-performance React application built with **React 19**, **Vite**, and **Tailwind CSS v4**. It features a glassy, dark-themed interface designed for a professional interview experience.
 
-Currently, two official plugins are available:
+## 🚀 Key Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Real-time Interview Room**: WebSocket-powered chat with streaming AI responses.
+- **Adaptive UI**: Responsive dashboard for both candidates and HR.
+- **Interactive Coding Sandbox**: Integrated **Monaco Editor** for technical tasks.
+- **Visual Analytics**: Performance radar charts and skill breakdown via **Recharts**.
+- **Smooth Animations**: Motion components powered by **Framer Motion**.
 
-## React Compiler
+## 🛠️ Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Framework**: React 19 + TypeScript
+- **State Management**: **Zustand** (Global state) + **React Query** (Server state)
+- **Styling**: Tailwind CSS v4 + Framer Motion
+- **Icons**: Lucide-React
+- **Testing**: Vitest + React Testing Library
 
-## Expanding the ESLint configuration
+## 📂 Project Structure
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- `src/components/`: Reusable UI primitives (Buttons, Modals, Cards).
+- `src/pages/`: Main application views:
+  - `LandingPage`: Product overview.
+  - `InterviewRoom`: The core AI interview interface.
+  - `Dashboard`: Candidate performance tracking.
+  - `HRDashboard`: Recruiter view for drive management.
+- `src/hooks/`: Custom hooks for Auth, Media (Microphone), and WebSockets.
+- `src/store/`: Zustand state definitions.
+- `src/services/`: API client and WebSocket handlers.
+
+## 🚦 Getting Started
+
+### Prerequisites
+- Node.js 20+
+- A running backend instance (see `Vedrix/backend/README.md`)
+
+### Installation
+```bash
+npm install
+```
+
+### Development
+```bash
+npm run dev
+```
+
+### Testing
+```bash
+npm test
+```
+
+## 🎨 Design Tokens
+
+- **Primary Color**: Purple (`#7C3AED`)
+- **Background**: Slate Dark (`#020617`)
+- **Glassmorphism**: 10% opacity white with `backdrop-blur-xl`

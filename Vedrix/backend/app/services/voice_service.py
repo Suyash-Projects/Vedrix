@@ -1,10 +1,11 @@
 import os
 import asyncio
-import tempfile
+import io
 import base64
 import logging
 from groq import Groq
 from openai import AsyncOpenAI
+from pydub import AudioSegment
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -13,10 +14,11 @@ logger = logging.getLogger(__name__)
 class VoiceService:
     """
     Speech-to-Text : Groq Whisper Large V3   (~300ms, fastest available)
-    Text-to-Speech : OpenAI TTS or Fallback  (PlayAI is decommissioned)
+    Text-to-Speech : OpenAI TTS with Browser Fallback
 
-    STT is run in a thread executor because the Groq SDK call is synchronous.
-    TTS uses AsyncOpenAI if available for better async performance.
+    STT uses pydub to normalize audio and runs in a thread executor
+    because the Groq SDK call is synchronous.
+    TTS uses AsyncOpenAI for non-blocking audio generation.
     """
 
     def __init__(self):
@@ -36,34 +38,39 @@ class VoiceService:
     # ── STT ──────────────────────────────────────────────────────────────────
 
     async def transcribe_audio(self, audio_bytes: bytes) -> str:
-        """Transcribe audio bytes → text via Groq Whisper Large V3."""
+        """
+        Transcribe audio bytes → text via Groq Whisper Large V3.
+        Uses pydub to ensure compatible format and normalize audio.
+        """
         if not self._groq:
             return ""
 
         def _run():
-            tmp_path = None
             try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as f:
-                    f.write(audio_bytes)
-                    tmp_path = f.name
-                with open(tmp_path, "rb") as f:
-                    result = self._groq.audio.transcriptions.create(
-                        file=(os.path.basename(tmp_path), f.read()),
-                        model="whisper-large-v3",
-                        response_format="json",
-                        language="en",
-                        temperature=0.0,
-                    )
+                # 1. Load audio from bytes (supports webm, ogg, wav, etc.)
+                audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
+                
+                # 2. Basic validation
+                if len(audio) < 100:  # Less than 100ms
+                    return ""
+
+                # 3. Standardize format for Groq (MP3 is compact and reliable)
+                buffer = io.BytesIO()
+                audio.export(buffer, format="mp3", bitrate="64k")
+                buffer.seek(0)
+                
+                # 4. Transcribe via Groq
+                result = self._groq.audio.transcriptions.create(
+                    file=("audio.mp3", buffer),
+                    model="whisper-large-v3",
+                    response_format="json",
+                    language="en",
+                    temperature=0.0,
+                )
                 return result.text or ""
             except Exception as e:
                 logger.error(f"STT error: {e}")
                 return ""
-            finally:
-                if tmp_path and os.path.exists(tmp_path):
-                    try:
-                        os.remove(tmp_path)
-                    except:
-                        pass
 
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _run)
@@ -72,16 +79,24 @@ class VoiceService:
 
     async def speak_text(self, text: str) -> str:
         """
-        Convert text -> base64-encoded MP3 audio.
-        Uses Browser Web Speech API (via frontend). Backend sends the text,
-        frontend handles synthesis for zero-cost TTS.
-        Returns empty string — frontend uses Web Speech API.
+        Convert text -> base64-encoded MP3 audio via OpenAI TTS.
+        If OpenAI is not configured, returns empty string to allow frontend fallback.
         """
-        # TTS is handled by the frontend using the free Browser Web Speech API.
-        # This method is kept as a placeholder for potential future server-side
-        # TTS (e.g. Coqui TTS, XTTS, or Bark). For now, returns empty to signal
-        # the frontend to use its built-in speech synthesis.
-        return ""
+        if not self._openai:
+            return ""
+
+        try:
+            response = await self._openai.audio.speech.create(
+                model="tts-1",
+                voice="alloy",
+                input=text,
+            )
+            # OpenAI response content can be read asynchronously
+            audio_data = await response.aread()
+            return base64.b64encode(audio_data).decode("utf-8")
+        except Exception as e:
+            logger.error(f"TTS error: {e}")
+            return ""
 
 
 voice_service = VoiceService()

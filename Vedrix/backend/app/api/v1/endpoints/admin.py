@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
+from sqlalchemy.orm import selectinload, joinedload
 import uuid
 
 from app.api import deps
@@ -353,28 +354,22 @@ async def list_all_drives(
     current_admin: User = Depends(deps.get_current_admin),
 ) -> Any:
     """List ALL job drives across the platform (admin sees everything)."""
-    result = await db.execute(select(JobDrive))
+    # Use selectinload to fetch relationships efficiently
+    query = select(JobDrive).options(
+        selectinload(JobDrive.hr).joinedload(HRProfile.user),
+        selectinload(JobDrive.interview_sessions),
+        selectinload(JobDrive.invite_tokens)
+    )
+    result = await db.execute(query)
     drives = result.scalars().all()
 
     enriched = []
     for drive in drives:
-        # Get HR owner info
-        hr_res = await db.execute(select(HRProfile).where(HRProfile.id == drive.hr_id))
-        hr_profile = hr_res.scalars().first()
-        hr_user = None
-        if hr_profile:
-            hr_user_res = await db.execute(select(User).where(User.id == hr_profile.user_id))
-            hr_user = hr_user_res.scalars().first()
-
-        # Session stats
-        sessions_res = await db.execute(
-            select(InterviewSession).where(InterviewSession.job_drive_id == drive.id)
-        )
-        sessions = sessions_res.scalars().all()
-        tokens_res = await db.execute(
-            select(DriveInviteToken).where(DriveInviteToken.drive_id == drive.id)
-        )
-        tokens = tokens_res.scalars().all()
+        hr_user = drive.hr.user if drive.hr else None
+        
+        sessions = drive.interview_sessions
+        tokens = drive.invite_tokens
+        
         completed = [s for s in sessions if s.overall_score is not None]
         avg_score = (
             round(sum(s.overall_score for s in completed) / len(completed), 1)
@@ -937,36 +932,40 @@ async def get_team_analytics(
     pass_rate = round((pass_count / max(len(completed_list), 1)) * 100, 1)
     completion_rate = round((completed_sessions / max(total_sessions, 1)) * 100, 1)
 
-    # Role breakdown
-    drives_result = await db.execute(select(JobDrive))
-    drives = drives_result.scalars().all()
-
-    role_map = {}
-    for drive in drives:
-        sessions_for_drive = await db.execute(
-            select(InterviewSession).where(InterviewSession.job_drive_id == drive.id)
+    # Role breakdown - grouped query instead of N+1
+    role_stats_query = (
+        select(
+            JobDrive.job_role,
+            func.count(InterviewSession.id).label("total"),
+            func.count(InterviewSession.id).filter(InterviewSession.status == "completed").label("completed"),
+            func.avg(InterviewSession.overall_score).filter(InterviewSession.status == "completed").label("avg_score")
         )
-        drive_sessions = sessions_for_drive.scalars().all()
-        drive_completed = [s for s in drive_sessions if s.status == "completed" and s.overall_score]
-
-        role = drive.job_role
-        if role not in role_map:
-            role_map[role] = {"total": 0, "completed": 0, "scores": []}
-        role_map[role]["total"] += len(drive_sessions)
-        role_map[role]["completed"] += len(drive_completed)
-        role_map[role]["scores"].extend([s.overall_score for s in drive_completed])
-
+        .join(InterviewSession, JobDrive.id == InterviewSession.job_drive_id)
+        .group_by(JobDrive.job_role)
+    )
+    role_stats_result = await db.execute(role_stats_query)
     role_breakdown = []
-    for role, data in role_map.items():
-        avg = round(sum(data["scores"]) / len(data["scores"]), 2) if data["scores"] else 0
-        passes = sum(1 for s in data["scores"] if s >= 6.0)
+    for row in role_stats_result.all():
         role_breakdown.append({
-            "job_role": role,
-            "total": data["total"],
-            "completed": data["completed"],
-            "avg_score": avg,
-            "pass_rate": round((passes / max(data["completed"], 1)) * 100, 1),
+            "job_role": row[0],
+            "total": row[1],
+            "completed": row[2],
+            "avg_score": round(row[3] or 0.0, 2),
+            "pass_rate": 0.0, # Will need a separate subquery or manual count for pass rate if threshold is complex
         })
+    
+    # Update pass rates for role breakdown
+    for rb in role_breakdown:
+        pass_count_query = (
+            select(func.count(InterviewSession.id))
+            .join(JobDrive, JobDrive.id == InterviewSession.job_drive_id)
+            .where(
+                JobDrive.job_role == rb["job_role"],
+                InterviewSession.status == "completed",
+                InterviewSession.overall_score >= 6.0
+            )
+        )
+        rb["pass_rate"] = round(((await db.execute(pass_count_query)).scalar() or 0) / max(rb["completed"], 1) * 100, 1)
 
     # Score distribution (histogram buckets)
     score_buckets = {"0-2": 0, "2-4": 0, "4-6": 0, "6-8": 0, "8-10": 0}

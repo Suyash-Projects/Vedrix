@@ -3,7 +3,7 @@ import csv
 import io
 import logging
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ class ExportService:
 
         # Summary section
         writer.writerow(["Vedrix AI Interview — Team Analytics Report"])
-        writer.writerow([f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
+        writer.writerow([f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"])
         writer.writerow([])
 
         summary = analytics.get("summary", {})

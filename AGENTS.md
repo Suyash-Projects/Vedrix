@@ -4,7 +4,7 @@
 
 **Name**: Vedrix AI Interview System  
 **Stack**: FastAPI + React + SQLite + LangGraph  
-**Goal**: Aligned to reference/Talent Sync system (~20% complete)  
+**Goal**: High-fidelity, agentic AI interview platform with LangGraph orchestration.
 **Dual-sided**: B2C (candidates) + B2B (recruiters)
 
 ## Quick Start
@@ -67,7 +67,6 @@ python Vedrix/run_dev.py
 
 ## References
 
-- Target features: `reference/README.md`
 - System mandates: `Vedrix/GEMINI.md`
 - DB models: `Vedrix/backend/app/models/`
 - Frontend pages: `Vedrix/frontend/src/pages/`
