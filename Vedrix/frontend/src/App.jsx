@@ -26,6 +26,15 @@ import AccessibilityStatement from './pages/AccessibilityStatement';
 import SettingsPage from './pages/SettingsPage';
 import LandingPage from './pages/LandingPage';
 import SupervisorDashboard from './pages/SupervisorDashboard';
+import CandidateProfilePage from './pages/CandidateProfilePage';
+import CoachingPlanPage from './pages/CoachingPlanPage';
+import HRMatchingDashboard from './pages/HRMatchingDashboard';
+import WorkflowKanban from './pages/WorkflowKanban';
+import ViolationMonitor from './pages/ViolationMonitor';
+import ObservabilityPanel from './pages/ObservabilityPanel';
+import QAQualityWidget from './pages/QAQualityWidget';
+import SentimentTimeline from './pages/SentimentTimeline';
+import EnrichmentSummary from './pages/EnrichmentSummary';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import CookieConsent from './components/CookieConsent';
@@ -197,6 +206,71 @@ function App() {
           <Route path="/settings" element={
             <ProtectedRoute>
               <SettingsPage />
+            </ProtectedRoute>
+          } />
+
+          {/* ── Agentic Platform Routes ─────────────────────────────── */}
+
+          {/* Candidate Skill Profile (Student) */}
+          <Route path="/dashboard/profile" element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <CandidateProfilePage />
+            </ProtectedRoute>
+          } />
+
+          {/* Coaching Plan (Student) */}
+          <Route path="/dashboard/coaching/:planId" element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <CoachingPlanPage />
+            </ProtectedRoute>
+          } />
+
+          {/* HR Matching Dashboard */}
+          <Route path="/hr/drives/:driveId/rankings" element={
+            <ProtectedRoute allowedRoles={['hr', 'admin']}>
+              <HRMatchingDashboard />
+            </ProtectedRoute>
+          } />
+
+          {/* Workflow Kanban Pipeline */}
+          <Route path="/hr/drives/:driveId/pipeline" element={
+            <ProtectedRoute allowedRoles={['hr', 'admin']}>
+              <WorkflowKanban />
+            </ProtectedRoute>
+          } />
+
+          {/* Violation Monitor / Proctor */}
+          <Route path="/hr/interviews/:sessionId/proctor" element={
+            <ProtectedRoute allowedRoles={['hr', 'admin']}>
+              <ViolationMonitor />
+            </ProtectedRoute>
+          } />
+
+          {/* Sentiment Timeline */}
+          <Route path="/hr/interviews/:sessionId/sentiment" element={
+            <ProtectedRoute allowedRoles={['hr', 'admin']}>
+              <SentimentTimeline />
+            </ProtectedRoute>
+          } />
+
+          {/* Enrichment Summary */}
+          <Route path="/hr/candidates/:candidateId/enrichment" element={
+            <ProtectedRoute allowedRoles={['hr', 'admin']}>
+              <EnrichmentSummary />
+            </ProtectedRoute>
+          } />
+
+          {/* Admin Audit Trail / Observability */}
+          <Route path="/admin/audit-trail" element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <ObservabilityPanel />
+            </ProtectedRoute>
+          } />
+
+          {/* Admin QA Monitor */}
+          <Route path="/admin/qa-monitor" element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <QAQualityWidget />
             </ProtectedRoute>
           } />
 

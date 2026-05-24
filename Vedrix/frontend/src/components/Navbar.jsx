@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Cpu, LogOut, Menu, X } from 'lucide-react';
+import { Cpu, LogOut, Menu, X, ChevronDown } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import useAuthStore from '../store/useAuthStore';
 
 const Navbar = () => {
   const { isAuthenticated, user, logout } = useAuthStore();
   const [isOpen, setIsOpen] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(null);
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -38,8 +39,68 @@ const Navbar = () => {
           {isAuthenticated && (
             <>
               <Link to={getDashboardPath()} className="text-slate-400 hover:text-white font-bold text-sm uppercase tracking-widest transition-colors">Dashboard</Link>
+
+              {/* Student-specific nav */}
+              {user?.user_type === 'student' && (
+                <div className="relative" onMouseLeave={() => setDropdownOpen(null)}>
+                  <button
+                    onMouseEnter={() => setDropdownOpen('student')}
+                    className="flex items-center gap-1 text-slate-400 hover:text-white font-bold text-sm uppercase tracking-widest transition-colors"
+                    aria-expanded={dropdownOpen === 'student'}
+                    aria-haspopup="true"
+                  >
+                    Growth <ChevronDown size={12} />
+                  </button>
+                  {dropdownOpen === 'student' && (
+                    <div className="absolute top-full left-0 mt-2 bg-[#0f172a] border border-white/10 rounded-xl p-2 min-w-[180px] shadow-xl z-50">
+                      <Link to="/dashboard/profile" className="block px-4 py-2 text-slate-300 hover:text-white hover:bg-white/5 rounded-lg text-sm font-bold transition-all">Skill Profile</Link>
+                      <Link to="/dashboard/coaching/latest" className="block px-4 py-2 text-slate-300 hover:text-white hover:bg-white/5 rounded-lg text-sm font-bold transition-all">Coaching Plan</Link>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* HR-specific nav */}
+              {(user?.user_type === 'hr' || user?.user_type === 'admin') && (
+                <div className="relative" onMouseLeave={() => setDropdownOpen(null)}>
+                  <button
+                    onMouseEnter={() => setDropdownOpen('hr')}
+                    className="flex items-center gap-1 text-slate-400 hover:text-white font-bold text-sm uppercase tracking-widest transition-colors"
+                    aria-expanded={dropdownOpen === 'hr'}
+                    aria-haspopup="true"
+                  >
+                    HR Tools <ChevronDown size={12} />
+                  </button>
+                  {dropdownOpen === 'hr' && (
+                    <div className="absolute top-full left-0 mt-2 bg-[#0f172a] border border-white/10 rounded-xl p-2 min-w-[180px] shadow-xl z-50">
+                      <Link to="/hr/pipeline" className="block px-4 py-2 text-slate-300 hover:text-white hover:bg-white/5 rounded-lg text-sm font-bold transition-all">Pipeline</Link>
+                      <Link to="/hr/schedule" className="block px-4 py-2 text-slate-300 hover:text-white hover:bg-white/5 rounded-lg text-sm font-bold transition-all">Schedule</Link>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Admin-specific nav */}
               {user?.user_type === 'admin' && (
-                <Link to="/admin" className="text-amber-400 hover:text-amber-300 font-bold text-sm uppercase tracking-widest transition-colors">Admin</Link>
+                <div className="relative" onMouseLeave={() => setDropdownOpen(null)}>
+                  <button
+                    onMouseEnter={() => setDropdownOpen('admin')}
+                    className="flex items-center gap-1 text-amber-400 hover:text-amber-300 font-bold text-sm uppercase tracking-widest transition-colors"
+                    aria-expanded={dropdownOpen === 'admin'}
+                    aria-haspopup="true"
+                  >
+                    Admin <ChevronDown size={12} />
+                  </button>
+                  {dropdownOpen === 'admin' && (
+                    <div className="absolute top-full left-0 mt-2 bg-[#0f172a] border border-white/10 rounded-xl p-2 min-w-[180px] shadow-xl z-50">
+                      <Link to="/admin" className="block px-4 py-2 text-slate-300 hover:text-white hover:bg-white/5 rounded-lg text-sm font-bold transition-all">Overview</Link>
+                      <Link to="/admin/audit-trail" className="block px-4 py-2 text-slate-300 hover:text-white hover:bg-white/5 rounded-lg text-sm font-bold transition-all">Audit Trail</Link>
+                      <Link to="/admin/qa-monitor" className="block px-4 py-2 text-slate-300 hover:text-white hover:bg-white/5 rounded-lg text-sm font-bold transition-all">QA Monitor</Link>
+                      <Link to="/admin/health" className="block px-4 py-2 text-slate-300 hover:text-white hover:bg-white/5 rounded-lg text-sm font-bold transition-all">System Health</Link>
+                      <Link to="/admin/supervisor" className="block px-4 py-2 text-slate-300 hover:text-white hover:bg-white/5 rounded-lg text-sm font-bold transition-all">AI Supervisor</Link>
+                    </div>
+                  )}
+                </div>
               )}
             </>
           )}
@@ -79,8 +140,34 @@ const Navbar = () => {
             <Link onClick={() => setIsOpen(false)} to={isAuthenticated ? getDashboardPath() : '/'}
               className="block text-slate-400 hover:text-white font-bold text-sm uppercase tracking-widest transition-colors">Home</Link>
             {isAuthenticated && (
-              <Link onClick={() => setIsOpen(false)} to={getDashboardPath()}
-                className="block text-slate-400 hover:text-white font-bold text-sm uppercase tracking-widest transition-colors">Dashboard</Link>
+              <>
+                <Link onClick={() => setIsOpen(false)} to={getDashboardPath()}
+                  className="block text-slate-400 hover:text-white font-bold text-sm uppercase tracking-widest transition-colors">Dashboard</Link>
+                {user?.user_type === 'student' && (
+                  <>
+                    <Link onClick={() => setIsOpen(false)} to="/dashboard/profile"
+                      className="block text-slate-400 hover:text-white font-bold text-sm uppercase tracking-widest transition-colors pl-4">Skill Profile</Link>
+                    <Link onClick={() => setIsOpen(false)} to="/dashboard/coaching/latest"
+                      className="block text-slate-400 hover:text-white font-bold text-sm uppercase tracking-widest transition-colors pl-4">Coaching</Link>
+                  </>
+                )}
+                {(user?.user_type === 'hr' || user?.user_type === 'admin') && (
+                  <>
+                    <Link onClick={() => setIsOpen(false)} to="/hr/pipeline"
+                      className="block text-slate-400 hover:text-white font-bold text-sm uppercase tracking-widest transition-colors pl-4">Pipeline</Link>
+                    <Link onClick={() => setIsOpen(false)} to="/hr/schedule"
+                      className="block text-slate-400 hover:text-white font-bold text-sm uppercase tracking-widest transition-colors pl-4">Schedule</Link>
+                  </>
+                )}
+                {user?.user_type === 'admin' && (
+                  <>
+                    <Link onClick={() => setIsOpen(false)} to="/admin/audit-trail"
+                      className="block text-amber-400 hover:text-amber-300 font-bold text-sm uppercase tracking-widest transition-colors pl-4">Audit Trail</Link>
+                    <Link onClick={() => setIsOpen(false)} to="/admin/qa-monitor"
+                      className="block text-amber-400 hover:text-amber-300 font-bold text-sm uppercase tracking-widest transition-colors pl-4">QA Monitor</Link>
+                  </>
+                )}
+              </>
             )}
             {!isAuthenticated ? (
               <>
