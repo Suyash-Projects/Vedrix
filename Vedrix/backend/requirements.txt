@@ -92,3 +92,8 @@ redis==5.2.1
 # Testing utilities
 pytest>=7.4.0
 pytest-asyncio>=0.20.2
+
+# Vector DB & Embeddings
+chromadb==0.4.24
+sentence-transformers
+

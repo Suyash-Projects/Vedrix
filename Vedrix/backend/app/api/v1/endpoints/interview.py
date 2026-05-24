@@ -522,17 +522,66 @@ async def websocket_endpoint(
                     elif payload.get("type") == "code":
                         user_code = payload.get("data", "")
                     elif payload.get("type") == "proctor_event":
-                        event_type = payload.get("event_type")
-                        event_data = payload.get("data", {})
+                        # Route browser events to ProctorService.handle_browser_event()
+                        # Message format: {"type": "proctor_event", "event": "tab_switch"|"paste"|"keystroke", ...}
                         from app.services.proctor_service import proctor_service
-                        if db_session_id:
+                        event = payload.get("event", "")
+                        if db_session_id and event in ("tab_switch", "paste", "keystroke"):
                             async with async_session() as db:
-                                await proctor_service.record_violation(
-                                    session_id=db_session_id,
-                                    violation_type=event_type,
-                                    payload=event_data,
-                                    db=db
+                                # Fetch session to get status and consent
+                                sess_res = await db.execute(
+                                    select(InterviewSession).where(InterviewSession.id == db_session_id)
                                 )
+                                sess_rec = sess_res.scalars().first()
+                                if sess_rec:
+                                    session_status = sess_rec.status
+                                    # proctor_consent_granted added via migration; use getattr for safety
+                                    consent_granted = getattr(sess_rec, "proctor_consent_granted", None) or False
+
+                                    # Build event-specific payload
+                                    if event == "tab_switch":
+                                        event_payload = {"timestamp": payload.get("timestamp")}
+                                    elif event == "paste":
+                                        event_payload = {
+                                            "content_length": payload.get("content_length"),
+                                            "phase": payload.get("phase"),
+                                        }
+                                    elif event == "keystroke":
+                                        event_payload = {"timestamps": payload.get("timestamps", [])}
+                                    else:
+                                        event_payload = {}
+
+                                    # Map event names to violation_type expected by proctor_service
+                                    event_type_map = {
+                                        "tab_switch": "tab_switch",
+                                        "paste": "paste_detected",
+                                        "keystroke": "anomalous_typing",
+                                    }
+                                    violation_type = event_type_map.get(event, event)
+
+                                    # For keystroke events, run typing cadence analysis first
+                                    if event == "keystroke":
+                                        timestamps = payload.get("timestamps", [])
+                                        if len(timestamps) >= 2:
+                                            # Use session baseline (simplified: use overall mean/std from timestamps)
+                                            # The proctor_service.analyze_typing_cadence handles the detection
+                                            await proctor_service.analyze_typing_cadence(
+                                                keystroke_timestamps=timestamps,
+                                                baseline_mean=0.15,  # default baseline ~150ms between keystrokes
+                                                baseline_std=0.05,   # default std
+                                                db=db,
+                                                session_id=db_session_id,
+                                                consent_granted=consent_granted,
+                                            )
+                                    else:
+                                        await proctor_service.handle_browser_event(
+                                            session_id=db_session_id,
+                                            event_type=violation_type,
+                                            payload=event_payload,
+                                            session_status=session_status,
+                                            consent_granted=consent_granted,
+                                            db=db,
+                                        )
                         continue
                     # ── Phase 1A: HR closes interview smoothly ──────────────────
                     elif payload.get("type") == "hr_close_interview":
@@ -841,6 +890,106 @@ async def websocket_endpoint(
                                     db.add(rec)
                                     await db.commit()
 
+                            # Finalize proctor session: attach all ViolationRecords to evidence_log
+                            try:
+                                from app.services.proctor_service import proctor_service
+                                async with async_session() as db:
+                                    await proctor_service.finalize_session(session_id=db_session_id, db=db)
+                            except Exception as proctor_err:
+                                logger.warning(f"Proctor finalize_session failed for {db_session_id}: {proctor_err}")
+
+                            # Trigger Coaching Agent: generate coaching plan as background task
+                            try:
+                                from app.services.coaching_service import coaching_service
+
+                                coaching_session_id = db_session_id
+                                coaching_evaluation_report = report_dict
+                                coaching_skill_matrix = final_state.values.get("topic_scores", {})
+
+                                if coaching_skill_matrix:
+                                    async def _coaching_task():
+                                        try:
+                                            async with async_session() as coaching_db:
+                                                # Resolve candidate_id from the session record
+                                                sess_res = await coaching_db.execute(
+                                                    select(InterviewSession).where(InterviewSession.id == coaching_session_id)
+                                                )
+                                                sess_rec = sess_res.scalars().first()
+                                                if not sess_rec:
+                                                    return
+
+                                                plan = await coaching_service.generate_coaching_plan(
+                                                    session_id=coaching_session_id,
+                                                    candidate_id=sess_rec.candidate_id,
+                                                    evaluation_report=coaching_evaluation_report,
+                                                    skill_matrix=coaching_skill_matrix,
+                                                    db=coaching_db,
+                                                )
+                                                # Send notification if candidate email is available
+                                                if candidate_email and plan:
+                                                    await coaching_service.send_coaching_notification(
+                                                        candidate_email=candidate_email,
+                                                        coaching_plan=plan,
+                                                        db=coaching_db,
+                                                    )
+                                        except Exception as coaching_err:
+                                            logger.error(f"Coaching plan generation failed for session {coaching_session_id}: {coaching_err}")
+
+                                    asyncio.create_task(_coaching_task())
+                            except Exception as coaching_trigger_err:
+                                logger.warning(f"Failed to trigger coaching plan generation for {db_session_id}: {coaching_trigger_err}")
+
+                            # Trigger Matching Engine: compute match score as background task
+                            try:
+                                from app.services.matching_service import matching_service
+
+                                matching_session_id = db_session_id
+
+                                async def _matching_task():
+                                    try:
+                                        async with async_session() as matching_db:
+                                            await matching_service.compute_match_score(
+                                                session_id=matching_session_id,
+                                                db=matching_db,
+                                            )
+                                    except Exception as matching_err:
+                                        logger.error(f"Match score computation failed for session {matching_session_id}: {matching_err}")
+
+                                asyncio.create_task(_matching_task())
+                            except Exception as matching_trigger_err:
+                                logger.warning(f"Failed to trigger match score computation for {db_session_id}: {matching_trigger_err}")
+
+                            # Trigger Orchestrator: transition workflow state to "evaluated"
+                            try:
+                                from app.services.orchestrator_service import OrchestratorService
+
+                                orchestrator_session_id = db_session_id
+
+                                async def _orchestrator_task():
+                                    try:
+                                        async with async_session() as orch_db:
+                                            # Resolve candidate_id and job_drive_id from the session
+                                            sess_res = await orch_db.execute(
+                                                select(InterviewSession).where(InterviewSession.id == orchestrator_session_id)
+                                            )
+                                            sess_rec = sess_res.scalars().first()
+                                            if not sess_rec or not sess_rec.job_drive_id:
+                                                return
+
+                                            orchestrator = OrchestratorService()
+                                            await orchestrator.transition(
+                                                candidate_id=sess_rec.candidate_id,
+                                                job_drive_id=sess_rec.job_drive_id,
+                                                trigger="complete",
+                                                db=orch_db,
+                                            )
+                                    except Exception as orch_err:
+                                        logger.warning(f"Orchestrator transition failed for session {orchestrator_session_id}: {orch_err}")
+
+                                asyncio.create_task(_orchestrator_task())
+                            except Exception as orch_trigger_err:
+                                logger.warning(f"Failed to trigger orchestrator transition for {db_session_id}: {orch_trigger_err}")
+
                         await manager.send_json({
                             "type": "complete",
                             "report": report_dict,
@@ -896,6 +1045,14 @@ async def websocket_endpoint(
                         
                         db.add(rec)
                         await db.commit()
+
+                        # Finalize proctor session on disconnect-completion
+                        try:
+                            from app.services.proctor_service import proctor_service
+                            async with async_session() as proctor_db:
+                                await proctor_service.finalize_session(session_id=db_session_id, db=proctor_db)
+                        except Exception as proctor_err:
+                            logger.warning(f"Proctor finalize_session failed on disconnect for {db_session_id}: {proctor_err}")
             except Exception as e:
                 logger.error(f"Failed to finalize session {db_session_id} on disconnect: {e}")
 

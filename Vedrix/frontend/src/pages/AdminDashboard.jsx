@@ -1,25 +1,10 @@
 import { useState, useEffect } from 'react';
 import {
-  Users,
-  Settings,
-  Trash2,
-  Database,
-  RefreshCcw,
-  Activity,
-  Lock,
-  User,
-  Plus,
-  Edit2,
-  Check,
-  X,
-  Key,
-  Mail,
-  Briefcase,
-  PlayCircle,
-  FileText,
-  BarChart3,
-  Server,
-  Network
+  Users, Plus, Search, X, Edit2, Trash2, ChevronDown, ChevronUp,
+  RefreshCcw, FileText, User, Lock, Settings, Briefcase,
+  Database, Activity, BarChart3, AlertTriangle, Eye,
+  Shield, Fingerprint, Sliders, Mail, Key, CheckCircle, XCircle,
+  Brain
 } from 'lucide-react';
 import apiClient from '../services/api';
 import { useNavigate } from 'react-router-dom';
@@ -365,6 +350,13 @@ const AdminDashboard = () => {
             >
               <BarChart3 size={16} />
               <span>Team Analytics</span>
+            </button>
+            <button
+              onClick={() => navigate('/admin/supervisor')}
+              className="flex items-center space-x-2 bg-purple-600/10 border border-purple-500/20 text-purple-400 px-4 py-2 rounded-xl text-sm font-bold hover:bg-purple-600/20 transition-all"
+            >
+              <Brain size={16} />
+              <span>AI Supervisor</span>
             </button>
             <button
               onClick={fetchData}

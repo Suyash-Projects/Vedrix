@@ -86,6 +86,43 @@ class TestWebSocketConnection:
         manager = ConnectionManager()
         manager.disconnect("nonexistent")
 
+    @pytest.mark.asyncio
+    async def test_connection_manager_connects_and_disconnects_hr(self):
+        """ConnectionManager should track active HR connections."""
+        from app.api.v1.endpoints.interview import ConnectionManager
+
+        manager = ConnectionManager()
+        ws = MockWebSocket()
+        session_id = "test_session_hr_123"
+
+        await manager.connect(ws, session_id, is_hr=True)
+        assert ws.accepted == True
+        assert session_id in manager.hr_connections
+        assert ws in manager.hr_connections[session_id]
+
+        manager.disconnect(session_id, websocket=ws, is_hr=True)
+        assert session_id not in manager.hr_connections
+
+    @pytest.mark.asyncio
+    async def test_send_json_broadcasts_to_hr(self):
+        """send_json should broadcast candidate messages to connected HR observers."""
+        from app.api.v1.endpoints.interview import ConnectionManager
+
+        manager = ConnectionManager()
+        ws_candidate = MockWebSocket()
+        ws_hr = MockWebSocket()
+        session_id = "test_session_broadcast_123"
+
+        await manager.connect(ws_candidate, session_id)
+        await manager.connect(ws_hr, session_id, is_hr=True)
+
+        await manager.send_json({"type": "question", "data": "how are you?"}, session_id)
+
+        assert len(ws_candidate.messages) == 1
+        assert ws_candidate.messages[0]["type"] == "question"
+        assert len(ws_hr.messages) == 1
+        assert ws_hr.messages[0]["type"] == "question"
+
 
 class TestJWTValidation:
     """Tests for JWT token validation in WebSocket."""

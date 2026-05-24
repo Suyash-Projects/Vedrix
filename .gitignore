@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 plan
 plan/
+.kiro
 
 # C extensions
 *.so

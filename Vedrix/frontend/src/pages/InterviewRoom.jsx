@@ -193,6 +193,10 @@ const InterviewRoom = () => {
   const [manualText, setManualText] = useState('');
   const [codeResult, setCodeResult] = useState(null);
   
+  // Next-Gen Co-Pilot State
+  const [copilotSuggestions, setCopilotSuggestions] = useState([]);
+  const [isCopilotLoading, setIsCopilotLoading] = useState(false);
+  
   // Coding State
   const [code, setCode] = useState("# Write your solution here...\n");
   const [isCodingMode, setIsCodingMode] = useState(false);
@@ -218,12 +222,26 @@ const InterviewRoom = () => {
   const [videoStream, setVideoStream] = useState(null);
   const videoRef = useRef(null);
 
+  // WebRTC States & Refs for Recruiter Takeover Calling
+  const [remoteStream, setRemoteStream] = useState(null);
+  const [supervisorMode, setSupervisorMode] = useState('ai_only');
+  const pcRef = useRef(null);
+  const videoWsRef = useRef(null);
+  const supervisorVideoRef = useRef(null);
+
   // Attach video stream to video element
   useEffect(() => {
     if (videoRef.current && videoStream) {
       videoRef.current.srcObject = videoStream;
     }
   }, [videoStream]);
+
+  // Attach remote stream to supervisor video element
+  useEffect(() => {
+    if (supervisorVideoRef.current && remoteStream) {
+      supervisorVideoRef.current.srcObject = remoteStream;
+    }
+  }, [remoteStream]);
 
   // Initialize video on mount
   useEffect(() => {
@@ -267,6 +285,126 @@ const InterviewRoom = () => {
       }
     }
   };
+
+  // WebRTC Candidate Calling Effect
+  useEffect(() => {
+    if (supervisorMode !== 'hr_takeover') {
+      cleanupCandidateWebRTC();
+      return;
+    }
+
+    let wsInstance = null;
+
+    async function initCandidateWebRTC() {
+      try {
+        const pc = new RTCPeerConnection({
+          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        });
+        pcRef.current = pc;
+
+        // Add local tracks if available
+        if (videoStream) {
+          videoStream.getTracks().forEach(track => {
+            pc.addTrack(track, videoStream);
+          });
+        } else {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            setVideoStream(stream);
+            stream.getTracks().forEach(track => {
+              pc.addTrack(track, stream);
+            });
+          } catch (e) {
+            console.error("Could not obtain webcam for WebRTC takeover call:", e);
+          }
+        }
+
+        pc.onicecandidate = (event) => {
+          if (event.candidate && wsInstance && wsInstance.readyState === WebSocket.OPEN) {
+            wsInstance.send(JSON.stringify({
+              type: 'ice_candidate',
+              candidate: event.candidate
+            }));
+          }
+        };
+
+        pc.ontrack = (event) => {
+          if (event.streams && event.streams[0]) {
+            setRemoteStream(event.streams[0]);
+          }
+        };
+
+        const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+        let wsBase = apiBase;
+        if (apiBase.startsWith('https://')) {
+          wsBase = 'wss://' + apiBase.substring(8);
+        } else if (apiBase.startsWith('http://')) {
+          wsBase = 'ws://' + apiBase.substring(7);
+        }
+        
+        let videoUrl = `${wsBase}/interview/video/${resolvedSessionId}?role=candidate`;
+        const token = localStorage.getItem('token');
+        if (token) {
+          videoUrl += `&token=${encodeURIComponent(token)}`;
+        }
+
+        wsInstance = new WebSocket(videoUrl);
+        videoWsRef.current = wsInstance;
+
+        wsInstance.onmessage = async (e) => {
+          try {
+            const payload = JSON.parse(e.data);
+            if (payload.type === 'offer') {
+              await pc.setRemoteDescription(new RTCSessionDescription({
+                type: 'offer',
+                sdp: payload.sdp
+              }));
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+              wsInstance.send(JSON.stringify({
+                type: 'answer',
+                sdp: answer.sdp
+              }));
+            } else if (payload.type === 'ice_candidate') {
+              if (payload.candidate) {
+                await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+              }
+            } else if (payload.type === 'peer_left') {
+              setRemoteStream(null);
+            }
+          } catch (err) {
+            console.error("Signaling error:", err);
+          }
+        };
+
+        wsInstance.onclose = () => {
+          console.log("Candidate video signaling closed");
+        };
+
+      } catch (err) {
+        console.error("Failed to start candidate WebRTC:", err);
+      }
+    }
+
+    initCandidateWebRTC();
+
+    return () => {
+      cleanupCandidateWebRTC();
+    };
+  }, [supervisorMode, videoStream, resolvedSessionId]);
+
+  const cleanupCandidateWebRTC = () => {
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    if (videoWsRef.current) {
+      videoWsRef.current.close();
+      videoWsRef.current = null;
+    }
+    setRemoteStream(null);
+  };
+
   const isRecordingRef = useRef(false);
   const toggleRecordingRef = useRef(null);
 
@@ -419,6 +557,8 @@ const InterviewRoom = () => {
           const q = payload.data?.question;
           if (q) speakWithBrowserTTS(q);
         }
+      } else if (payload.type === 'supervisor_mode') {
+        setSupervisorMode(payload.mode);
       } else if (payload.type === 'status') {
         setAgentStatus(payload.data);
       } else if (payload.type === 'execution_result') {
@@ -451,6 +591,12 @@ const InterviewRoom = () => {
         setAgentStatus('Metrics updated based on your response.');
         // Could display live metrics in a dedicated UI element
         console.log('Metrics update:', payload.data);
+      } else if (payload.type === 'copilot_update') {
+        setIsCopilotLoading(false);
+        if (payload.data) {
+          setCopilotSuggestions(prev => [...prev, payload.data]);
+        }
+        setAgentStatus('Co-Pilot: Suggestion generated.');
       } else if (payload.type === 'advisor_suggestion') {
         // Phase 1A: Advisor suggestion received (primarily for HR, but candidate sees status)
         // Candidate continues normally — HR decides when to close
@@ -649,6 +795,17 @@ const InterviewRoom = () => {
     }
   };
 
+  const requestCopilotHint = () => {
+    updateActivity();
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      setIsCopilotLoading(true);
+      setAgentStatus('AI Co-Pilot: Formulating hint...');
+      ws.current.send(JSON.stringify({ type: 'copilot_request', data: code }));
+    } else {
+      alert("Co-Pilot unavailable: WebSocket is disconnected.");
+    }
+  };
+
   const submitTextAnswer = () => {
     updateActivity();
     // Phase 2.3: Queue text answer if offline, otherwise send via WS
@@ -764,7 +921,7 @@ const InterviewRoom = () => {
         </div>
 
         {/* Video Preview */}
-        {isVideoOn && videoStream && (
+        {isVideoOn && videoStream && supervisorMode !== 'hr_takeover' && (
           <div className="absolute top-20 right-6 w-32 h-24 rounded-xl overflow-hidden border-2 border-purple-500/30 z-20">
             <video
               ref={videoRef}
@@ -823,46 +980,108 @@ const InterviewRoom = () => {
             </div>
           ) : (
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} 
-              className="w-full h-[500px] bg-[#0a0f1e] border border-white/10 rounded-[2.5rem] overflow-hidden shadow-2xl relative">
-               <div className="h-12 bg-white/5 border-b border-white/5 px-6 flex items-center justify-between">
-                 <div className="flex items-center space-x-2">
-                   <Terminal size={16} className="text-purple-400" />
-                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Technical Sandbox / {codeLanguage}</span>
-                 </div>
-                 <div className="flex items-center space-x-4">
-                   <p className="text-xs font-bold text-slate-500 italic">Phase: {currentQuestion?.category}</p>
-                 </div>
-               </div>
-               <Editor
-                 height="calc(100% - 48px)"
-                 theme="vs-dark"
-                 language={codeLanguage}
-                 value={code}
-                 onChange={(val) => setCode(val)}
-                 options={{
-                   fontSize: 14,
-                   minimap: { enabled: false },
-                   padding: { top: 20 },
-                   scrollBeyondLastLine: false,
-                   backgroundColor: 'transparent'
-                 }}
-               />
-               <div className="absolute bottom-6 right-6 flex items-center space-x-3">
-                 {codeResult && (
-                   <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
-                     codeResult.status === 'Accepted' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'
-                   }`}>
-                     {codeResult.status} {codeResult.time ? `· ${codeResult.time}ms` : ''}
+              className="w-full h-[520px] grid grid-cols-10 gap-6">
+              
+              {/* Left Sandbox (7 cols) */}
+              <div className="col-span-7 bg-[#0a0f1e] border border-white/10 rounded-[2.5rem] overflow-hidden shadow-2xl relative flex flex-col">
+                 <div className="h-12 bg-white/5 border-b border-white/5 px-6 flex items-center justify-between">
+                   <div className="flex items-center space-x-2">
+                     <Terminal size={16} className="text-purple-400" />
+                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Technical Sandbox / {codeLanguage}</span>
                    </div>
-                 )}
-                 <button 
-                   onClick={submitCode}
-                   className="bg-purple-600 hover:bg-purple-500 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-xl flex items-center space-x-2 transition-all active:scale-95"
-                 >
-                   <Play size={14} fill="currentColor" />
-                   <span>Execute & Submit</span>
-                 </button>
-               </div>
+                   <div className="flex items-center space-x-4">
+                     <p className="text-xs font-bold text-slate-500 italic">Phase: {currentQuestion?.category}</p>
+                   </div>
+                 </div>
+                 <div className="flex-1 min-h-0 relative">
+                   <Editor
+                     height="100%"
+                     theme="vs-dark"
+                     language={codeLanguage}
+                     value={code}
+                     onChange={(val) => setCode(val)}
+                     options={{
+                       fontSize: 14,
+                       minimap: { enabled: false },
+                       padding: { top: 20 },
+                       scrollBeyondLastLine: false,
+                       backgroundColor: 'transparent'
+                     }}
+                   />
+                 </div>
+                 <div className="h-20 border-t border-white/5 px-6 flex items-center justify-between bg-[#0a0f1e]/80">
+                   <div>
+                     {codeResult && (
+                       <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
+                         codeResult.status === 'Accepted' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'
+                       }`}>
+                         {codeResult.status} {codeResult.time ? `· ${codeResult.time}ms` : ''}
+                       </div>
+                     )}
+                   </div>
+                   <button 
+                     onClick={submitCode}
+                     className="bg-purple-600 hover:bg-purple-500 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-xl flex items-center space-x-2 transition-all active:scale-95"
+                   >
+                     <Play size={14} fill="currentColor" />
+                     <span>Execute & Submit</span>
+                   </button>
+                 </div>
+              </div>
+
+              {/* Right Co-Pilot Panel (3 cols) */}
+              <div className="col-span-3 bg-white/5 border border-white/10 rounded-[2.5rem] backdrop-blur-xl p-6 flex flex-col justify-between shadow-2xl relative overflow-hidden">
+                <div className="absolute top-[-50px] right-[-50px] w-[150px] h-[150px] bg-purple-600/10 blur-[50px] rounded-full pointer-events-none" />
+                
+                <div className="flex-1 flex flex-col min-h-0">
+                  <div className="flex items-center space-x-3 mb-4 pb-4 border-b border-white/5">
+                    <div className="w-8 h-8 bg-purple-600/20 text-purple-400 border border-purple-500/30 rounded-xl flex items-center justify-center">
+                      <BrainCircuit size={18} />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-black uppercase tracking-widest text-white">AI Co-Pilot Partner</h3>
+                      <p className="text-[9px] font-bold text-slate-500 uppercase tracking-tight">Active Assistant</p>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-0 scrollbar-thin">
+                    {copilotSuggestions.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                        <Terminal className="text-slate-600 mb-3" size={28} />
+                        <p className="text-slate-400 text-xs font-bold leading-relaxed">Co-Pilot is listening. Stuck? Press summon below for a conceptual hint.</p>
+                      </div>
+                    ) : (
+                      copilotSuggestions.map((suggestion, idx) => (
+                        <div key={idx} className="bg-slate-950/40 border border-purple-500/10 rounded-2xl p-4 text-[11px] leading-relaxed relative">
+                          <p className="text-purple-400 font-black uppercase text-[8px] tracking-widest mb-1.5 flex items-center">
+                            <span>Suggestion {idx + 1}</span>
+                            <span className="mx-2 opacity-30">·</span>
+                            <span className="opacity-60">{suggestion.trigger === 'manual_request' ? 'Requested' : 'Auto-Assist'}</span>
+                          </p>
+                          <p className="text-slate-300 font-medium italic">"{suggestion.hint}"</p>
+                        </div>
+                      ))
+                    )}
+                    {isCopilotLoading && (
+                      <div className="bg-purple-600/5 border border-purple-500/10 rounded-2xl p-4 flex items-center space-x-3">
+                        <Loader2 className="animate-spin text-purple-400" size={16} />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-purple-400">Co-Pilot is thinking...</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <button 
+                  disabled={isCopilotLoading}
+                  onClick={requestCopilotHint}
+                  className={`w-full mt-4 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                    isCopilotLoading ? 'bg-purple-500/20 text-purple-300 border border-purple-500/20 cursor-not-allowed' : 'bg-white text-slate-950 hover:bg-purple-400 hover:text-white shadow-lg active:scale-95'
+                  }`}
+                >
+                  Summon Co-Pilot
+                </button>
+              </div>
+
             </motion.div>
           )}
 
@@ -963,6 +1182,49 @@ const InterviewRoom = () => {
           </div>
         </div>
       </div>
+
+      {/* Live Recruiter Takeover Call Panel */}
+      {supervisorMode === 'hr_takeover' && (
+        <div className="fixed bottom-6 right-6 w-80 bg-slate-950/80 backdrop-blur-md border border-red-500/20 rounded-[2rem] p-4 shadow-2xl z-[150] flex flex-col space-y-4">
+          <div className="flex justify-between items-center px-1">
+            <span className="text-[10px] font-black uppercase tracking-widest text-red-400 flex items-center space-x-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+              <span>Recruiter Takeover</span>
+            </span>
+            <span className="text-[9px] text-slate-500 font-bold uppercase">Live Call</span>
+          </div>
+
+          <div className="relative aspect-video rounded-2xl overflow-hidden bg-black/40 border border-white/5">
+            {/* Remote Recruiter Stream */}
+            {remoteStream ? (
+              <video
+                ref={supervisorVideoRef}
+                autoPlay
+                playsInline
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center text-slate-600 text-xs">
+                <Loader2 className="animate-spin text-red-500 mb-2" size={16} />
+                <span>Connecting to Recruiter...</span>
+              </div>
+            )}
+
+            {/* Candidate Local Preview Thumbnail (PiP) */}
+            {isVideoOn && videoStream && (
+              <div className="absolute bottom-2 right-2 w-24 h-16 rounded-lg overflow-hidden border border-white/10 shadow-lg bg-black z-20">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

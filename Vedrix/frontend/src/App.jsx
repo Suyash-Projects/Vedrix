@@ -25,6 +25,7 @@ import DataProcessingAgreement from './pages/DataProcessingAgreement';
 import AccessibilityStatement from './pages/AccessibilityStatement';
 import SettingsPage from './pages/SettingsPage';
 import LandingPage from './pages/LandingPage';
+import SupervisorDashboard from './pages/SupervisorDashboard';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import CookieConsent from './components/CookieConsent';
@@ -158,6 +159,13 @@ function App() {
           <Route path="/admin/config" element={
             <ProtectedRoute allowedRoles={['admin']}>
               <SystemConfig />
+            </ProtectedRoute>
+          } />
+
+          {/* Protected AI Supervisor Route (Admin only) */}
+          <Route path="/admin/supervisor" element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <SupervisorDashboard />
             </ProtectedRoute>
           } />
 

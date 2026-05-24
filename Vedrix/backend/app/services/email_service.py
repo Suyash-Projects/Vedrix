@@ -581,3 +581,49 @@ async def send_password_reset_email(to: str, first_name: str, reset_token: str, 
         "Reset Your Vedrix Password",
         _build_password_reset_email(first_name, reset_token, frontend_url),
     )
+
+
+def _build_coaching_plan_email(first_name: str, top_gaps: List[Dict[str, Any]], plan_id: int) -> str:
+    gaps_rows = ""
+    for gap in top_gaps[:3]:
+        skill = gap.get("skill", "general")
+        score = gap.get("score", 0.0)
+        gaps_rows += f"""
+        <tr><td style="padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+            <table width="100%">
+                <tr>
+                    <td style="color:#f8fafc; font-size:15px; font-weight:700; text-transform:capitalize;">{skill}</td>
+                    <td style="color:#f87171; font-size:14px; font-weight:900; text-align:right;">Score: {score:.1f}/10</td>
+                </tr>
+            </table>
+        </td></tr>"""
+    
+    plan_url = f"{settings.FRONTEND_URL}/dashboard/coaching/{plan_id}"
+    body = f"""
+<p style="margin:0 0 8px;color:#64748b;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;">Coaching Plan Ready</p>
+<h1 style="margin:0 0 8px;color:#f8fafc;font-size:28px;font-weight:900;line-height:1.2;">Your personalized learning plan is ready, {first_name}! 🚀</h1>
+<p style="margin:0 0 24px;color:#94a3b8;font-size:15px;line-height:1.7;">
+  We analyzed your recent interview and identified key areas where you can level up.
+  Here are your top skill gaps and recommendations.
+</p>
+
+{_section_title("Priority Skill Gaps")}
+<table cellpadding="0" cellspacing="0" width="100%" style="margin-bottom:24px;">
+  {gaps_rows}
+</table>
+
+{_btn("View Full Coaching Plan", plan_url)}
+
+<p style="margin:0;color:#475569;font-size:12px;line-height:1.6;text-align:center;">
+  Study these resources to boost your score for your next interview!
+</p>"""
+    return _base(f"Personalized Learning Plan — Vedrix", body)
+
+
+async def send_coaching_plan_email(to: str, first_name: str, top_gaps: List[Dict[str, Any]], plan_id: int) -> None:
+    """Send personalized learning plan notification to candidate."""
+    await _send(
+        to,
+        "Your Personalized Learning Plan is Ready! 🚀",
+        _build_coaching_plan_email(first_name, top_gaps, plan_id)
+    )

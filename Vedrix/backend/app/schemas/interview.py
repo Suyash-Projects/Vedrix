@@ -3,6 +3,44 @@ from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 
 
+class BiasFlag(BaseModel):
+    """
+    Record produced by the QA_Agent identifying a potentially biased question.
+
+    Design: QA_Agent (Section 7 of design.md)
+    Requirements: 7.2, 7.4, 7.5
+
+    Fields:
+        category: The bias category detected (gender, age, nationality, disability)
+        markers_found: List of specific bias markers matched in the question text
+        question_text: The original question text that was flagged
+        timestamp: ISO 8601 timestamp of when the flag was produced
+    """
+    category: str
+    markers_found: List[str]
+    question_text: str
+    timestamp: str
+
+
+class RelevanceFlag(BaseModel):
+    """
+    Record produced by the QA_Agent identifying an off-topic question.
+
+    Design: QA_Agent (Section 7 of design.md)
+    Requirements: 7.6, 7.7
+
+    Fields:
+        similarity_score: Cosine similarity between question embedding and closest skill
+        closest_skill: The required skill with highest similarity to the question
+        question_text: The original question text that was flagged
+        threshold: The similarity threshold used (default 0.4)
+    """
+    similarity_score: float
+    closest_skill: str
+    question_text: str
+    threshold: float = 0.4
+
+
 class EmpathyMetrics(TypedDict):
     """
     Real-time sentiment and emotional intelligence metrics for a candidate response.

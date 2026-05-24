@@ -17,6 +17,7 @@ from .nodes import (
 from .supervisor_node import supervisor_node  # Phase 1B: AI Supervisor (replaces advisor_monitor)
 from .planner_node import planner_node
 from .sentiment_node import sentiment_node
+from .qa_node import qa_agent_node
 
 
 def should_continue(state: InterviewState):
@@ -31,11 +32,27 @@ def route_after_input(state: InterviewState):
     return "debate"
 
 
+def route_after_qa(state: InterviewState):
+    """Route after QA agent evaluation.
+    
+    - If approved: proceed to sentiment analysis
+    - If regenerate: loop back to generate_question (up to 3 times)
+    - If regeneration count exceeded (escalated): proceed to sentiment
+    """
+    if state.get("approved", False):
+        return "sentiment"
+    if state.get("regenerate", False):
+        return "generate_question"
+    # Default: proceed to sentiment (safety fallback)
+    return "sentiment"
+
+
 def create_interview_graph():
     workflow = StateGraph(InterviewState)
 
     workflow.add_node("planner", planner_node)
     workflow.add_node("generate_question", generate_question_node)
+    workflow.add_node("qa_agent", qa_agent_node)
     workflow.add_node("sentiment", sentiment_node)
     workflow.add_node("empathy_analyzer", empathy_analyzer_node)
     workflow.add_node("code_copilot", code_copilot_node)
@@ -50,8 +67,18 @@ def create_interview_graph():
     workflow.set_entry_point("planner")
     workflow.add_edge("planner", "generate_question")
     
-    # From generate_question, proceed straight to sentiment (will halt at interrupt)
-    workflow.add_edge("generate_question", "sentiment")
+    # From generate_question, proceed to QA agent for bias/relevance check
+    workflow.add_edge("generate_question", "qa_agent")
+    
+    # QA agent routes: approved → sentiment, regenerate → generate_question
+    workflow.add_conditional_edges(
+        "qa_agent",
+        route_after_qa,
+        {
+            "sentiment": "sentiment",
+            "generate_question": "generate_question",
+        }
+    )
     
     # Sentiment node proceeds to empathy_analyzer
     workflow.add_edge("sentiment", "empathy_analyzer")

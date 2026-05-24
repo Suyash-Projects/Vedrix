@@ -102,5 +102,10 @@ class InterviewState(TypedDict):
     plan_phase_index: int
     consecutive_low_quality: int
 
+    # ── QA Agent Fields ───────────────────────────────────────────────────
+    qa_regeneration_count: int  # How many times current question was regenerated
+    qa_session_quality_score: float  # Ratio of approved to total questions
+    qa_flags: List[Dict[str, Any]]  # All flags for this session
+
 
 

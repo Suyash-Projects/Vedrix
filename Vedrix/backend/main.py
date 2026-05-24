@@ -16,6 +16,7 @@ from app.core.csrf import CSRFMiddleware
 from app.middleware.audit import AuditLogMiddleware
 from app.middleware.performance import PerformanceMonitoringMiddleware
 from app.services.session_cleanup import session_cleanup
+from app.services.orchestrator_scheduler import orchestrator_scheduler
 import uuid
 import time
 from sqlalchemy import text
@@ -31,9 +32,12 @@ async def lifespan(app: FastAPI):
     await init_cache()
     # Phase 1.4: Start session cleanup service
     await session_cleanup.start_cleanup_loop(interval_seconds=300)  # Every 5 minutes
+    # Orchestrator: Start scheduled workflow checks (every 15 minutes)
+    await orchestrator_scheduler.start(interval_seconds=900)
     logger.info("Vedrix backend started — DB, cache, and session cleanup initialized")
     yield
     # Shutdown logic
+    await orchestrator_scheduler.stop()
     await session_cleanup.stop_cleanup_loop()
     await close_cache()
     logger.info("Vedrix backend shutting down")

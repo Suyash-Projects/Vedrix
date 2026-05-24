@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -6,7 +6,7 @@ import {
   ChevronRight, Copy, CheckCircle2, Clock, LayoutDashboard,
   LogOut, Settings, MoreVertical, X, Loader2, Mail, Send,
   ChevronDown, Radio, MessageSquareText, Home, Download,
-  Play, Target
+  Play, Target, AlertTriangle, Brain
 } from 'lucide-react';
 import apiClient from '../services/api';
 import useAuthStore from '../store/useAuthStore';
@@ -220,47 +220,610 @@ const BulkInviteModal = ({ drive, onClose }) => {
 const TakeoverModal = ({ session, onClose }) => {
   const [instruction, setInstruction] = useState('');
   const [loading, setLoading] = useState(false);
+  const [wsStatus, setWsStatus] = useState('connecting');
+  const [chatHistory, setChatHistory] = useState([]);
+  const [empathyMetrics, setEmpathyMetrics] = useState({ stress_level: 0, hesitation_rating: 0, pacing: 'normal' });
+  const [debateRounds, setDebateRounds] = useState({});
+  const [topicScores, setTopicScores] = useState({});
+  const [currentQuestion, setCurrentQuestion] = useState('');
+  const [supervisorMode, setSupervisorMode] = useState('ai_only');
+  const [wsError, setWsError] = useState('');
+  const [activeCritiqueTab, setActiveCritiqueTab] = useState('skeptic'); // 'skeptic' | 'pragmatist' | 'bias'
 
-  const handleSend = async () => {
-    if (!instruction.trim()) return;
+  const wsRef = useRef(null);
+  const chatEndRef = useRef(null);
+
+  // WebRTC States & Refs
+  const [localStream, setLocalStream] = useState(null);
+  const [remoteStream, setRemoteStream] = useState(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoStopped, setIsVideoStopped] = useState(false);
+  const pcRef = useRef(null);
+  const videoWsRef = useRef(null);
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
+
+  // Auto-scroll chat history
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatHistory]);
+
+  // Attach local video stream
+  useEffect(() => {
+    if (localVideoRef.current && localStream) {
+      localVideoRef.current.srcObject = localStream;
+    }
+  }, [localStream]);
+
+  // Attach remote video stream
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStream) {
+      remoteVideoRef.current.srcObject = remoteStream;
+    }
+  }, [remoteStream]);
+
+  // WebRTC Call Initiation & Management
+  useEffect(() => {
+    if (supervisorMode !== 'hr_takeover') {
+      cleanupWebRTC();
+      return;
+    }
+
+    let activeStream = null;
+    let wsInstance = null;
+
+    async function initWebRTC() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        activeStream = stream;
+        setLocalStream(stream);
+
+        const pc = new RTCPeerConnection({
+          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        });
+        pcRef.current = pc;
+
+        stream.getTracks().forEach(track => {
+          pc.addTrack(track, stream);
+        });
+
+        pc.onicecandidate = (event) => {
+          if (event.candidate && wsInstance && wsInstance.readyState === WebSocket.OPEN) {
+            wsInstance.send(JSON.stringify({
+              type: 'ice_candidate',
+              candidate: event.candidate
+            }));
+          }
+        };
+
+        pc.ontrack = (event) => {
+          if (event.streams && event.streams[0]) {
+            setRemoteStream(event.streams[0]);
+          }
+        };
+
+        const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+        let wsBase = apiBase;
+        if (apiBase.startsWith('https://')) {
+          wsBase = 'wss://' + apiBase.substring(8);
+        } else if (apiBase.startsWith('http://')) {
+          wsBase = 'ws://' + apiBase.substring(7);
+        }
+        
+        const token = localStorage.getItem('token');
+        let videoUrl = `${wsBase}/interview/video/${session.id}?role=hr`;
+        if (token) {
+          videoUrl += `&token=${encodeURIComponent(token)}`;
+        }
+
+        wsInstance = new WebSocket(videoUrl);
+        videoWsRef.current = wsInstance;
+
+        wsInstance.onmessage = async (e) => {
+          try {
+            const payload = JSON.parse(e.data);
+            if (payload.type === 'peer_joined' && payload.role === 'candidate') {
+              const offer = await pc.createOffer();
+              await pc.setLocalDescription(offer);
+              wsInstance.send(JSON.stringify({
+                type: 'offer',
+                sdp: offer.sdp
+              }));
+            } else if (payload.type === 'offer') {
+              // Fallback: If candidate sent offer first
+              await pc.setRemoteDescription(new RTCSessionDescription({
+                type: 'offer',
+                sdp: payload.sdp
+              }));
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+              wsInstance.send(JSON.stringify({
+                type: 'answer',
+                sdp: answer.sdp
+              }));
+            } else if (payload.type === 'answer') {
+              await pc.setRemoteDescription(new RTCSessionDescription({
+                type: 'answer',
+                sdp: payload.sdp
+              }));
+            } else if (payload.type === 'ice_candidate') {
+              if (payload.candidate) {
+                await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+              }
+            } else if (payload.type === 'peer_left') {
+              setRemoteStream(null);
+            }
+          } catch (err) {
+            console.error("Signaling error:", err);
+          }
+        };
+
+        wsInstance.onclose = () => {
+          console.log("Video signaling closed");
+        };
+
+      } catch (err) {
+        console.error("Failed to start WebRTC:", err);
+        alert("Could not access camera/microphone or establish connection.");
+      }
+    }
+
+    initWebRTC();
+
+    return () => {
+      cleanupWebRTC(activeStream);
+    };
+  }, [supervisorMode, session.id]);
+
+  const cleanupWebRTC = (streamToStop = null) => {
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    if (videoWsRef.current) {
+      videoWsRef.current.close();
+      videoWsRef.current = null;
+    }
+    const stream = streamToStop || localStream;
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+    setLocalStream(null);
+    setRemoteStream(null);
+  };
+
+  const toggleMute = () => {
+    if (localStream) {
+      localStream.getAudioTracks().forEach(track => {
+        track.enabled = !track.enabled;
+      });
+      setIsMuted(prev => !prev);
+    }
+  };
+
+  const toggleVideoEnabled = () => {
+    if (localStream) {
+      localStream.getVideoTracks().forEach(track => {
+        track.enabled = !track.enabled;
+      });
+      setIsVideoStopped(prev => !prev);
+    }
+  };
+
+  useEffect(() => {
+    const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+    let wsBase = apiBase;
+    if (apiBase.startsWith('https://')) {
+      wsBase = 'wss://' + apiBase.substring(8);
+    } else if (apiBase.startsWith('http://')) {
+      wsBase = 'ws://' + apiBase.substring(7);
+    }
+    
+    let socketUrl = `${wsBase}/interview/ws/${session.id}/hr`;
+    const token = localStorage.getItem('token');
+    if (token) {
+      socketUrl += `?token=${encodeURIComponent(token)}`;
+    }
+
+    setWsStatus('connecting');
+    const ws = new WebSocket(socketUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      setWsStatus('connected');
+      setWsError('');
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.type === 'state_sync') {
+          const data = payload.data || {};
+          if (data.messages) setChatHistory(data.messages);
+          if (data.empathy_metrics) setEmpathyMetrics(data.empathy_metrics);
+          if (data.debate_rounds) setDebateRounds(data.debate_rounds);
+          if (data.topic_scores) setTopicScores(data.topic_scores);
+          if (data.current_question) setCurrentQuestion(data.current_question);
+          if (data.supervisor_mode) setSupervisorMode(data.supervisor_mode);
+        } else if (payload.type === 'supervisor_mode') {
+          setSupervisorMode(payload.mode);
+        } else if (payload.type === 'metrics_update') {
+          setEmpathyMetrics(prev => ({ ...prev, ...payload.data }));
+        } else if (payload.type === 'status') {
+          console.log("WS status notification:", payload.data);
+        } else if (payload.type === 'advisor_suggestion') {
+          console.log("WS Advisor suggestion:", payload.data);
+        } else if (payload.type === 'error') {
+          setWsError(payload.data);
+        }
+      } catch (err) {
+        console.error("Error parsing WS message:", err);
+      }
+    };
+
+    ws.onclose = () => {
+      setWsStatus('disconnected');
+    };
+
+    ws.onerror = (err) => {
+      setWsStatus('error');
+      setWsError('WebSocket connection error.');
+    };
+
+    return () => {
+      ws.close();
+      cleanupWebRTC();
+    };
+  }, [session.id]);
+
+  const handleSendWhisper = () => {
+    if (!instruction.trim() || !wsRef.current) return;
     setLoading(true);
     try {
-      await apiClient.post(`/interview/sessions/${session.id}/hr-instruction`, {
-        text: instruction
-      });
+      wsRef.current.send(JSON.stringify({
+        type: 'hr_whisper',
+        data: instruction
+      }));
       setInstruction('');
-      alert("Instruction sent to AI engine!");
-      onClose();
-    } catch {
-      alert("Failed to send instruction.");
+      // Optimistic update of chat history
+      setChatHistory(prev => [
+        ...prev,
+        { role: 'hr_whisper', content: instruction, timestamp: new Date().toISOString() }
+      ]);
+    } catch (err) {
+      alert("Failed to send whisper.");
     } finally {
       setLoading(false);
     }
   };
 
+  const handleSetMode = (mode) => {
+    if (!wsRef.current) return;
+    try {
+      wsRef.current.send(JSON.stringify({
+        type: 'supervisor_control',
+        action: 'set_mode',
+        mode: mode
+      }));
+      setSupervisorMode(mode);
+    } catch (err) {
+      alert("Failed to update control mode.");
+    }
+  };
+
+  const handleForceClose = () => {
+    if (!window.confirm("Are you sure you want to immediately terminate this candidate session? This will generate a report based on the current answers and end the interview.")) return;
+    if (!wsRef.current) return;
+    try {
+      wsRef.current.send(JSON.stringify({
+        type: 'supervisor_control',
+        action: 'force_close'
+      }));
+      alert("Termination signal sent.");
+      onClose();
+    } catch (err) {
+      alert("Failed to send termination signal.");
+    }
+  };
+
+  // Helper to format stress level colors
+  const getStressColor = (level) => {
+    if (level >= 7) return 'from-red-500 to-rose-600 text-red-400';
+    if (level >= 4) return 'from-amber-400 to-orange-500 text-orange-400';
+    return 'from-emerald-400 to-teal-500 text-emerald-400';
+  };
+
+  const getStressLabel = (level) => {
+    if (level >= 7) return 'CRITICAL / STUCK';
+    if (level >= 4) return 'MODERATE STRESS';
+    return 'CALM / ENGAGED';
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-6">
-      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-        className="bg-[#0f172a] border border-white/10 rounded-[2rem] w-full max-w-xl overflow-hidden shadow-2xl">
-        <div className="px-8 py-6 border-b border-white/5 flex justify-between items-center">
-          <div>
-            <h2 className="text-xl font-bold text-white">Reviewer Guidance</h2>
-            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-0.5">Session #{session.id}</p>
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+      <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }}
+        className="bg-[#0b0f19] border border-white/10 rounded-[2.5rem] w-full max-w-7xl h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+        
+        {/* Header */}
+        <div className="px-10 py-6 border-b border-white/5 flex justify-between items-center bg-white/2">
+          <div className="flex items-center space-x-4">
+            <div className="w-10 h-10 rounded-xl bg-purple-600/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+              <Radio size={20} className={wsStatus === 'connected' ? 'animate-pulse' : ''} />
+            </div>
+            <div>
+              <div className="flex items-center space-x-3">
+                <h2 className="text-xl font-bold text-white">Live Session Oversight</h2>
+                <span className={`w-2.5 h-2.5 rounded-full ${
+                  wsStatus === 'connected' ? 'bg-emerald-500 animate-ping' :
+                  wsStatus === 'connecting' ? 'bg-amber-500 animate-pulse' : 'bg-red-500'
+                }`} />
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                  {wsStatus}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-0.5">
+                Session #{session.id} — Candidate: {session.candidate_name || session.candidate_email}
+              </p>
+            </div>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors"><X size={20} /></button>
-        </div>
-        <div className="p-8 space-y-5">
-          <p className="text-sm text-slate-400">
-            Send a private note to guide the next follow-up question or steer the interview toward a topic you want reviewed.
-          </p>
-          <textarea rows={4} value={instruction} onChange={e => setInstruction(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all resize-none"
-            placeholder="e.g. Ask the candidate to explain their experience with React Hooks in more depth." />
-          <button onClick={handleSend} disabled={loading || !instruction.trim()}
-            className="w-full bg-red-600 text-white py-4 rounded-2xl font-bold hover:bg-red-500 shadow-xl shadow-red-900/30 transition-all flex items-center justify-center space-x-2">
-            {loading ? <Loader2 className="animate-spin" size={20} /> : <><MessageSquareText size={18} /><span>Send Guidance</span></>}
+          <button onClick={onClose} className="bg-white/5 border border-white/10 text-slate-400 p-3 rounded-2xl hover:text-white hover:bg-white/10 transition-all">
+            <X size={20} />
           </button>
         </div>
+
+        {wsError && (
+          <div className="bg-red-500/10 border-b border-red-500/20 text-red-400 px-10 py-3 text-sm flex items-center space-x-2">
+            <AlertTriangle size={16} />
+            <span>{wsError}</span>
+          </div>
+        )}
+
+        {/* Modal Body */}
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 p-8 overflow-hidden bg-[#070b14]">
+          
+          {/* LEFT COLUMN: Transcript (Col span 7) */}
+          <div className="lg:col-span-7 flex flex-col h-full bg-[#0a0f1e]/60 border border-white/5 rounded-3xl p-6 overflow-hidden">
+            <div className="flex justify-between items-center mb-4 pb-3 border-b border-white/5">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Live Transcript</span>
+              <span className="text-[10px] text-slate-500 font-bold">Auto-updating</span>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto pr-2 space-y-4 min-h-0">
+              {chatHistory.length === 0 ? (
+                <div className="h-full flex flex-center items-center justify-center text-slate-500">
+                  <div className="text-center space-y-3">
+                    <Loader2 className="animate-spin text-purple-500 mx-auto" size={24} />
+                    <p className="text-sm">Waiting for conversation activity...</p>
+                  </div>
+                </div>
+              ) : (
+                chatHistory.map((msg, i) => {
+                  if (msg.role === 'system') return null;
+                  
+                  const isAssistant = msg.role === 'assistant';
+                  const isWhisper = msg.role === 'hr_whisper';
+                  
+                  return (
+                    <div key={i} className={`flex flex-col ${isAssistant ? 'items-start' : 'items-end'}`}>
+                      <div className={`text-[9px] uppercase tracking-wider font-bold mb-1 ${
+                        isAssistant ? 'text-purple-400' : isWhisper ? 'text-red-400' : 'text-blue-400'
+                      }`}>
+                        {isAssistant ? 'AI Interviewer' : isWhisper ? 'HR Whisper' : 'Candidate'}
+                      </div>
+                      
+                      <div className={`max-w-[85%] rounded-2xl px-5 py-3 text-sm ${
+                        isAssistant 
+                          ? 'bg-[#151226]/80 border border-purple-500/20 text-purple-200' 
+                          : isWhisper
+                            ? 'bg-red-500/10 border border-red-500/20 text-red-200 font-medium italic'
+                            : 'bg-white/5 border border-white/10 text-white'
+                      }`}>
+                        {msg.content.includes('[Code Submitted]') ? (
+                          <div className="space-y-2">
+                            <span className="text-blue-400 font-bold">Submitted Code:</span>
+                            <pre className="bg-black/40 border border-white/5 p-3 rounded-lg overflow-x-auto font-mono text-xs text-emerald-400">
+                              {msg.content}
+                            </pre>
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+              <div ref={chatEndRef} />
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN: Analytics & Controls (Col span 5) */}
+          <div className="lg:col-span-5 flex flex-col gap-6 h-full overflow-y-auto pr-2">
+            
+            {/* Stress Index & Empathy Gauge */}
+            <div className="bg-[#0a0f1e]/60 border border-white/5 rounded-3xl p-6">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center space-x-1.5">
+                  <span>Candidate Stress Gauge</span>
+                </span>
+                <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-black tracking-tighter bg-gradient-to-r ${getStressColor(empathyMetrics.stress_level)}`}>
+                  {getStressLabel(empathyMetrics.stress_level)}
+                </span>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <p className="text-3xl font-black text-white">{empathyMetrics.stress_level ?? 0}<span className="text-sm font-normal text-slate-500"> / 10</span></p>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1">Pacing: {empathyMetrics.pacing ?? 'Normal'}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Hesitations</p>
+                    <p className="text-lg font-bold text-slate-300">{empathyMetrics.hesitation_rating ?? 0}</p>
+                  </div>
+                </div>
+
+                {/* Progress bar */}
+                <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5 relative">
+                  <motion.div 
+                    initial={{ width: 0 }} 
+                    animate={{ width: `${(empathyMetrics.stress_level ?? 0) * 10}%` }}
+                    transition={{ type: 'spring', stiffness: 50 }}
+                    className={`h-full bg-gradient-to-r ${
+                      empathyMetrics.stress_level >= 7 ? 'from-orange-500 to-red-600' :
+                      empathyMetrics.stress_level >= 4 ? 'from-amber-400 to-orange-500' : 'from-emerald-400 to-teal-500'
+                    }`} 
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* AI Debate Logs */}
+            <div className="bg-[#0a0f1e]/60 border border-white/5 rounded-3xl p-6 flex-1 flex flex-col min-h-[250px]">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center space-x-1.5">
+                  <Brain size={14} className="text-purple-400" />
+                  <span>Real-Time Debate Arena</span>
+                </span>
+                <span className="text-[9px] text-purple-400 font-bold uppercase tracking-wider animate-pulse">Parallel Audit</span>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex space-x-1 bg-white/5 p-1 rounded-xl mb-4 border border-white/5">
+                {[
+                  { id: 'skeptic', label: 'Skeptic', color: 'text-amber-400 border-amber-500/20' },
+                  { id: 'pragmatist', label: 'Pragmatist', color: 'text-blue-400 border-blue-500/20' },
+                  { id: 'bias_auditor', label: 'Bias Auditor', color: 'text-emerald-400 border-emerald-500/20' }
+                ].map(tab => (
+                  <button key={tab.id}
+                    onClick={() => setActiveCritiqueTab(tab.id)}
+                    className={`flex-1 text-center py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all ${
+                      activeCritiqueTab === tab.id 
+                        ? 'bg-purple-600 text-white shadow-md shadow-purple-900/30' 
+                        : 'text-slate-500 hover:text-white'
+                    }`}>
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Critique Content */}
+              <div className="flex-1 overflow-y-auto pr-1 text-xs text-slate-300 leading-relaxed bg-black/20 border border-white/5 rounded-2xl p-4 font-mono max-h-[160px]">
+                {debateRounds[activeCritiqueTab] ? (
+                  <p className="whitespace-pre-wrap">{debateRounds[activeCritiqueTab]}</p>
+                ) : (
+                  <p className="text-slate-600 italic text-center py-10">No critiques recorded for this round yet.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Live Video Call Panel (if takeover mode is active) */}
+            {supervisorMode === 'hr_takeover' && (
+              <div className="bg-[#0a0f1e]/60 border border-red-500/20 rounded-3xl p-6 space-y-4">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-xs font-bold text-red-400 uppercase tracking-widest flex items-center space-x-1.5">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                    <span>Live Takeover Video Call</span>
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-bold">Active P2P Feed</span>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Candidate Feed */}
+                  <div className="relative bg-black/40 border border-white/5 rounded-2xl overflow-hidden aspect-video">
+                    {remoteStream ? (
+                      <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-slate-600 text-xs">
+                        <Loader2 className="animate-spin text-red-500 mb-2" size={16} />
+                        <span>Connecting to Candidate...</span>
+                      </div>
+                    )}
+                    <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/60 text-[9px] font-bold text-white uppercase">Candidate</span>
+                  </div>
+
+                  {/* Recruiter Local Feed */}
+                  <div className="relative bg-[#000]/40 border border-white/5 rounded-2xl overflow-hidden aspect-video">
+                    {localStream ? (
+                      <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-600 text-xs">
+                        <span>Local Cam Loading...</span>
+                      </div>
+                    )}
+                    <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/60 text-[9px] font-bold text-white uppercase">You (HR)</span>
+                  </div>
+                </div>
+
+                {/* Call controls */}
+                <div className="flex justify-center space-x-3">
+                  <button onClick={toggleMute}
+                    className={`p-3 rounded-xl border transition-all text-xs font-bold uppercase ${
+                      isMuted
+                        ? 'bg-red-500/20 border-red-500/30 text-red-400'
+                        : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:text-white'
+                    }`}>
+                    {isMuted ? 'Unmute Mic' : 'Mute Mic'}
+                  </button>
+                  <button onClick={toggleVideoEnabled}
+                    className={`p-3 rounded-xl border transition-all text-xs font-bold uppercase ${
+                      isVideoStopped
+                        ? 'bg-red-500/20 border-red-500/30 text-red-400'
+                        : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:text-white'
+                    }`}>
+                    {isVideoStopped ? 'Start Cam' : 'Stop Cam'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Supervision Controls */}
+            <div className="bg-[#0a0f1e]/60 border border-white/5 rounded-3xl p-6 space-y-5">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Oversight & Whisper Control</span>
+              
+              {/* Mode Selectors */}
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => handleSetMode('ai_only')}
+                  className={`py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all ${
+                    supervisorMode === 'ai_only'
+                      ? 'bg-purple-600/10 border-purple-500/30 text-purple-400 shadow-md'
+                      : 'bg-white/5 border-white/5 text-slate-500 hover:text-white hover:bg-white/10'
+                  }`}>
+                  Autonomous AI
+                </button>
+                <button onClick={() => handleSetMode('hr_takeover')}
+                  className={`py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all ${
+                    supervisorMode === 'hr_takeover'
+                      ? 'bg-red-600/10 border-red-500/30 text-red-400 shadow-md'
+                      : 'bg-white/5 border-white/5 text-slate-500 hover:text-white hover:bg-white/10'
+                  }`}>
+                  HR Takeover
+                </button>
+              </div>
+
+              {/* Whisper Input */}
+              <div className="space-y-3">
+                <textarea rows={3} value={instruction} onChange={e => setInstruction(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none transition-all resize-none"
+                  placeholder="Whisper a directive to the AI interviewer... (e.g., 'Probe their database scaling knowledge next')" />
+                
+                <div className="flex space-x-3">
+                  <button onClick={handleSendWhisper} disabled={loading || !instruction.trim()}
+                    className="flex-1 bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 px-6 rounded-2xl transition-all shadow-xl shadow-purple-900/30 text-xs uppercase tracking-wider flex items-center justify-center space-x-2">
+                    {loading ? <Loader2 className="animate-spin" size={16} /> : <><Send size={14} /><span>Whisper to AI</span></>}
+                  </button>
+                  <button onClick={handleForceClose}
+                    className="bg-red-600 hover:bg-red-500 text-white font-bold px-5 rounded-2xl transition-all hover:shadow-xl hover:shadow-red-900/30 flex items-center justify-center"
+                    title="Force Terminate Interview">
+                    <AlertTriangle size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
       </motion.div>
     </div>
   );

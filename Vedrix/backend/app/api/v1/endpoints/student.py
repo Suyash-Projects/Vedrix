@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, List
 import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +8,7 @@ from app.api import deps
 from app.db.session import get_session
 from app.models.user import User
 from app.models.interview import InterviewSession, JobDrive
+from app.models.coaching_plan import CoachingPlan
 
 router = APIRouter()
 
@@ -247,4 +248,58 @@ async def get_student_replay(
         "steps": steps,
         "ai_feedback": ai_feedback,
         "skill_matrix": skill_matrix,
+    }
+
+
+@router.get("/coaching-plans")
+async def get_student_coaching_plans(
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    """Get all coaching plans for the current authenticated candidate."""
+    result = await db.execute(
+        select(CoachingPlan)
+        .where(CoachingPlan.candidate_id == current_user.id)
+        .order_by(CoachingPlan.created_at.desc())
+    )
+    plans = result.scalars().all()
+    return [
+        {
+            "id": plan.id,
+            "session_id": plan.session_id,
+            "top_3_gaps": plan.top_3_gaps,
+            "generation_time_ms": plan.generation_time_ms,
+            "notification_sent_at": plan.notification_sent_at,
+            "created_at": plan.created_at,
+        }
+        for plan in plans
+    ]
+
+
+@router.get("/coaching-plans/{plan_id}")
+async def get_student_coaching_plan_detail(
+    plan_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    """Get a single coaching plan with full skill_gaps and resources for the current candidate."""
+    result = await db.execute(
+        select(CoachingPlan).where(
+            CoachingPlan.id == plan_id,
+            CoachingPlan.candidate_id == current_user.id,
+        )
+    )
+    plan = result.scalars().first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Coaching plan not found")
+
+    return {
+        "id": plan.id,
+        "session_id": plan.session_id,
+        "candidate_id": plan.candidate_id,
+        "skill_gaps": plan.skill_gaps,
+        "top_3_gaps": plan.top_3_gaps,
+        "generation_time_ms": plan.generation_time_ms,
+        "notification_sent_at": plan.notification_sent_at,
+        "created_at": plan.created_at,
     }

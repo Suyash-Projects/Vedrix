@@ -1,11 +1,109 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+import math
+import json
 from fpdf import FPDF
+
+def _draw_radar_chart(pdf, cx: float, cy: float, radius: float, skills: Dict[str, float]):
+    """
+    Draws a premium vector radar chart representing candidate skills directly in the PDF.
+    """
+    N = len(skills)
+    if N < 3:
+        return
+
+    skills_list = list(skills.items())
+
+    # 1. Concentric ring grid lines (representing scores of 2, 4, 6, 8, 10)
+    pdf.set_draw_color(220, 220, 220)
+    pdf.set_line_width(0.15)
+    for ring in range(1, 6):
+        fraction = ring / 5.0 # 0.2, 0.4, 0.6, 0.8, 1.0
+        ring_points = []
+        for i in range(N):
+            angle = -math.pi / 2 + (2 * math.pi * i) / N
+            x = cx + radius * fraction * math.cos(angle)
+            y = cy + radius * fraction * math.sin(angle)
+            ring_points.append((x, y))
+        
+        for i in range(N):
+            p1 = ring_points[i]
+            p2 = ring_points[(i + 1) % N]
+            pdf.line(p1[0], p1[1], p2[0], p2[1])
+
+    # 2. Draw radial axis lines from center to outer vertices
+    for i in range(N):
+        angle = -math.pi / 2 + (2 * math.pi * i) / N
+        x_outer = cx + radius * math.cos(angle)
+        y_outer = cy + radius * math.sin(angle)
+        pdf.line(cx, cy, x_outer, y_outer)
+
+    # 3. Compute score points
+    score_points = []
+    for i in range(N):
+        skill_name, score = skills_list[i]
+        score = max(0.0, min(10.0, float(score)))
+        fraction = score / 10.0
+        angle = -math.pi / 2 + (2 * math.pi * i) / N
+        x = cx + radius * fraction * math.cos(angle)
+        y = cy + radius * fraction * math.sin(angle)
+        score_points.append((x, y))
+
+    # 4. Fill and stroke the score polygon
+    pdf.set_draw_color(124, 58, 237) # Vedrix Purple
+    pdf.set_line_width(0.5)
+    pdf.set_fill_color(237, 233, 254) # Very light purple
+    
+    try:
+        # Draw translucent filled polygon (supported by fpdf2)
+        with pdf.local_context(fill_opacity=0.35, stroke_opacity=1.0):
+            pdf.polygon(score_points, style="FD")
+    except Exception:
+        # Fallback for basic FPDF without local_context
+        pdf.polygon(score_points, style="FD")
+
+    # 5. Draw small circular markers (ellipses) at each vertex
+    pdf.set_fill_color(124, 58, 237)
+    for x, y in score_points:
+        pdf.ellipse(x - 1, y - 1, 2, 2, style="FD")
+
+    # 6. Label each axis
+    pdf.set_font("helvetica", "B", 8)
+    pdf.set_text_color(75, 85, 99) # Dark grey-slate
+    for i in range(N):
+        skill_name, score = skills_list[i]
+        angle = -math.pi / 2 + (2 * math.pi * i) / N
+        
+        # Position label outside outer radius
+        label_dist = radius + 6
+        lx = cx + label_dist * math.cos(angle)
+        ly = cy + label_dist * math.sin(angle)
+        
+        label_text = f"{skill_name}: {score:.1f}"
+        text_w = pdf.get_string_width(label_text)
+        
+        # Calculate alignment adjustments
+        cos_val = math.cos(angle)
+        sin_val = math.sin(angle)
+        
+        if abs(cos_val) < 0.1: # Top/Bottom center
+            adj_lx = lx - (text_w / 2)
+            adj_ly = ly + 2.5 if sin_val > 0 else ly - 1
+        elif cos_val > 0: # Right half
+            adj_lx = lx
+            adj_ly = ly + 0.8
+        else: # Left half
+            adj_lx = lx - text_w
+            adj_ly = ly + 0.8
+            
+        pdf.text(adj_lx, adj_ly, label_text)
+
 
 def generate_interview_pdf(
     candidate_name: str,
     job_role: str,
     report: Dict[str, Any],
     transcript: List[Dict[str, str]],
+    skill_matrix: Optional[Dict[str, Any]] = None,
 ) -> bytes:
     """
     Generates a high-fidelity PDF interview report.
@@ -74,6 +172,74 @@ def generate_interview_pdf(
     pdf.set_font("helvetica", "", 11)
     pdf.cell(0, 8, str(report.get('depth_of_knowledge', 'N/A')), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(8)
+
+    # ── Skill Radar Chart Section ──
+    pdf.set_font("helvetica", "B", 14)
+    pdf.set_text_color(124, 58, 237)
+    pdf.cell(0, 10, "Candidate Skill Profile", border="B", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(5)
+    
+    # Process skills dictionary
+    skills = {}
+    if report:
+        if report.get("technical_accuracy") is not None:
+            try:
+                skills["Technical Accuracy"] = float(report["technical_accuracy"])
+            except (ValueError, TypeError):
+                pass
+        if report.get("communication_clarity") is not None:
+            try:
+                skills["Communication"] = float(report["communication_clarity"])
+            except (ValueError, TypeError):
+                pass
+        if report.get("depth_of_knowledge") is not None:
+            try:
+                skills["Depth of Knowledge"] = float(report["depth_of_knowledge"])
+            except (ValueError, TypeError):
+                pass
+
+    if skill_matrix:
+        if isinstance(skill_matrix, str):
+            try:
+                skill_matrix = json.loads(skill_matrix)
+            except Exception:
+                skill_matrix = {}
+        if isinstance(skill_matrix, dict):
+            for k, v in skill_matrix.items():
+                if v is not None:
+                    try:
+                        skills[str(k).capitalize()] = float(v)
+                    except (ValueError, TypeError):
+                        pass
+
+    # Extract core and other skills to build up to 8 dimensions
+    core_skills = ["Technical Accuracy", "Communication", "Depth of Knowledge"]
+    other_skills = {k: v for k, v in skills.items() if k not in core_skills}
+    # Take top 5 others
+    top_others = dict(sorted(other_skills.items(), key=lambda x: x[1], reverse=True)[:5])
+    
+    final_skills = {}
+    for cs in core_skills:
+        if cs in skills:
+            final_skills[cs] = skills[cs]
+    for k, v in top_others.items():
+        final_skills[k] = v
+
+    if len(final_skills) >= 3:
+        # Draw radar chart centered dynamically below the section title
+        cx = 105.0
+        cy = pdf.get_y() + 32.0
+        _draw_radar_chart(pdf, cx=cx, cy=cy, radius=25.0, skills=final_skills)
+        # Advance the PDF y cursor past the chart area
+        pdf.set_y(cy + 25.0 + 12.0)
+    else:
+        # Fallback if too few dimensions
+        pdf.set_font("helvetica", "I", 10)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(0, 10, "Skill matrix detail not available for this session.", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(5)
+
+    pdf.add_page() # Executive Summary starts on Page 2
 
     # Executive Summary
     pdf.set_font("helvetica", "B", 14)

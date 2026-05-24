@@ -623,7 +623,8 @@ async def export_interview_pdf(
         candidate_name=f"{candidate.first_name} {candidate.last_name}",
         job_role=drive.job_role,
         report=report,
-        transcript=transcript
+        transcript=transcript,
+        skill_matrix=session.skill_matrix
     )
     
     return Response(
@@ -1357,4 +1358,356 @@ async def schedule_interview(
         "session_id": session.id,
         "candidate_email": candidate_email,
         "scheduled_time": scheduled_time,
+    }
+
+
+# ── Proctor Violations Summary ──────────────────────────────────────────────
+
+@router.get("/interviews/{session_id}/violations")
+async def get_interview_violations(
+    session_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr),
+) -> Any:
+    """
+    Return violation summary for an interview session (HR access).
+
+    Validates that the HR user manages the drive associated with the session.
+    Returns counts per violation type, timestamps, and total violations.
+
+    Requirements: 3.10
+    """
+    # Fetch the interview session
+    sess_res = await db.execute(
+        select(InterviewSession).where(InterviewSession.id == session_id)
+    )
+    session_rec = sess_res.scalars().first()
+    if not session_rec:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+
+    # Verify HR has access to this session's drive
+    if current_hr.user_type != "admin":
+        hr_profile = await _get_hr_profile(db, current_hr.id)
+        if session_rec.job_drive_id:
+            drive_res = await db.execute(
+                select(JobDrive).where(
+                    JobDrive.id == session_rec.job_drive_id,
+                    JobDrive.hr_id == hr_profile.id,
+                )
+            )
+            if not drive_res.scalars().first():
+                raise HTTPException(
+                    status_code=403,
+                    detail="Access denied. You do not manage this session's drive.",
+                )
+        else:
+            # Practice sessions without a drive — only admin can view
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied. This session is not linked to a drive you manage.",
+            )
+
+    # Get violation summary from proctor service
+    from app.services.proctor_service import proctor_service
+
+    summary = await proctor_service.get_violation_summary(session_id=session_id, db=db)
+    return summary.to_dict()
+
+
+# ── Matching Engine: Rankings ────────────────────────────────────────────────
+
+@router.get("/drives/{drive_id}/rankings")
+async def get_drive_rankings(
+    drive_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr),
+) -> Any:
+    """
+    Return ranked candidate list for a drive, sorted by Match_Score descending.
+
+    Includes match_score, is_top_match badge, and explanation per candidate.
+    HR access only — validates that the HR user manages the drive.
+
+    Requirements: 5.6, 5.7
+    """
+    hr_profile = await _get_hr_profile(db, current_hr.id)
+
+    # Verify drive belongs to this HR
+    drive_res = await db.execute(
+        select(JobDrive).where(JobDrive.id == drive_id, JobDrive.hr_id == hr_profile.id)
+    )
+    drive = drive_res.scalars().first()
+    if not drive:
+        raise HTTPException(status_code=404, detail="Drive not found")
+
+    # Fetch all MatchResults for this drive, sorted by match_score DESC
+    from app.models.match_result import MatchResult
+    from sqlalchemy import desc
+
+    rankings_stmt = (
+        select(MatchResult, User.email, User.first_name, User.last_name)
+        .join(User, MatchResult.candidate_id == User.id)
+        .where(MatchResult.job_drive_id == drive_id)
+        .order_by(desc(MatchResult.match_score))
+    )
+    rankings_res = await db.execute(rankings_stmt)
+    rows = rankings_res.all()
+
+    results = []
+    for match_result, email, first_name, last_name in rows:
+        results.append({
+            "id": match_result.id,
+            "candidate_id": match_result.candidate_id,
+            "candidate_email": email,
+            "candidate_name": f"{first_name} {last_name}".strip(),
+            "session_id": match_result.session_id,
+            "match_score": match_result.match_score,
+            "is_top_match": match_result.is_top_match,
+            "explanation": match_result.explanation,
+            "score_breakdown": match_result.score_breakdown,
+            "computed_at": match_result.computed_at,
+        })
+
+    return {
+        "drive_id": drive_id,
+        "drive_title": drive.title,
+        "job_role": drive.job_role,
+        "total_ranked": len(results),
+        "rankings": results,
+    }
+
+
+# ── Orchestrator: Workflow State Machine ──────────────────────────────────────
+
+
+class WorkflowTransitionRequest(BaseModel):
+    trigger: str
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class BulkWorkflowTransitionRequest(BaseModel):
+    candidate_ids: List[int]
+    trigger: str
+
+    model_config = ConfigDict(extra="ignore")
+
+
+@router.get("/drives/{drive_id}/workflow/{candidate_id}")
+async def get_candidate_workflow(
+    drive_id: int,
+    candidate_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr),
+) -> Any:
+    """
+    Return current workflow state and transition history for a candidate in a drive.
+
+    HR access only — validates that the HR user manages the drive.
+
+    Requirements: 8.9
+    """
+    hr_profile = await _get_hr_profile(db, current_hr.id)
+
+    # Verify drive belongs to this HR
+    drive_res = await db.execute(
+        select(JobDrive).where(JobDrive.id == drive_id, JobDrive.hr_id == hr_profile.id)
+    )
+    drive = drive_res.scalars().first()
+    if not drive:
+        raise HTTPException(status_code=404, detail="Drive not found")
+
+    from app.services.orchestrator_service import OrchestratorService
+
+    orchestrator = OrchestratorService()
+    workflow = await orchestrator.get_workflow_state(
+        candidate_id=candidate_id,
+        job_drive_id=drive_id,
+        db=db,
+    )
+
+    if workflow is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Workflow not found for this candidate in the specified drive",
+        )
+
+    return {
+        "id": workflow.id,
+        "candidate_id": workflow.candidate_id,
+        "job_drive_id": workflow.job_drive_id,
+        "current_state": workflow.current_state,
+        "transition_history": workflow.transition_history or [],
+        "last_reminder_sent_at": workflow.last_reminder_sent_at,
+        "reminder_count": workflow.reminder_count,
+        "decision": workflow.decision,
+        "decided_by": workflow.decided_by,
+        "decided_at": workflow.decided_at,
+        "created_at": workflow.created_at,
+        "updated_at": workflow.updated_at,
+    }
+
+
+@router.post("/drives/{drive_id}/workflow/{candidate_id}/transition")
+async def transition_candidate_workflow(
+    drive_id: int,
+    candidate_id: int,
+    body: WorkflowTransitionRequest,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr),
+) -> Any:
+    """
+    Trigger a workflow state transition for a candidate in a drive.
+
+    HR access only — validates that the HR user manages the drive.
+    The trigger must be valid for the candidate's current state.
+
+    Requirements: 8.9, 8.11
+    """
+    hr_profile = await _get_hr_profile(db, current_hr.id)
+
+    # Verify drive belongs to this HR
+    drive_res = await db.execute(
+        select(JobDrive).where(JobDrive.id == drive_id, JobDrive.hr_id == hr_profile.id)
+    )
+    drive = drive_res.scalars().first()
+    if not drive:
+        raise HTTPException(status_code=404, detail="Drive not found")
+
+    from app.services.orchestrator_service import OrchestratorService, InvalidTransitionError
+
+    orchestrator = OrchestratorService()
+
+    try:
+        workflow = await orchestrator.transition(
+            candidate_id=candidate_id,
+            job_drive_id=drive_id,
+            trigger=body.trigger,
+            actor_id=current_hr.id,
+            db=db,
+        )
+    except InvalidTransitionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return {
+        "id": workflow.id,
+        "candidate_id": workflow.candidate_id,
+        "job_drive_id": workflow.job_drive_id,
+        "current_state": workflow.current_state,
+        "transition_history": workflow.transition_history or [],
+        "updated_at": workflow.updated_at,
+    }
+
+
+@router.post("/drives/{drive_id}/workflow/bulk-transition")
+async def bulk_transition_candidate_workflows(
+    drive_id: int,
+    body: BulkWorkflowTransitionRequest,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr),
+) -> Any:
+    """
+    Apply a workflow state transition to multiple candidates in a drive.
+
+    Each transition is applied independently — failures for individual
+    candidates do not prevent others from transitioning.
+
+    HR access only — validates that the HR user manages the drive.
+
+    Requirements: 8.11
+    """
+    hr_profile = await _get_hr_profile(db, current_hr.id)
+
+    # Verify drive belongs to this HR
+    drive_res = await db.execute(
+        select(JobDrive).where(JobDrive.id == drive_id, JobDrive.hr_id == hr_profile.id)
+    )
+    drive = drive_res.scalars().first()
+    if not drive:
+        raise HTTPException(status_code=404, detail="Drive not found")
+
+    from app.services.orchestrator_service import OrchestratorService
+
+    orchestrator = OrchestratorService()
+
+    results = await orchestrator.bulk_transition(
+        candidate_ids=body.candidate_ids,
+        job_drive_id=drive_id,
+        trigger=body.trigger,
+        actor_id=current_hr.id,
+        db=db,
+    )
+
+    return {
+        "drive_id": drive_id,
+        "trigger": body.trigger,
+        "results": [r.to_dict() for r in results],
+        "total": len(results),
+        "succeeded": sum(1 for r in results if r.success),
+        "failed": sum(1 for r in results if not r.success),
+    }
+
+
+@router.get("/drives/{drive_id}/rankings/{candidate_id}")
+async def get_candidate_match_detail(
+    drive_id: int,
+    candidate_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr),
+) -> Any:
+    """
+    Return individual match detail for a specific candidate in a drive.
+
+    Includes full explanation with contributing and disqualifying factors.
+    HR access only — validates that the HR user manages the drive.
+
+    Requirements: 5.6
+    """
+    hr_profile = await _get_hr_profile(db, current_hr.id)
+
+    # Verify drive belongs to this HR
+    drive_res = await db.execute(
+        select(JobDrive).where(JobDrive.id == drive_id, JobDrive.hr_id == hr_profile.id)
+    )
+    drive = drive_res.scalars().first()
+    if not drive:
+        raise HTTPException(status_code=404, detail="Drive not found")
+
+    # Fetch the MatchResult for this candidate and drive
+    from app.models.match_result import MatchResult
+
+    match_stmt = select(MatchResult).where(
+        MatchResult.job_drive_id == drive_id,
+        MatchResult.candidate_id == candidate_id,
+    )
+    match_res = await db.execute(match_stmt)
+    match_result = match_res.scalars().first()
+
+    if not match_result:
+        raise HTTPException(
+            status_code=404,
+            detail="Match result not found for this candidate in the specified drive",
+        )
+
+    # Fetch candidate info
+    user_res = await db.execute(select(User).where(User.id == candidate_id))
+    user = user_res.scalars().first()
+
+    return {
+        "id": match_result.id,
+        "candidate_id": match_result.candidate_id,
+        "candidate_email": user.email if user else None,
+        "candidate_name": f"{user.first_name} {user.last_name}".strip() if user else None,
+        "job_drive_id": match_result.job_drive_id,
+        "drive_title": drive.title,
+        "job_role": drive.job_role,
+        "session_id": match_result.session_id,
+        "match_score": match_result.match_score,
+        "is_top_match": match_result.is_top_match,
+        "explanation": match_result.explanation,
+        "score_breakdown": match_result.score_breakdown,
+        "computed_at": match_result.computed_at,
+        "created_at": match_result.created_at,
     }
