@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from .endpoints import auth, oauth, users, profiles, resume, interview, admin, hr, student
 from .endpoints import voice as voice
+from .endpoints import memory
 
 api_router = APIRouter()
 
@@ -14,3 +15,4 @@ api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(hr.router, prefix="/hr", tags=["hr"])
 api_router.include_router(student.router, prefix="/student", tags=["student"])
 api_router.include_router(voice.router, prefix="/voice", tags=["voice"])
+api_router.include_router(memory.router, prefix="/memory", tags=["memory"])

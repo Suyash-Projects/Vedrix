@@ -1,7 +1,7 @@
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
-from fastapi.responses import Response
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request, Query
+from fastapi.responses import Response, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 from sqlalchemy.orm import selectinload, joinedload
@@ -741,6 +741,7 @@ async def export_admin_interview_pdf(
         job_role=drive.job_role,
         report=report,
         transcript=transcript,
+        skill_matrix=session.skill_matrix,
     )
 
     return Response(
@@ -1104,6 +1105,56 @@ async def export_analytics_csv(
     )
 
 
+# ── Observability: Agent Audit Trail ──────────────────────────────────────────
+
+from app.services.observability_service import ObservabilityService
+from app.models.trace_entry import TraceEntry, TraceEntryReadAdmin
+
+
+@router.get("/audit-trail", response_model=List[TraceEntryReadAdmin])
+async def get_audit_trail(
+    db: AsyncSession = Depends(get_session),
+    current_admin: User = Depends(deps.get_current_admin),
+    agent_name: Optional[str] = Query(default=None, description="Filter by agent name"),
+    session_id: Optional[int] = Query(default=None, description="Filter by session ID"),
+    action_type: Optional[str] = Query(default=None, description="Filter by action type"),
+    start_time: Optional[datetime] = Query(default=None, description="Filter entries from this time (inclusive)"),
+    end_time: Optional[datetime] = Query(default=None, description="Filter entries until this time (inclusive)"),
+) -> Any:
+    """
+    Searchable audit trail of all agent Trace_Entries (Admin only).
+
+    Filterable by agent_name, session_id, action_type, and time range.
+    Returns full records including raw_input/raw_output (Admin-level access).
+    """
+    svc = ObservabilityService(db)
+    entries = await svc.query(
+        agent_name=agent_name,
+        session_id=session_id,
+        action_type=action_type,
+        start_time=start_time,
+        end_time=end_time,
+        requester_role="admin",
+    )
+    return entries
+
+
+@router.get("/audit-trail/export/{session_id}")
+async def export_audit_trail(
+    session_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_admin: User = Depends(deps.get_current_admin),
+) -> Any:
+    """
+    Export all Trace_Entries for a session as a chronological JSON document (Admin only).
+
+    Returns a JSON array of all entries for the given session in timestamp order.
+    """
+    svc = ObservabilityService(db)
+    export_data = await svc.export_session(session_id)
+    return JSONResponse(content=export_data)
+
+
 # ── Audit Logs ───────────────────────────────────────────────────────────────
 
 from app.models.audit import AuditLog
@@ -1192,3 +1243,142 @@ async def get_audit_log_stats(
         "top_actions": actions,
         "top_users": users,
     }
+
+
+# ── AI Supervisor Endpoints (Phase 1B) ─────────────────────────────────────
+
+@router.get("/supervisor/active-sessions")
+async def get_supervisor_active_sessions(
+    current_admin: User = Depends(deps.get_current_admin),
+) -> Any:
+    """Get all active sessions being supervised with real-time status."""
+    from app.services.supervisor_service import supervisor_registry
+
+    active = supervisor_registry.get_all_active()
+    return [
+        {
+            "session_id": s.session_id,
+            "control_mode": s.control_mode,
+            "duration_seconds": s.duration_analysis.total_elapsed_seconds,
+            "difficulty_analysis": s.difficulty_analysis.model_dump(),
+            "performance_trend": s.performance_trend.model_dump(),
+            "last_action": s.last_action.model_dump() if s.last_action else None,
+            "observations_count": len(s.observations),
+            "paused": s.paused,
+        }
+        for s in sorted(active, key=lambda x: x.duration_analysis.total_elapsed_seconds, reverse=True)
+    ]
+
+
+@router.get("/supervisor/sessions/{session_id}")
+async def get_supervisor_session_detail(
+    session_id: str,
+    current_admin: User = Depends(deps.get_current_admin),
+) -> Any:
+    """Get detailed supervisor state for a specific session."""
+    from app.services.supervisor_service import supervisor_registry
+
+    state = supervisor_registry.get(session_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Session not found in supervisor registry")
+
+    return state.model_dump()
+
+
+@router.get("/supervisor/sessions/{session_id}/timeline")
+async def get_supervisor_timeline(
+    session_id: str,
+    limit: int = 50,
+    current_admin: User = Depends(deps.get_current_admin),
+) -> Any:
+    """Get chronological observation timeline for a session."""
+    from app.services.supervisor_service import supervisor_registry
+
+    state = supervisor_registry.get(session_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    observations = state.observations[-limit:] if limit else state.observations
+    return [
+        {
+            "timestamp": obs.timestamp.isoformat(),
+            "type": obs.observation_type,
+            "severity": obs.severity,
+            "message": obs.message,
+            "details": obs.details,
+        }
+        for obs in observations
+    ]
+
+
+@router.post("/supervisor/sessions/{session_id}/override")
+async def supervisor_override_session(
+    session_id: str,
+    override: Dict[str, Any],
+    request: Request,
+    current_admin: User = Depends(deps.get_current_admin),
+) -> Any:
+    """Override a session's supervisor state (admin only).
+
+    Supports:
+      - {"action": "set_control_mode", "mode": "monitor"|"suggest"|"auto"}
+      - {"action": "override_difficulty", "difficulty": "easy"|"medium"|"hard"}
+      - {"action": "override_phase", "phase": "technical"|"behavioral"|...}
+      - {"action": "force_close"}
+      - {"action": "pause"}
+      - {"action": "resume"}
+    """
+    from app.services.supervisor_service import supervisor_registry, SupervisorObservation
+
+    action = override.get("action", "")
+    supervisor_registry.record_observation(
+        session_id,
+        SupervisorObservation(
+            observation_type="admin_override",
+            severity="info",
+            message=f"Admin override: {action} ({override.get('reason', 'no reason')})",
+            details=override,
+        )
+    )
+
+    # Apply actions to supervisor registry
+    if action == "set_control_mode":
+        supervisor_registry.set_control_mode(session_id, override.get("mode", "suggest"))
+    elif action == "pause":
+        supervisor_registry.pause_session(session_id)
+    elif action == "resume":
+        supervisor_registry.resume_session(session_id)
+
+    # For graph-level overrides, we'd need to push to LangGraph state
+    # via the WebSocket — but since we may not have an active WS, we register
+    # the intent and the next supervisor node cycle will pick it up.
+
+    return {"status": "ok", "message": f"Override '{action}' registered for session {session_id}"}
+
+
+@router.get("/supervisor/stats")
+async def get_supervisor_stats(
+    current_admin: User = Depends(deps.get_current_admin),
+) -> Any:
+    """Get global supervisor statistics."""
+    from app.services.supervisor_service import supervisor_registry
+
+    active = supervisor_registry.get_all_active()
+    total_observations = sum(len(s.observations) for s in active)
+    sessions_with_alerts = sum(
+        1 for s in active
+        if any(o.observation_type in ("duration_alert", "difficulty_anomaly")
+               for o in s.observations)
+    )
+    auto_mode_count = sum(1 for s in active if s.control_mode == "auto")
+    suggest_mode_count = sum(1 for s in active if s.control_mode == "suggest")
+
+    return {
+        "active_sessions": len(active),
+        "total_observations": total_observations,
+        "sessions_with_alerts": sessions_with_alerts,
+        "auto_mode_sessions": auto_mode_count,
+        "suggest_mode_sessions": suggest_mode_count,
+    }
+
+

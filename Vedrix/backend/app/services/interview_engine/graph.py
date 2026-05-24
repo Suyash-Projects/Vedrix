@@ -6,8 +6,17 @@ from .nodes import (
     evaluate_answer_node, 
     evaluate_code_node, 
     update_memory_node,
-    advisor_monitor_node,  # Phase 1A: AI Advisor
+    empathy_analyzer_node,
+    skeptic_evaluation_node,
+    pragmatist_evaluation_node,
+    bias_auditor_node,
+    consensus_synthesizer_node,
+    code_copilot_node,
+    debate_router_node,
 )
+from .supervisor_node import supervisor_node  # Phase 1B: AI Supervisor (replaces advisor_monitor)
+from .planner_node import planner_node
+from .sentiment_node import sentiment_node
 
 
 def should_continue(state: InterviewState):
@@ -16,47 +25,74 @@ def should_continue(state: InterviewState):
     return "continue"
 
 
-def route_evaluation(state: InterviewState):
-    if state.get("is_coding_mode"):
-        return "evaluate_code"
-    return "evaluate_answer"
+def route_after_input(state: InterviewState):
+    if state.get("copilot_request_pending"):
+        return "code_copilot"
+    return "debate"
 
 
 def create_interview_graph():
     workflow = StateGraph(InterviewState)
 
+    workflow.add_node("planner", planner_node)
     workflow.add_node("generate_question", generate_question_node)
-    workflow.add_node("evaluate_answer", evaluate_answer_node)
-    workflow.add_node("evaluate_code", evaluate_code_node)
+    workflow.add_node("sentiment", sentiment_node)
+    workflow.add_node("empathy_analyzer", empathy_analyzer_node)
+    workflow.add_node("code_copilot", code_copilot_node)
+    workflow.add_node("debate_router", debate_router_node)
+    workflow.add_node("skeptic_evaluation", skeptic_evaluation_node)
+    workflow.add_node("pragmatist_evaluation", pragmatist_evaluation_node)
+    workflow.add_node("bias_auditor", bias_auditor_node)
+    workflow.add_node("consensus_synthesizer", consensus_synthesizer_node)
     workflow.add_node("update_memory", update_memory_node)
-    workflow.add_node("advisor_monitor", advisor_monitor_node)  # Phase 1A: AI Advisor
+    workflow.add_node("supervisor", supervisor_node)  # Phase 1B: AI Supervisor
 
-    workflow.set_entry_point("generate_question")
+    workflow.set_entry_point("planner")
+    workflow.add_edge("planner", "generate_question")
     
-    # Route to either text or code evaluation
+    # From generate_question, proceed straight to sentiment (will halt at interrupt)
+    workflow.add_edge("generate_question", "sentiment")
+    
+    # Sentiment node proceeds to empathy_analyzer
+    workflow.add_edge("sentiment", "empathy_analyzer")
+    
+    # After empathy analyzer, either trigger co-pilot or run evaluation debate
     workflow.add_conditional_edges(
-        "generate_question",
-        route_evaluation,
+        "empathy_analyzer",
+        route_after_input,
         {
-            "evaluate_answer": "evaluate_answer",
-            "evaluate_code": "evaluate_code"
+            "code_copilot": "code_copilot",
+            "debate": "debate_router"
         }
     )
     
-    workflow.add_edge("evaluate_answer", "update_memory")
-    workflow.add_edge("evaluate_code", "update_memory")
-    workflow.add_edge("update_memory", "advisor_monitor")  # Phase 1A: Advisor runs after memory
-
+    # Loop co-pilot back to sentiment so it halts again awaiting candidate action
+    workflow.add_edge("code_copilot", "sentiment")
+    
+    # debate_router splits to parallel debate nodes
+    workflow.add_edge("debate_router", "skeptic_evaluation")
+    workflow.add_edge("debate_router", "pragmatist_evaluation")
+    workflow.add_edge("debate_router", "bias_auditor")
+    
+    # Parallel debate nodes join at the synthesizer
+    workflow.add_edge("skeptic_evaluation", "consensus_synthesizer")
+    workflow.add_edge("pragmatist_evaluation", "consensus_synthesizer")
+    workflow.add_edge("bias_auditor", "consensus_synthesizer")
+    
+    # Synthesizer updates memory and triggers supervisor
+    workflow.add_edge("consensus_synthesizer", "update_memory")
+    workflow.add_edge("update_memory", "supervisor")  # Supervisor runs after memory
+ 
     workflow.add_conditional_edges(
-        "advisor_monitor",  # Phase 1A: Changed from "update_memory"
+        "supervisor",
         should_continue,
         {"continue": "generate_question", END: END}
     )
-
+ 
     memory = MemorySaver()
     return workflow.compile(
         checkpointer=memory,
-        interrupt_before=["evaluate_answer", "evaluate_code"]
+        interrupt_before=["sentiment"]
     )
 
 

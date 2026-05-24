@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional, TypedDict, Annotated, Literal
+from typing import List, Dict, Optional, TypedDict, Annotated, Literal, Any
 import operator
 
 class InterviewState(TypedDict):
@@ -71,3 +71,36 @@ class InterviewState(TypedDict):
     advisor_reason_category: Optional[str]  # Categorized reason
     advisor_notified: bool  # Has interviewer been notified?
     advisor_action_taken: bool  # Has interviewer acted on suggestion?
+
+    # ── AI Supervisor (Phase 1B) ────────────────────────────────────────────
+    # The AI Supervisor monitors duration, difficulty, and controls interview flow.
+    # Three control modes determine its authority level.
+    supervisor_session_id: str  # internal session reference for supervisor registry
+    supervisor_mode: Literal["monitor", "suggest", "auto"]  # control authority
+    supervisor_observations: List[Dict]  # chronological observation log
+    supervisor_last_action: Optional[Dict]  # most recent action taken/suggested
+    supervisor_paused: bool  # supervisor paused by admin
+    session_start_epoch: float  # unix timestamp of session start
+    question_start_epoch: Optional[float]  # unix timestamp of current question
+    per_question_times: List[float]  # duration per question in seconds
+    score_history: List[float]  # full score history for trend analysis
+    difficulty_history: List[str]  # full difficulty change history
+
+    # ── Next-Gen Agentic Fields ───────────────────────────────────────────
+    copilot_suggestions: List[Dict[str, Any]]  # code co-pilot recommendations
+    copilot_request_pending: bool  # did the candidate ask for help?
+    hr_whisper_instructions: Optional[str]  # recruiter live whispers
+    empathy_metrics: Dict[str, Any]  # stress_level, hesitation_rating, typing_speed
+    stress_history: List[float]  # stress_level values per response for alert tracking
+    empathy_timeline: List[Dict[str, Any]]  # time-series of empathy_metrics snapshots
+    rag_context: Optional[str]  # context fetched from ChromaDB resume/GitHub
+    debate_rounds: Optional[Dict[str, Any]]  # critiques of skeptic, pragmatist, bias auditor
+    skeptic_critique: Optional[str]
+    pragmatist_critique: Optional[str]
+    bias_auditor_critique: Optional[str]
+    interview_plan: Optional[Dict[str, Any]]
+    plan_phase_index: int
+    consecutive_low_quality: int
+
+
+

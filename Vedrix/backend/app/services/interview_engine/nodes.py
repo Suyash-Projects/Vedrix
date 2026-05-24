@@ -1,13 +1,16 @@
+import asyncio
 import logging
 import re
 import random
 from typing import Dict, Any, List
+from datetime import datetime, timezone
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
 
 from .state import InterviewState
 from .providers import get_fast_llm, get_strong_llm, get_adaptive_llm, get_code_llm
+from app.services.memory_service import memory_service
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +190,24 @@ def _determine_phase_from_index(idx: int) -> str:
         return "closing"
 
 
+def determine_phase_details_from_plan(state: InterviewState, idx: int) -> tuple[int, Dict[str, Any]]:
+    """Determine phase index and details from plan if available, otherwise fallback."""
+    plan = state.get("interview_plan")
+    if not plan or not plan.get("phases"):
+        return 0, {}
+    phases = plan.get("phases", [])
+    cumulative_questions = 0
+    for phase_idx, phase_data in enumerate(phases):
+        q_count = phase_data.get("question_count", 1)
+        cumulative_questions += q_count
+        if idx < cumulative_questions:
+            return phase_idx, phase_data
+    if phases:
+        return len(phases) - 1, phases[-1]
+    return 0, {}
+
+
+
 def _initialize_skills_to_cover(resume_text: str, job_role: str) -> List[str]:
     """Initialize skills to cover based on resume and job role."""
     text = f"{resume_text} {job_role}".lower()
@@ -208,13 +229,47 @@ def _initialize_skills_to_cover(resume_text: str, job_role: str) -> List[str]:
 
 async def generate_question_node(state: InterviewState) -> Dict[str, Any]:
     """Interviewer Agent — generates natural, adaptive, skill-based questions."""
-    last_eval = state.get('last_evaluation')
     idx = state['current_question_index']
-    current_phase = _determine_phase_from_index(idx)
+    if state.get("supervisor_mode") == "hr_takeover":
+        return {
+            "next_question": {
+                "id": idx + 1,
+                "question": "The recruiter has taken over the interview. Please speak with them directly.",
+                "category": "situational",
+                "difficulty": state.get("difficulty", "medium"),
+                "time_limit": 600,
+                "skill_tested": "Communication",
+                "follow_up_topic": "None"
+            }
+        }
+
+    if state.get("qa_paused", False):
+        return {
+            "next_question": {
+                "id": idx + 1,
+                "question": "The interview is temporarily paused for quality review. Please wait.",
+                "category": "system",
+                "difficulty": state.get("difficulty", "medium"),
+                "time_limit": 600,
+                "skill_tested": "general",
+                "follow_up_topic": None
+            },
+            "qa_paused": True
+        }
+
+    last_eval = state.get('last_evaluation')
+    plan_phase_idx, phase_details = determine_phase_details_from_plan(state, idx)
+    current_phase = phase_details.get("phase", _determine_phase_from_index(idx))
     previous_phase = state.get('current_phase')
 
     # Check if transitioning to new phase
     phase_transition = previous_phase != current_phase if previous_phase else False
+
+    difficulty = state.get("difficulty", "medium")
+    if phase_transition and phase_details:
+        plan_diff = phase_details.get("difficulty")
+        if plan_diff:
+            difficulty = plan_diff
 
     # Parse evaluation
     should_deep_dive = False
@@ -227,8 +282,16 @@ async def generate_question_node(state: InterviewState) -> Dict[str, Any]:
         detected_skill = last_eval.get('skill_identified')
         low_effort = last_eval.get('low_effort', False)
 
-        if low_effort:
-            needs_easier = True
+        if low_effort or needs_easier:
+            if difficulty == "hard":
+                difficulty = "medium"
+            elif difficulty == "medium":
+                difficulty = "easy"
+        elif should_deep_dive:
+            if difficulty == "easy":
+                difficulty = "medium"
+            elif difficulty == "medium":
+                difficulty = "hard"
 
     # Get LLM based on complexity
     llm = get_adaptive_llm() if should_deep_dive else get_fast_llm()
@@ -309,6 +372,21 @@ async def generate_question_node(state: InterviewState) -> Dict[str, Any]:
     if state.get('follow_up_requested'):
         context_instructions.append("They asked a clarifying question. Answer it conversationally and briefly (1-2 sentences max), then smoothly return to the interview flow.")
 
+    # Recruiter whispers - live instructions
+    if state.get('hr_whisper_instructions'):
+        context_instructions.append(f"RECRUITER LIVE WHISPER/OVERRIDE: {state['hr_whisper_instructions']}. Respect this instruction immediately and adapt your questioning accordingly.")
+
+    # Episodic RAG Memory Context
+    if state.get('rag_context'):
+        context_instructions.append(f"CANDIDATE BACKGROUND CONTEXT (Indexed from Resume/GitHub):\n{state['rag_context']}\nUse this specific candidate project/experience context to ask highly tailored, contextualized, and personalized questions. Reference their real-world experience directly.")
+
+    # Empathy adaptation
+    empathy = state.get('empathy_metrics')
+    if empathy and isinstance(empathy, dict):
+        stress = empathy.get('stress_level', 0.0)
+        if stress >= 7.0:
+            context_instructions.append("EMPATHY ALERT: The candidate is showing high stress levels. Switch to an extremely warm, comforting, and supportive conversational tone. Simplify the phrasing of the question, and offer gentle encouragement.")
+
     # Build system prompt — sounds like a real, thoughtful human interviewer
     context_str = "\n".join(context_instructions)
     conversational_str = conversational_opening if conversational_opening else ""
@@ -319,7 +397,7 @@ JOB ROLE: {state['job_role']}
 
 CURRENT PHASE: {current_phase}
 QUESTION NUMBER: {idx + 1}
-CURRENT DIFFICULTY: {state['difficulty']}
+CURRENT DIFFICULTY: {difficulty}
 
 YOUR APPROACH: {phase_guide}
 
@@ -359,17 +437,120 @@ BIAS MITIGATION — CRITICAL:
 
 {parser.get_format_instructions()}"""
 
-    try:
-        response = await llm.ainvoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=f"Generate natural question {idx + 1} for {current_phase} phase."),
-        ])
-        clean_content = _strip_markdown(response.content)
-        parsed_q = parser.parse(clean_content)
+    # Set up QA agent evaluation loop
+    from app.services.interview_engine.qa_node import qa_agent
+    from app.models.trace_entry import TraceEntryCreate
+    from app.services.observability_service import ObservabilityService
+    from app.db.session import async_session
+    from app.api.v1.endpoints.interview import manager
 
-        # Determine if coding challenge (for technical phases)
+    attempts = 0
+    max_attempts = 4  # 1 initial + 3 retries
+    parsed_q = None
+    is_coding = False
+
+    skills_to_cover = state.get("skills_to_cover", [])
+    session_id_str = state.get("supervisor_session_id")
+    session_id = int(session_id_str) if session_id_str else None
+
+    qa_total = state.get("qa_total_questions", 0)
+    qa_flagged = state.get("qa_flagged_questions", 0)
+    qa_paused_flag = False
+
+    last_eval_res = None
+
+    while attempts < max_attempts:
+        try:
+            response = await llm.ainvoke([
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=f"Generate natural question {idx + 1} for {current_phase} phase."),
+            ])
+            clean_content = _strip_markdown(response.content)
+            parsed_q = parser.parse(clean_content)
+        except Exception as e:
+            logger.error(f"LLM invoke failed in QA loop: {e}")
+            break
+
+        # Run QA check
+        qa_res = await qa_agent.evaluate_question(parsed_q.get("question", ""), skills_to_cover, state)
+        last_eval_res = qa_res
+        
+        qa_total += 1
+        
+        if qa_res["is_flagged"]:
+            qa_flagged += 1
+            attempts += 1
+            
+            # Log the flag in the database
+            if session_id:
+                try:
+                    async with async_session() as db:
+                        obs = ObservabilityService(db)
+                        if qa_res["bias_flag"]:
+                            await obs.record(TraceEntryCreate(
+                                agent_name="qa_agent",
+                                action_type="bias_detected",
+                                session_id=session_id,
+                                input_summary=f"Question: {parsed_q.get('question')}",
+                                reasoning_summary=qa_res["bias_flag"]["details"],
+                                output_summary=f"Bias Flagged. Type: {qa_res['bias_flag']['type']}",
+                                confidence_score=1.0,
+                                duration_ms=qa_res["evaluation_time_ms"]
+                            ))
+                        elif qa_res["is_off_topic"]:
+                            await obs.record(TraceEntryCreate(
+                                agent_name="qa_agent",
+                                action_type="off_topic_detected",
+                                session_id=session_id,
+                                input_summary=f"Question: {parsed_q.get('question')}",
+                                reasoning_summary=f"Cosine similarity: {qa_res['relevance_score']:.3f} is below 0.4 threshold. Closest skill: {qa_res['closest_skill']}",
+                                output_summary=f"Off-Topic Flagged",
+                                confidence_score=1.0,
+                                duration_ms=qa_res["evaluation_time_ms"]
+                            ))
+                except Exception as log_err:
+                    logger.error(f"Failed to log QA TraceEntry: {log_err}")
+            
+            # Modify system prompt to avoid repeating the flagged question or style
+            system_prompt += f"\n\nCRITICAL: The previous question '{parsed_q.get('question')}' was FLAGGED by the QA Auditor as containing bias or being irrelevant. Do not use that wording or topic. Ensure the question is strictly neutral and relevant."
+            continue
+        else:
+            # Not flagged, proceed!
+            break
+
+    # If quality score falls below 0.7, trigger admin pause
+    if qa_total >= 3 and (qa_total - qa_flagged) / qa_total < 0.7:
+        qa_paused_flag = True
+        if session_id_str:
+            try:
+                alert_msg = {
+                    "type": "qa_quality_alert",
+                    "session_id": session_id_str,
+                    "quality_score": (qa_total - qa_flagged) / qa_total,
+                    "message": f"QA quality score has fallen below 0.7. Question generation paused."
+                }
+                await manager.broadcast_to_hr(alert_msg, session_id_str)
+            except Exception as broadcast_err:
+                logger.error(f"Failed to send QA websocket alert: {broadcast_err}")
+
+    # Check if we failed to get a non-flagged question after max attempts
+    if attempts >= max_attempts and parsed_q:
+        # Escalate to HR via WebSocket
+        if session_id_str:
+            try:
+                esc_msg = {
+                    "type": "qa_escalation",
+                    "session_id": session_id_str,
+                    "question": parsed_q.get("question"),
+                    "bias_details": last_eval_res.get("bias_flag") or {"type": "off_topic", "details": f"Question relevance {last_eval_res.get('relevance_score', 0.0):.3f} is below 0.4."}
+                }
+                await manager.broadcast_to_hr(esc_msg, session_id_str)
+            except Exception as broadcast_err:
+                logger.error(f"Failed to send QA websocket escalation: {broadcast_err}")
+
+    # Return success or fallback
+    if parsed_q:
         is_coding = current_phase in ['technical', 'stress'] and (idx + 1) % 4 == 0
-
         return {
             "next_question": parsed_q,
             "messages": [{"role": "assistant", "content": parsed_q['question']}],
@@ -380,11 +561,14 @@ BIAS MITIGATION — CRITICAL:
             "code_language": "python" if is_coding else None,
             "follow_up_requested": False,
             "previous_topic": parsed_q.get('follow_up_topic'),
+            "difficulty": difficulty,
+            "plan_phase_index": plan_phase_idx,
+            "qa_total_questions": qa_total,
+            "qa_flagged_questions": qa_flagged,
+            "qa_paused": qa_paused_flag
         }
-    except Exception as e:
-        logger.error(f"generate_question_node failed: {e}")
-
-        # Smart fallback
+    else:
+        # Fallback question logic
         fallback_questions = {
             "greeting": ["Hello! Welcome to your interview. How are you feeling today?"],
             "welcome": ["Could you tell me a bit about yourself and your background?"],
@@ -402,7 +586,7 @@ BIAS MITIGATION — CRITICAL:
                 "id": idx + 1,
                 "question": fallback_q,
                 "category": current_phase,
-                "difficulty": state['difficulty'],
+                "difficulty": difficulty,
                 "time_limit": 120,
                 "skill_tested": "general",
                 "follow_up_topic": None
@@ -412,6 +596,11 @@ BIAS MITIGATION — CRITICAL:
             "phase_transition": phase_transition,
             "is_coding_mode": False,
             "code_language": None,
+            "difficulty": difficulty,
+            "plan_phase_index": plan_phase_idx,
+            "qa_total_questions": qa_total,
+            "qa_flagged_questions": qa_flagged,
+            "qa_paused": qa_paused_flag
         }
 
 
@@ -631,7 +820,30 @@ async def update_memory_node(state: InterviewState) -> Dict[str, Any]:
 
         # Determine phase
         idx = state['current_question_index'] + 1
-        current_phase = _determine_phase_from_index(idx)
+        plan_phase_idx, phase_details = determine_phase_details_from_plan(state, idx)
+        current_phase = phase_details.get("phase", _determine_phase_from_index(idx))
+
+        # Track consecutive low quality responses
+        low_effort = eval_result.get("low_effort", False)
+        is_low_quality = (score < 4.0 or low_effort)
+        consecutive_low_q = state.get("consecutive_low_quality", 0)
+        if is_low_quality:
+            consecutive_low_q += 1
+        else:
+            consecutive_low_q = 0
+
+        revised_updates = {}
+        if consecutive_low_q >= 2:
+            from app.services.interview_engine.planner_node import planner_node
+            from app.db.session import async_session
+            try:
+                async with async_session() as db:
+                    temp_state = state.copy()
+                    temp_state["consecutive_low_quality"] = consecutive_low_q
+                    temp_state["plan_phase_index"] = plan_phase_idx
+                    revised_updates = await planner_node.revise_plan(temp_state, db)
+            except Exception as rev_err:
+                logger.error(f"Failed to revise plan: {rev_err}")
 
         # AUTO-COMPLETION DETECTION
         interview_complete = False
@@ -675,7 +887,40 @@ async def update_memory_node(state: InterviewState) -> Dict[str, Any]:
             interview_complete = False
             completion_reason = None
 
-        return {
+        if interview_complete:
+            from app.db.session import async_session
+            from sqlmodel import select
+            from app.models.interview import InterviewSession
+
+            async def run_merge():
+                try:
+                    async with async_session() as db:
+                        session_id_val = state.get("supervisor_session_id")
+                        if session_id_val:
+                            try:
+                                session_id_int = int(session_id_val)
+                            except ValueError:
+                                session_id_int = 0
+                            if session_id_int:
+                                # NOTE: candidate_id is not directly in InterviewState;
+                                # it should be passed in when the session is initialized.
+                                # For now, we derive it from the InterviewSession record.
+                                stmt = select(InterviewSession).where(InterviewSession.id == session_id_int)
+                                res = await db.execute(stmt)
+                                session_rec = res.scalars().first()
+                                if session_rec:
+                                    await memory_service.merge_session_skills(
+                                        candidate_id=session_rec.candidate_id,
+                                        session_id=session_id_int,
+                                        skill_scores=new_topic_scores,
+                                        db=db
+                                    )
+                except Exception as merge_err:
+                    logger.error(f"Failed to merge skills in update_memory_node: {merge_err}")
+
+            asyncio.create_task(run_merge())
+
+        ret = {
             "difficulty": diff,
             "topic_strengths": new_strengths,
             "topic_scores": new_topic_scores,
@@ -688,7 +933,12 @@ async def update_memory_node(state: InterviewState) -> Dict[str, Any]:
             "interview_complete": interview_complete,
             "completion_reason": completion_reason,
             "is_coding_mode": False,
+            "consecutive_low_quality": consecutive_low_q,
+            "plan_phase_index": plan_phase_idx,
         }
+        if revised_updates:
+            ret.update(revised_updates)
+        return ret
     except Exception as e:
         logger.error(f"update_memory_node failed: {e}")
         return {
@@ -737,3 +987,298 @@ async def advisor_monitor_node(state: InterviewState) -> Dict[str, Any]:
         # Return empty dict — no advisor suggestion on failure
         # Interview continues normally
         return {}
+
+
+# ── NEXT-GEN AGENTIC NODES ─────────────────────────────────────────────────────
+
+async def empathy_analyzer_node(state: InterviewState) -> Dict[str, Any]:
+    """Next-Gen Agentic: Analyzes candidate stress levels based on response length and hesitation indicators."""
+    logger.info("Running empathy_analyzer_node...")
+    messages = state.get("messages", [])
+    if not messages:
+        return {"empathy_metrics": {"stress_level": 0.0, "hesitation_rating": 0.0, "typing_speed": 0.0}}
+        
+    last_user_message = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+    if not last_user_message:
+        return {}
+        
+    # Analyze text features for stress
+    text_len = len(last_user_message)
+    hesitation_indicators = ["um", "uh", "like", "i think", "maybe", "sorry", "difficult", "unsure", "hard to say"]
+    hesitation_count = sum(last_user_message.lower().count(word) for word in hesitation_indicators)
+    
+    # Calculate a simple stress score out of 10
+    stress_score = 0.0
+    if text_len < 30: # extremely short answer
+        stress_score += 3.0
+    if hesitation_count >= 3:
+        stress_score += 4.0
+    elif hesitation_count > 0:
+        stress_score += 2.0
+        
+    # Add randomness/pacing simulating real dynamic analysis
+    stress_level = min(10.0, max(0.0, stress_score + random.uniform(0, 2)))
+    
+    # Track metrics
+    empathy_metrics = {
+        "stress_level": round(stress_level, 2),
+        "hesitation_rating": min(10.0, hesitation_count * 2.0),
+        "typing_speed": round(text_len / max(1, len(last_user_message.split()) * 0.5), 1)
+    }
+    
+    logger.info(f"Empathy metrics: {empathy_metrics}")
+    
+    # Dynamic difficulty mitigation
+    updates: Dict[str, Any] = {"empathy_metrics": empathy_metrics}
+    if stress_level >= 7.0:
+        updates["difficulty"] = "easy"
+        
+    return updates
+
+
+async def skeptic_evaluation_node(state: InterviewState) -> Dict[str, Any]:
+    """Debate Agent — Skeptic persona: Critiques logic, errors, and depth of the answer."""
+    logger.info("Running skeptic_evaluation_node...")
+    llm = get_fast_llm()
+    last_question = state.get('next_question', {})
+    q_text = last_question.get('question', '') if isinstance(last_question, dict) else ''
+    last_message = state['messages'][-1]['content'] if state.get('messages') else ""
+    code_snippet = state.get('code_snippet')
+    
+    content = f"Question: {q_text}\nAnswer: {last_message}"
+    if code_snippet:
+        content += f"\nSubmitted Code:\n{code_snippet}"
+        
+    prompt = f"""You are a Skeptical Technical Reviewer. Criticize the following candidate response. 
+Identify logical flaws, potential bugs, edge cases they missed, or general lack of depth.
+Focus solely on technical gaps, flaws, and shortcomings. Be critical and direct.
+
+{content}
+
+Provide your critique in 2-3 bullet points."""
+    
+    try:
+        response = await llm.ainvoke([
+            SystemMessage(content="You are a Skeptical Technical Reviewer. Be critical, concise and analytical."),
+            HumanMessage(content=prompt)
+        ])
+        return {"skeptic_critique": response.content.strip()}
+    except Exception as e:
+        logger.error(f"Skeptic critique failed: {e}")
+        return {"skeptic_critique": "Candidate response has potential gaps in deep technical concepts."}
+
+
+async def pragmatist_evaluation_node(state: InterviewState) -> Dict[str, Any]:
+    """Debate Agent — Pragmatist persona: Focuses on readability, design patterns, and real-world efficiency."""
+    logger.info("Running pragmatist_evaluation_node...")
+    llm = get_fast_llm()
+    last_question = state.get('next_question', {})
+    q_text = last_question.get('question', '') if isinstance(last_question, dict) else ''
+    last_message = state['messages'][-1]['content'] if state.get('messages') else ""
+    code_snippet = state.get('code_snippet')
+    
+    content = f"Question: {q_text}\nAnswer: {last_message}"
+    if code_snippet:
+        content += f"\nSubmitted Code:\n{code_snippet}"
+        
+    prompt = f"""You are a Pragmatic Tech Lead. Evaluate the candidate response for readability, production-readiness, best practices, and real-world trade-offs.
+What are the strengths and practical limitations of their approach?
+
+{content}
+
+Provide your evaluation in 2-3 bullet points."""
+    
+    try:
+        response = await llm.ainvoke([
+            SystemMessage(content="You are a Pragmatic Tech Lead focused on practical, clean code and design."),
+            HumanMessage(content=prompt)
+        ])
+        return {"pragmatist_critique": response.content.strip()}
+    except Exception as e:
+        logger.error(f"Pragmatist critique failed: {e}")
+        return {"pragmatist_critique": "The proposed solution is acceptable for basic usage but requires optimizations for production scale."}
+
+
+async def bias_auditor_node(state: InterviewState) -> Dict[str, Any]:
+    """Debate Agent — Bias Auditor: Evaluates content fairly, ignoring grammar/fluency/accent issues."""
+    logger.info("Running bias_auditor_node...")
+    llm = get_fast_llm()
+    last_question = state.get('next_question', {})
+    q_text = last_question.get('question', '') if isinstance(last_question, dict) else ''
+    last_message = state['messages'][-1]['content'] if state.get('messages') else ""
+    
+    prompt = f"""You are a Diversity & Fairness Auditor. Analyze the candidate response.
+Your job is to identify if the response contains correct core ideas, regardless of:
+- Grammar mistakes, stuttering words, or sentence structuring issues.
+- Language fluency barriers or accents.
+- Typing typos.
+
+Confirm if the candidate genuinely understands the concept. Ignore presentation style and audit for core value.
+
+Question: {q_text}
+Candidate Answer: {last_message}
+
+Provide your assessment in 1-2 bullet points."""
+    
+    try:
+        response = await llm.ainvoke([
+            SystemMessage(content="You are a Bias Auditor. Your role is to ensure maximum fairness by looking only at candidate intent and core knowledge."),
+            HumanMessage(content=prompt)
+        ])
+        return {"bias_auditor_critique": response.content.strip()}
+    except Exception as e:
+        logger.error(f"Bias auditor critique failed: {e}")
+        return {"bias_auditor_critique": "Candidate shows correct conceptual understanding despite minor delivery flaws."}
+
+
+async def consensus_synthesizer_node(state: InterviewState) -> Dict[str, Any]:
+    """Debate Agent — Consensus Synthesizer: Reconciles all three critiques into structured EvaluationSchema."""
+    logger.info("Running consensus_synthesizer_node...")
+    llm = get_strong_llm()
+    parser = JsonOutputParser(pydantic_object=EvaluationSchema)
+    
+    last_question = state.get('next_question', {})
+    q_text = last_question.get('question', '') if isinstance(last_question, dict) else ''
+    q_skill = last_question.get('skill_tested', 'general') if isinstance(last_question, dict) else 'general'
+    last_message = state['messages'][-1]['content'] if state.get('messages') else ""
+    code_snippet = state.get('code_snippet')
+    
+    skeptic = state.get("skeptic_critique", "No critique provided.")
+    pragmatist = state.get("pragmatist_critique", "No critique provided.")
+    bias_auditor = state.get("bias_auditor_critique", "No critique provided.")
+    
+    system_prompt = f"""You are a Principal Hiring Committee Director evaluating a candidate for the role: {state['job_role']}.
+You must synthesize three distinct critiques (Skeptic, Pragmatist, and Bias Auditor) to produce a single objective score and feedback.
+
+CRITIQUES:
+1. SKEPTIC CRITIQUE:
+{skeptic}
+
+2. PRAGMATIST CRITIQUE:
+{pragmatist}
+
+3. BIAS AUDITOR CRITIQUE:
+{bias_auditor}
+
+QUESTION: {q_text}
+SKILL TESTED: {q_skill}
+CANDIDATE RESPONSE: {last_message}
+{f"CODE SUBMITTED: {code_snippet}" if code_snippet else ""}
+
+Compile these reviews into a unified JSON schema. Ensure the final score (0.0-10.0) is a fair reflection of the critiques, giving high weight to conceptual understanding and practical scaling while ignoring linguistic biases.
+
+{parser.get_format_instructions()}"""
+    
+    try:
+        response = await llm.ainvoke([
+            SystemMessage(content="You are a Principal Hiring Committee Director synthesizing debates into clean structured JSON."),
+            HumanMessage(content=system_prompt)
+        ])
+        clean_content = _strip_markdown(response.content)
+        parsed = parser.parse(clean_content)
+        
+        return {
+            "last_evaluation": parsed,
+            "latest_score": parsed['score'],
+            "metrics": parsed['metrics'],
+            "total_responses": state.get('total_responses', 0) + 1,
+            "high_quality_count": state.get('high_quality_count', 0) + (1 if parsed.get('score', 0) >= 6 else 0),
+            "low_quality_count": state.get('low_quality_count', 0),
+            # Clear intermediate critiques
+            "skeptic_critique": None,
+            "pragmatist_critique": None,
+            "bias_auditor_critique": None
+        }
+    except Exception as e:
+        logger.error(f"consensus_synthesizer_node failed: {e}")
+        # Return fallback
+        return {
+            "last_evaluation": {
+                "score": 5.0,
+                "metrics": {"accuracy": 5, "clarity": 5, "depth": 5, "communication": 5},
+                "topic": q_skill,
+                "skill_category": "technical" if state.get("is_coding_mode") else "behavioral",
+                "should_deep_dive": False,
+                "needs_easier": False,
+                "low_effort": False,
+                "skill_identified": q_skill
+            },
+            "latest_score": 5.0,
+            "metrics": {"accuracy": 5, "clarity": 5, "depth": 5, "communication": 5},
+            "total_responses": state.get('total_responses', 0) + 1,
+            # Clear intermediate critiques in fallback
+            "skeptic_critique": None,
+            "pragmatist_critique": None,
+            "bias_auditor_critique": None,
+        }
+
+
+async def code_copilot_node(state: InterviewState) -> Dict[str, Any]:
+    """Next-Gen Agentic: Formulates a friendly interactive hint for coding sandboxes without giving away the solution."""
+    logger.info("Running code_copilot_node...")
+    
+    # Check if a copilot suggestion is actually needed (requested, or idle/compilation issues flagged)
+    is_requested = state.get("copilot_request_pending", False)
+    
+    # Check compile error counts if available (e.g. from supervisor observations)
+    has_compile_errors = False
+    for obs in state.get("supervisor_observations", []):
+        if obs.get("type") == "difficulty_observation" and "compile" in obs.get("message", "").lower():
+            has_compile_errors = True
+            break
+            
+    if not is_requested and not has_compile_errors:
+        return {"copilot_request_pending": False} # Skip suggestion
+        
+    llm = get_code_llm()
+    code = state.get("code_snippet", "")
+    question = state.get("next_question", {})
+    q_text = question.get("question", "") if isinstance(question, dict) else ""
+    
+    prompt = f"""You are a friendly, encouraging AI Pair Programmer assisting a candidate in a coding interview.
+The candidate is working on the challenge:
+{q_text}
+
+Here is their current draft code:
+```python
+{code}
+```
+
+Formulate a helpful, subtle hint. 
+Rules:
+1. DO NOT write the corrected code for them.
+2. Highlight syntax issues, logical bugs, or edge cases they should think about.
+3. Be supportive and conversational (e.g., "I notice you are... have you thought about...").
+4. Keep it under 3 sentences."""
+    
+    try:
+        response = await llm.ainvoke([
+            SystemMessage(content="You are a supportive, encouraging coding peer. Never provide complete solutions, only hints."),
+            HumanMessage(content=prompt)
+        ])
+        
+        suggestion = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "hint": response.content.strip(),
+            "trigger": "manual_request" if is_requested else "compiler_assist"
+        }
+        
+        suggestions = list(state.get("copilot_suggestions", [])) + [suggestion]
+        
+        logger.info(f"Generated Co-Pilot suggestion: {suggestion}")
+        return {
+            "copilot_suggestions": suggestions,
+            "copilot_request_pending": False, # Reset request flag
+            # Push a user-facing message to chat history so they see the hint
+            "messages": [{"role": "assistant", "content": f"🤖 [Co-Pilot Tip]: {suggestion['hint']}"}]
+        }
+    except Exception as e:
+        logger.error(f"Code copilot failed: {e}")
+        return {"copilot_request_pending": False}
+
+
+async def debate_router_node(state: InterviewState) -> Dict[str, Any]:
+    """Pass-through node to split graph execution into parallel debate paths."""
+    logger.info("Passing through debate_router...")
+    return {}
+

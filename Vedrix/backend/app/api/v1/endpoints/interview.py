@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, Request
 import json
@@ -18,9 +18,12 @@ from app.services.interview_engine.graph import interview_graph
 from app.services.interview_engine.nodes import _initialize_skills_to_cover
 from app.services.interview_engine.state import InterviewState
 from app.services.voice_service import voice_service
+from app.services.supervisor_service import supervisor_registry, SupervisorObservation
+import time as time_module
 import base64
 from app.services.evaluation_service import evaluation_service
 from app.services.code_execution_service import code_execution_service
+from app.services.rag_service import rag_service
 from app.services.email_service import (
     send_interview_started_email,
     send_report_to_candidate,
@@ -29,7 +32,9 @@ from app.services.email_service import (
 from app.models.interview import InterviewSession, DriveInviteToken, JobDrive
 from app.models.profile import HRProfile, StudentProfile
 from app.models.user import User
-from app.db.session import async_session
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.db.session import async_session, get_session
+from app.models.trace_entry import TraceEntryRead
 from app.api import deps
 
 logger = logging.getLogger(__name__)
@@ -39,13 +44,30 @@ router = APIRouter()
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}
+        self.hr_connections: Dict[str, List[WebSocket]] = {}
 
-    async def connect(self, websocket: WebSocket, session_id: str):
+    async def connect(self, websocket: WebSocket, session_id: str, is_hr: bool = False):
         await websocket.accept()
-        self.active_connections[session_id] = websocket
+        if is_hr:
+            if session_id not in self.hr_connections:
+                self.hr_connections[session_id] = []
+            self.hr_connections[session_id].append(websocket)
+        else:
+            self.active_connections[session_id] = websocket
 
-    def disconnect(self, session_id: str):
-        self.active_connections.pop(session_id, None)
+    def disconnect(self, session_id: str, websocket: Optional[WebSocket] = None, is_hr: bool = False):
+        if is_hr:
+            if session_id in self.hr_connections:
+                if websocket in self.hr_connections[session_id]:
+                    self.hr_connections[session_id].remove(websocket)
+                if not self.hr_connections[session_id]:
+                    self.hr_connections.pop(session_id, None)
+        else:
+            if websocket:
+                if self.active_connections.get(session_id) == websocket:
+                    self.active_connections.pop(session_id, None)
+            else:
+                self.active_connections.pop(session_id, None)
 
     async def send_json(self, message: Dict[str, Any], session_id: str):
         ws = self.active_connections.get(session_id)
@@ -53,7 +75,17 @@ class ConnectionManager:
             try:
                 await ws.send_json(message)
             except Exception:
-                self.disconnect(session_id)
+                self.disconnect(session_id, websocket=ws)
+        
+        await self.broadcast_to_hr(message, session_id)
+
+    async def broadcast_to_hr(self, message: Dict[str, Any], session_id: str):
+        hr_list = self.hr_connections.get(session_id, [])
+        for ws in list(hr_list):
+            try:
+                await ws.send_json(message)
+            except Exception:
+                self.disconnect(session_id, websocket=ws, is_hr=True)
 
 
 manager = ConnectionManager()
@@ -338,6 +370,34 @@ async def websocket_endpoint(
         # Initialize skills to cover based on resume and job role
         skills_to_cover = _initialize_skills_to_cover(resume_text, job_role)
 
+        # Register session with AI Supervisor
+        supervisor_registry.register(str(db_session_id or session_id), control_mode="suggest")
+
+        # Background index candidate context in ChromaDB
+        if db_session_id:
+            try:
+                # Resolve github url for this user if student profile exists
+                async def _index_task():
+                    g_url = None
+                    try:
+                        async with async_session() as db:
+                            uid = candidate_id if 'candidate_id' in locals() else user_id if 'user_id' in locals() else None
+                            if uid:
+                                profile_res = await db.execute(select(StudentProfile).where(StudentProfile.user_id == uid))
+                                profile = profile_res.scalars().first()
+                                if profile and profile.github_url:
+                                    g_url = profile.github_url
+                    except Exception as e:
+                        logger.warning(f"Failed to query student profile: {e}")
+                    
+                    await rag_service.index_resume(str(db_session_id), resume_text)
+                    if g_url:
+                        await rag_service.index_github_profile(str(db_session_id), g_url)
+                        
+                asyncio.create_task(_index_task())
+            except Exception as e:
+                logger.warning(f"Failed to kick off background RAG indexing: {e}")
+
         initial_state: InterviewState = {
             "messages": [],
             "resume_text": resume_text,
@@ -371,6 +431,27 @@ async def websocket_endpoint(
             "is_coding_mode": False,
             "follow_up_requested": False,
             "previous_topic": None,
+            # ── AI Supervisor fields ─────────────────────────────────────
+            "supervisor_session_id": str(db_session_id or session_id),
+            "supervisor_mode": "suggest",                    # suggest by default
+            "supervisor_observations": [],
+            "supervisor_last_action": None,
+            "supervisor_paused": False,
+            "session_start_epoch": time_module.time(),
+            "question_start_epoch": time_module.time(),
+            "per_question_times": [],
+            "score_history": [],
+            "difficulty_history": ["medium"],
+            # ── Next-Gen Agentic Fields ──────────────────────────────────
+            "copilot_suggestions": [],
+            "copilot_request_pending": False,
+            "hr_whisper_instructions": None,
+            "empathy_metrics": {"stress_level": 0.0, "hesitation_rating": 0.0, "typing_speed": 0.0},
+            "rag_context": None,
+            "debate_rounds": None,
+            "skeptic_critique": None,
+            "pragmatist_critique": None,
+            "bias_auditor_critique": None,
         }
 
         # ── 3. Start Interview ────────────────────────────────────────────
@@ -430,14 +511,29 @@ async def websocket_endpoint(
 
             user_answer = ""
             user_code = ""
+            typing_duration = None
 
             if "text" in message:
                 try:
                     payload = json.loads(message["text"])
                     if payload.get("type") == "answer":
                         user_answer = payload.get("data", "")
+                        typing_duration = payload.get("duration_seconds")
                     elif payload.get("type") == "code":
                         user_code = payload.get("data", "")
+                    elif payload.get("type") == "proctor_event":
+                        event_type = payload.get("event_type")
+                        event_data = payload.get("data", {})
+                        from app.services.proctor_service import proctor_service
+                        if db_session_id:
+                            async with async_session() as db:
+                                await proctor_service.record_violation(
+                                    session_id=db_session_id,
+                                    violation_type=event_type,
+                                    payload=event_data,
+                                    db=db
+                                )
+                        continue
                     # ── Phase 1A: HR closes interview smoothly ──────────────────
                     elif payload.get("type") == "hr_close_interview":
                         # HR triggered smooth closing — transition to closing phase
@@ -455,6 +551,96 @@ async def websocket_endpoint(
                         })
                         await manager.send_json({"type": "status", "data": "Interview closing..."}, session_id)
                         continue  # Skip normal processing, next loop will see interview_complete
+
+                    # ── Phase 1B: AI Supervisor Control Messages ──────────────
+                    elif payload.get("type") == "supervisor_control":
+                        control = payload.get("data", {})
+                        action = control.get("action", "")
+
+                        if action == "override_difficulty":
+                            new_diff = control.get("difficulty", "medium")
+                            await interview_graph.aupdate_state(config, {
+                                "difficulty": new_diff,
+                                "supervisor_observations": [{
+                                    "type": "manual_override",
+                                    "subtype": "difficulty_overridden",
+                                    "severity": "info",
+                                    "message": f"Difficulty manually set to {new_diff}",
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                }],
+                            })
+                            await manager.send_json({"type": "status", "data": f"Difficulty set to {new_diff}"}, session_id)
+
+                        elif action == "override_phase":
+                            new_phase = control.get("phase", "technical")
+                            await interview_graph.aupdate_state(config, {
+                                "current_phase": new_phase,
+                                "phase_transition": True,
+                                "previous_phase": None,
+                                "supervisor_observations": [{
+                                    "type": "manual_override",
+                                    "subtype": "phase_overridden",
+                                    "severity": "info",
+                                    "message": f"Phase manually set to {new_phase}",
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                }],
+                            })
+                            await manager.send_json({"type": "status", "data": f"Phase set to {new_phase}"}, session_id)
+
+                        elif action == "set_control_mode":
+                            mode = control.get("mode", "suggest")
+                            await interview_graph.aupdate_state(config, {
+                                "supervisor_mode": mode,
+                                "supervisor_observations": [{
+                                    "type": "control_mode_change",
+                                    "severity": "info",
+                                    "message": f"Supervisor mode set to {mode}",
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                }],
+                            })
+                            supervisor_registry.set_control_mode(str(db_session_id or session_id), mode)
+                            await manager.send_json({"type": "supervisor_mode", "mode": mode}, session_id)
+                            await manager.send_json({"type": "status", "data": f"Supervisor mode: {mode}"}, session_id)
+
+                        elif action == "force_close":
+                            await interview_graph.aupdate_state(config, {
+                                "interview_complete": True,
+                                "completion_reason": "Supervisor/admin force-closed the interview",
+                                "advisor_action_taken": True,
+                            })
+                            supervisor_registry.record_observation(
+                                str(db_session_id or session_id),
+                                SupervisorObservation(
+                                    observation_type="force_close",
+                                    severity="critical",
+                                    message="Supervisor force-closed the interview",
+                                )
+                            )
+                            await manager.send_json({"type": "status", "data": "Interview force-closed by supervisor."}, session_id)
+
+                        continue
+
+                    elif payload.get("type") == "hr_whisper":
+                        whisper_text = payload.get("data", "")
+                        await interview_graph.aupdate_state(config, {"hr_whisper_instructions": whisper_text})
+                        await manager.send_json({"type": "status", "data": "Whisper queued for next turn."}, session_id)
+                        continue
+
+                    elif payload.get("type") == "copilot_request":
+                        current_code = payload.get("data", "")
+                        await manager.send_json({"type": "status", "data": "Co-Pilot: Analyzing your workspace..."}, session_id)
+                        await interview_graph.aupdate_state(config, {
+                            "copilot_request_pending": True,
+                            "code_snippet": current_code
+                        })
+                        async for chunk in interview_graph.astream(None, config=config, stream_mode="updates"):
+                            for node_name, output in chunk.items():
+                                if node_name == "code_copilot" and output.get("copilot_suggestions"):
+                                    await manager.send_json({
+                                        "type": "copilot_update",
+                                        "data": output["copilot_suggestions"][-1]
+                                    }, session_id)
+                        continue
                 except (json.JSONDecodeError, ValueError) as e:
                     await manager.send_json({"type": "error", "data": "Invalid message format. Send valid JSON."}, session_id)
                     logger.warning(f"Invalid JSON from session {session_id}: {e}")
@@ -470,10 +656,44 @@ async def websocket_endpoint(
 
             if user_answer or user_code:
                 try:
+                    # Run proctoring typing cadence check if we have a text answer
+                    if user_answer and db_session_id:
+                        if not typing_duration:
+                            try:
+                                state_vals = await interview_graph.aget_state(config)
+                                q_start = state_vals.values.get("question_start_epoch")
+                                if q_start:
+                                    typing_duration = time.time() - q_start
+                            except Exception as state_err:
+                                logger.warning(f"Failed to fetch state for typing cadence: {state_err}")
+                        
+                        if typing_duration and typing_duration > 0:
+                            from app.services.proctor_service import proctor_service
+                            async with async_session() as db:
+                                await proctor_service.analyze_typing_cadence(
+                                    session_id=db_session_id,
+                                    text=user_answer,
+                                    duration_seconds=typing_duration,
+                                    db=db
+                                )
+
+                    # Query ChromaDB context asynchronously
+                    rag_context = ""
+                    if db_session_id:
+                        try:
+                            query_str = user_answer if user_answer else user_code
+                            rag_context = await asyncio.to_thread(
+                                rag_service.query_context,
+                                session_id=str(db_session_id),
+                                query=query_str[:300]
+                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to query RAG context: {e}")
+
                     update = (
-                        {"code_snippet": user_code, "messages": [{"role": "user", "content": "[Code Submitted]"}]}
+                        {"code_snippet": user_code, "messages": [{"role": "user", "content": "[Code Submitted]"}, {"role": "system", "content": "[Evaluation debate in progress...]"}], "rag_context": rag_context}
                         if user_code
-                        else {"messages": [{"role": "user", "content": user_answer}]}
+                        else {"messages": [{"role": "user", "content": user_answer}], "rag_context": rag_context}
                     )
 
                     # Execute code via Judge0 before AI evaluation
@@ -496,15 +716,26 @@ async def websocket_endpoint(
                             f"Output: {exec_result['stdout'][:500]}\n"
                             f"Errors: {exec_result['stderr'][:300]}"
                         )
-                        update = {"code_snippet": user_code, "messages": [{"role": "user", "content": enriched_content}]}
+                        update = {"code_snippet": user_code, "messages": [{"role": "user", "content": enriched_content}], "rag_context": rag_context}
                     await interview_graph.aupdate_state(config, update)
 
                     async for chunk in interview_graph.astream(None, config=config, stream_mode="updates"):
                         for node_name, output in chunk.items():
-                            if node_name in ("evaluate_answer", "evaluate_code"):
+                            if node_name in ("evaluate_answer", "evaluate_code", "consensus_synthesizer"):
                                 await manager.send_json({"type": "status", "data": "AI: Evaluating response..."}, session_id)
                                 if output.get("metrics"):
                                     await manager.send_json({"type": "metrics_update", "data": output["metrics"]}, session_id)
+                            elif node_name == "supervisor" and output.get("supervisor_observations"):
+                                # Forward supervisor observations to the client
+                                obs = output.get("_supervisor_summary") or {}
+                                await manager.send_json({
+                                    "type": "supervisor_update",
+                                    "data": {
+                                        "observations": output["supervisor_observations"],
+                                        "summary": obs,
+                                        "last_action": output.get("supervisor_last_action"),
+                                    }
+                                }, session_id)
                             elif node_name == "generate_question" and output.get("next_question"):
                                 q = output["next_question"]
                                 all_questions.append(q)
@@ -530,6 +761,19 @@ async def websocket_endpoint(
                                 await manager.send_json(response_data, session_id)
 
                     final_state = await interview_graph.aget_state(config)
+                    if final_state and final_state.values:
+                        await manager.broadcast_to_hr({
+                            "type": "state_sync",
+                            "data": {
+                                "messages": final_state.values.get("messages", []),
+                                "empathy_metrics": final_state.values.get("empathy_metrics", {}),
+                                "copilot_suggestions": final_state.values.get("copilot_suggestions", []),
+                                "debate_rounds": final_state.values.get("debate_rounds", {}),
+                                "topic_scores": final_state.values.get("topic_scores", {}),
+                                "current_question": final_state.values.get("messages", [])[-1]["content"] if final_state.values.get("messages") else "",
+                                "supervisor_mode": final_state.values.get("supervisor_mode", "suggest"),
+                            }
+                        }, session_id)
 
                     # ── Phase 1A: Advisor Notification ──────────────────────────────
                     # If advisor suggests closing, notify HR and persist to DB
@@ -666,8 +910,76 @@ async def send_hr_instruction(
     current_hr: User = Depends(deps.get_current_hr),  # #14: auth required
 ):
     config = {"configurable": {"thread_id": session_id}}
-    await interview_graph.aupdate_state(config, {"hr_instructions": instruction.get("text", "")})
+    await interview_graph.aupdate_state(config, {
+        "hr_instructions": instruction.get("text", ""),
+        "hr_whisper_instructions": instruction.get("text", "")
+    })
     return {"status": "ok", "message": "Instruction queued for next AI turn."}
+
+
+# ── Observability: Session Explanation ────────────────────────────────────────
+
+from app.services.observability_service import ObservabilityService
+
+
+@router.get("/{session_id}/explanation", response_model=List[TraceEntryRead])
+async def get_session_explanation(
+    session_id: int,
+    score_type: Optional[str] = None,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    """
+    Retrieve human-readable Trace_Entries explaining a score or decision for a session.
+
+    Accessible by HR users (who manage the drive), Admins, and the Candidate who owns the session.
+    Sensitive fields (raw_input, raw_output) are redacted for non-Admin callers.
+
+    Query params:
+        score_type: Optional action_type filter (e.g. "bias_check", "evaluation").
+                    If omitted, returns all trace entries for the session.
+
+    Requirements: 10.7
+    """
+    # 1. Fetch the interview session to verify access permissions
+    stmt = select(InterviewSession).where(InterviewSession.id == session_id)
+    res = await db.execute(stmt)
+    session_record = res.scalars().first()
+    if not session_record:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+
+    # 2. Role-Based Access Control
+    if current_user.user_type == "admin":
+        pass  # Admin has full access
+    elif current_user.user_type == "student":
+        # Candidate can only see their own sessions
+        if session_record.candidate_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Access denied. You do not own this session.")
+    elif current_user.user_type == "hr":
+        # HR can only see sessions associated with a drive they manage
+        drive_res = await db.execute(
+            select(JobDrive).join(HRProfile).where(
+                JobDrive.id == session_record.job_drive_id,
+                HRProfile.user_id == current_user.id
+            )
+        )
+        if not drive_res.scalars().first():
+            raise HTTPException(status_code=403, detail="Access denied. You do not manage this session.")
+    else:
+        raise HTTPException(status_code=403, detail="Role not authorized to access explanations.")
+
+    # 3. Query the observability service
+    obs_service = ObservabilityService(db)
+
+    if score_type:
+        entries = await obs_service.get_explanation(
+            session_id=session_id,
+            score_type=score_type,
+        )
+    else:
+        entries = await obs_service.query(session_id=session_id, requester_role="hr")
+
+    return entries
 
 
 # ── Video Interview WebRTC Signaling ─────────────────────────────────────────
@@ -755,3 +1067,119 @@ async def video_websocket(
     finally:
         video_manager.leave_room(room_id, role)
         await video_manager.broadcast(room_id, {"type": "peer_left", "role": role})
+
+
+@router.websocket("/ws/{session_id}/hr")
+async def hr_websocket_endpoint(
+    websocket: WebSocket,
+    session_id: str,
+    token: Optional[str] = None,
+):
+    """Real-time monitoring and takeover endpoint for HR."""
+    cookie_token = websocket.cookies.get("access_token")
+    auth_token = token or cookie_token
+
+    if not auth_token:
+        await websocket.accept()
+        await websocket.send_json({"type": "error", "data": "Authentication token missing."})
+        await websocket.close()
+        return
+
+    user_id = _verify_ws_token(auth_token)
+    if not user_id:
+        await websocket.accept()
+        await websocket.send_json({"type": "error", "data": "Invalid token."})
+        await websocket.close()
+        return
+
+    async with async_session() as db:
+        user_res = await db.execute(select(User).where(User.id == user_id))
+        user = user_res.scalars().first()
+        if not user or user.user_type not in ("hr", "admin"):
+            await websocket.accept()
+            await websocket.send_json({"type": "error", "data": "Access denied. HR/Admin role required."})
+            await websocket.close()
+            return
+
+    await manager.connect(websocket, session_id, is_hr=True)
+    logger.info(f"HR user {user.email} connected to session {session_id}")
+
+    config = {"configurable": {"thread_id": session_id}}
+
+    try:
+        # Send initial state sync to HR observer
+        try:
+            state = await interview_graph.aget_state(config)
+            if state and state.values:
+                await websocket.send_json({
+                    "type": "state_sync",
+                    "data": {
+                        "messages": state.values.get("messages", []),
+                        "empathy_metrics": state.values.get("empathy_metrics", {}),
+                        "copilot_suggestions": state.values.get("copilot_suggestions", []),
+                        "debate_rounds": state.values.get("debate_rounds", {}),
+                        "topic_scores": state.values.get("topic_scores", {}),
+                        "current_question": state.values.get("messages", [])[-1]["content"] if state.values.get("messages") else "",
+                        "supervisor_mode": state.values.get("supervisor_mode", "suggest"),
+                    }
+                })
+        except Exception as e:
+            logger.warning(f"Failed to sync state for HR: {e}")
+
+        # Listen for whisper / control updates from HR
+        while True:
+            data = await websocket.receive_text()
+            try:
+                payload = json.loads(data)
+                if payload.get("type") == "hr_whisper":
+                    whisper_text = payload.get("data", "")
+                    await interview_graph.aupdate_state(config, {
+                        "hr_instructions": whisper_text,
+                        "hr_whisper_instructions": whisper_text
+                    })
+                    await websocket.send_json({"type": "status", "data": "Whisper queued for next turn."})
+                elif payload.get("type") == "supervisor_control":
+                    action = payload.get("action")
+                    if action == "set_mode":
+                        mode = payload.get("mode")
+                        await interview_graph.aupdate_state(config, {
+                            "supervisor_mode": mode,
+                            "supervisor_observations": [{
+                                "type": "control_mode_change",
+                                "severity": "info",
+                                "message": f"HR set mode to {mode}",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            }]
+                        })
+                        supervisor_registry.set_control_mode(session_id, mode)
+                        await websocket.send_json({"type": "status", "data": f"Control mode set to: {mode}"})
+                        await manager.send_json({"type": "supervisor_mode", "mode": mode}, session_id)
+                        await manager.send_json({"type": "status", "data": f"Supervisor mode: {mode}"}, session_id)
+                    elif action == "force_close":
+                        await interview_graph.aupdate_state(config, {
+                            "interview_complete": True,
+                            "completion_reason": "HR force-closed the interview",
+                            "advisor_action_taken": True,
+                        })
+                        supervisor_registry.record_observation(
+                            session_id,
+                            SupervisorObservation(
+                                observation_type="force_close",
+                                severity="critical",
+                                message="HR force-closed the interview",
+                            )
+                        )
+                        await websocket.send_json({"type": "status", "data": "Interview force-closed."})
+                        await manager.send_json({"type": "status", "data": "Interview force-closed by supervisor."}, session_id)
+            except json.JSONDecodeError:
+                await websocket.send_json({"type": "error", "data": "Invalid JSON payload."})
+            except Exception as e:
+                logger.warning(f"Error handling HR payload: {e}")
+                await websocket.send_json({"type": "error", "data": str(e)})
+
+    except WebSocketDisconnect:
+        manager.disconnect(session_id, websocket=websocket, is_hr=True)
+        logger.info(f"HR user {user.email} disconnected from session {session_id}")
+    except Exception as e:
+        logger.error(f"Error in HR WebSocket connection: {e}")
+        manager.disconnect(session_id, websocket=websocket, is_hr=True)
