@@ -95,5 +95,5 @@ pytest-asyncio>=0.20.2
 
 # Vector DB & Embeddings
 chromadb==0.4.24
-sentence-transformers
+sentence-transformers==3.3.1
 

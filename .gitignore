@@ -150,6 +150,11 @@ Vedrix/frontend/dist/
 *.sqlite3
 *.db
 
+# SQLite database files (explicit)
+vedrix.db
+Vedrix/backend/vedrix.db
+test.db
+
 
 # Uploaded files
 static/uploads/
