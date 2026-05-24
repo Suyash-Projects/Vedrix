@@ -4,10 +4,11 @@ import {
   RefreshCcw, FileText, User, Lock, Settings, Briefcase,
   Database, Activity, BarChart3, AlertTriangle, Eye,
   Shield, Fingerprint, Sliders, Mail, Key, CheckCircle, XCircle,
-  Brain
+  Brain, Server, Cpu, Wifi, Clock, Zap, ExternalLink, Check
 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import apiClient from '../services/api';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -336,7 +337,13 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen bg-[#020617] text-white">
-      <div className="max-w-7xl mx-auto px-8 py-10">
+      {/* Ambient glow */}
+      <div className="fixed top-0 right-0 w-[40%] h-[40%] bg-purple-600/5 blur-[150px] rounded-full pointer-events-none" />
+      <div className="fixed bottom-0 left-0 w-[30%] h-[30%] bg-indigo-600/3 blur-[150px] rounded-full pointer-events-none" />
+      {/* Subtle grid pattern */}
+      <div className="fixed inset-0 bg-grid-pattern pointer-events-none opacity-30" />
+
+      <div className="max-w-7xl mx-auto px-8 py-10 relative z-10">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
@@ -430,12 +437,23 @@ const AdminDashboard = () => {
 
         {/* OVERVIEW TAB */}
         {activeTab === 'overview' && (
-          <div className="space-y-8">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-8"
+          >
             <div>
               <h2 className="text-xl font-bold mb-4 flex items-center"><BarChart3 className="mr-2 text-purple-400" size={20} /> Platform Statistics</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {statsCards.map((s) => (
-                  <div key={s.label} className="bg-white/2 border border-white/5 p-6 rounded-2xl flex items-center space-x-4 hover:bg-white/5 transition">
+                {statsCards.map((s, i) => (
+                  <motion.div
+                    key={s.label}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="glass-card p-6 rounded-2xl flex items-center space-x-4"
+                  >
                     <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center">
                       <s.icon className={s.color} size={24} />
                     </div>
@@ -443,28 +461,131 @@ const AdminDashboard = () => {
                       <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{s.label}</p>
                       <p className="text-2xl font-bold text-white leading-tight">{s.value ?? 0}</p>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             </div>
 
+            {/* System Health Indicators */}
             <div>
               <h2 className="text-xl font-bold mb-4 flex items-center"><Server className="mr-2 text-purple-400" size={20} /> System Health & Demographics</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {systemCards.map((s) => (
-                  <div key={s.label} className="bg-white/2 border border-white/5 p-6 rounded-2xl flex items-center space-x-4">
-                    <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center">
+                {systemCards.map((s, i) => (
+                  <motion.div
+                    key={s.label}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.05 + 0.2 }}
+                    className="glass-card p-6 rounded-2xl flex items-center space-x-4"
+                  >
+                    <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center relative">
                       <s.icon className={s.color} size={24} />
+                      {s.label === 'Database Health' && (
+                        <span className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-[#020617] ${s.value === 'Healthy' ? 'bg-emerald-400 pulse-glow' : 'bg-red-400'}`} />
+                      )}
                     </div>
                     <div>
                       <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{s.label}</p>
                       <p className={`text-xl font-bold ${s.label === 'Database Health' && s.value === 'Healthy' ? 'text-emerald-400' : 'text-white'} leading-tight`}>{s.value ?? 0}</p>
                     </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+
+            {/* Agent Status Grid */}
+            <div>
+              <h2 className="text-xl font-bold mb-4 flex items-center"><Brain className="mr-2 text-purple-400" size={20} /> AI Agent Status</h2>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                {[
+                  { name: 'Interviewer', status: 'active' },
+                  { name: 'Evaluator', status: 'active' },
+                  { name: 'Skeptic', status: 'active' },
+                  { name: 'Pragmatist', status: 'active' },
+                  { name: 'Bias Auditor', status: 'active' },
+                  { name: 'Empathy', status: 'active' },
+                  { name: 'Advisor', status: 'active' },
+                  { name: 'Enrichment', status: 'idle' },
+                  { name: 'Matching', status: 'idle' },
+                  { name: 'Coaching', status: 'idle' },
+                ].map((agent) => (
+                  <div key={agent.name} className="glass-card rounded-xl p-3 flex items-center space-x-2">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${agent.status === 'active' ? 'bg-emerald-400 pulse-glow' : agent.status === 'idle' ? 'bg-amber-400' : 'bg-red-400'}`} />
+                    <span className="text-xs font-bold text-slate-300 truncate">{agent.name}</span>
                   </div>
                 ))}
               </div>
             </div>
-          </div>
+
+            {/* Quick Links Grid */}
+            <div>
+              <h2 className="text-xl font-bold mb-4 flex items-center"><Zap className="mr-2 text-purple-400" size={20} /> Quick Links</h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { label: 'System Health', to: '/admin/health', icon: Activity, color: 'text-emerald-400' },
+                  { label: 'Audit Logs', to: '/admin/audit-logs', icon: FileText, color: 'text-blue-400' },
+                  { label: 'AI Supervisor', to: '/admin/supervisor', icon: Brain, color: 'text-purple-400' },
+                  { label: 'QA Monitor', to: '/admin/qa-monitor', icon: Eye, color: 'text-amber-400' },
+                  { label: 'Audit Trail', to: '/admin/audit-trail', icon: Shield, color: 'text-indigo-400' },
+                  { label: 'Team Analytics', to: '/analytics/team', icon: BarChart3, color: 'text-cyan-400' },
+                  { label: 'System Config', to: '/admin/config', icon: Settings, color: 'text-slate-400' },
+                  { label: 'Manage Users', to: '#', icon: Users, color: 'text-violet-400', action: () => setActiveTab('users') },
+                ].map(({ label, to, icon: Icon, color, action }) => (
+                  action ? (
+                    <button key={label} onClick={action} className="glass-card rounded-xl p-4 flex items-center space-x-3 hover:bg-white/[0.06] transition-all text-left">
+                      <Icon size={18} className={color} />
+                      <span className="text-sm font-bold text-slate-300">{label}</span>
+                    </button>
+                  ) : (
+                    <Link key={label} to={to} className="glass-card rounded-xl p-4 flex items-center space-x-3 hover:bg-white/[0.06] transition-all">
+                      <Icon size={18} className={color} />
+                      <span className="text-sm font-bold text-slate-300">{label}</span>
+                      <ExternalLink size={12} className="text-slate-600 ml-auto" />
+                    </Link>
+                  )
+                ))}
+              </div>
+            </div>
+
+            {/* Recent Interviews Preview */}
+            {interviews.length > 0 && (
+              <div>
+                <h2 className="text-xl font-bold mb-4 flex items-center"><Clock className="mr-2 text-purple-400" size={20} /> Recent Interviews</h2>
+                <div className="glass-card rounded-2xl overflow-hidden">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/5">
+                        <th className="px-6 py-3">Candidate</th>
+                        <th className="px-6 py-3">Role</th>
+                        <th className="px-6 py-3 text-center">Score</th>
+                        <th className="px-6 py-3">Status</th>
+                        <th className="px-6 py-3">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {interviews.slice(0, 5).map(interview => (
+                        <tr key={interview.id} className="hover:bg-white/[0.03] transition-colors">
+                          <td className="px-6 py-3 text-sm text-white font-medium">{interview.candidate_name || interview.candidate_email || `#${interview.id}`}</td>
+                          <td className="px-6 py-3 text-sm text-slate-400">{interview.job_role || '—'}</td>
+                          <td className="px-6 py-3 text-center">
+                            <span className={`text-sm font-black ${scoreColor(interview.overall_score || 0)}`}>
+                              {interview.overall_score ? interview.overall_score.toFixed(1) : '—'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-3">
+                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                              interview.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                            }`}>{interview.status}</span>
+                          </td>
+                          <td className="px-6 py-3 text-xs text-slate-500">{new Date(interview.created_at).toLocaleDateString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </motion.div>
         )}
 
         {/* USERS TAB */}

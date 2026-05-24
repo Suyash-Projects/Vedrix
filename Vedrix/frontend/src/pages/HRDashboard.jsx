@@ -1,17 +1,50 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import {
   Briefcase, Plus, Link as LinkIcon, Activity,
   ChevronRight, Copy, CheckCircle2, Clock, LayoutDashboard,
   LogOut, Settings, MoreVertical, X, Loader2, Mail, Send,
   ChevronDown, Radio, MessageSquareText, Home, Download,
-  Play, Target, AlertTriangle, Brain
+  Play, Target, AlertTriangle, Brain, TrendingUp, Users, Eye, Layers
 } from 'lucide-react';
 import apiClient from '../services/api';
 import useAuthStore from '../store/useAuthStore';
 import SkillMatrixTab from '../components/SkillMatrixTab';
 import AdvisorBadge from '../components/AdvisorBadge';
+
+/* ── MINI SPARKLINE COMPONENT ── */
+const MiniSparkline = ({ data, color = '#7c3aed' }) => (
+  <ResponsiveContainer width="100%" height={30}>
+    <LineChart data={data}>
+      <Line type="monotone" dataKey="v" stroke={color} strokeWidth={1.5} dot={false} />
+    </LineChart>
+  </ResponsiveContainer>
+);
+
+/* ── ANIMATED STAT COUNTER ── */
+const AnimatedStat = ({ value, suffix = '' }) => {
+  const [display, setDisplay] = useState(0);
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current || value === null || value === undefined) return;
+    started.current = true;
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(num)) { setDisplay(value); return; }
+    const duration = 1200;
+    const startTime = performance.now();
+    const animate = (now) => {
+      const progress = Math.min((now - startTime) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.round(eased * num * 10) / 10);
+      if (progress < 1) requestAnimationFrame(animate);
+    };
+    requestAnimationFrame(animate);
+  }, [value]);
+  if (value === null || value === undefined) return <>—</>;
+  return <>{typeof display === 'number' ? (Number.isInteger(value) ? Math.round(display) : display.toFixed(1)) : value}{suffix}</>;
+};
 
 /* ── CREATE/EDIT DRIVE MODAL ── */
 const DriveModal = ({ onClose, onSaved, drive = null }) => {
@@ -1402,10 +1435,58 @@ const HRDashboard = () => {
 
         {loading && !drives.length ? (
           <div className="flex justify-center items-center h-64">
-            <Loader2 className="animate-spin text-purple-500" size={48} />
+            <div className="space-y-3 w-full max-w-2xl">
+              {[1,2,3].map(i => <div key={i} className="skeleton h-20 rounded-2xl" />)}
+            </div>
           </div>
         ) : activeTab === 'Active Drives' ? (
-          drives.length === 0 ? (
+          <>
+            {/* Stats Cards with Sparklines */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+              {[
+                { label: 'Total Drives', value: drives.length, icon: Briefcase, color: 'text-purple-400', sparkColor: '#7c3aed', data: [3,5,4,7,6,8,drives.length].map((v,i) => ({v})) },
+                { label: 'Active Drives', value: drives.filter(d => d.is_active).length, icon: Layers, color: 'text-emerald-400', sparkColor: '#34d399', data: [1,2,3,2,4,3,drives.filter(d => d.is_active).length].map((v,i) => ({v})) },
+                { label: 'Total Candidates', value: drives.reduce((sum, d) => sum + (d.participant_count || 0), 0), icon: Users, color: 'text-blue-400', sparkColor: '#60a5fa', data: [10,15,20,18,25,30,drives.reduce((sum, d) => sum + (d.participant_count || 0), 0)].map((v,i) => ({v})) },
+                { label: 'Live Sessions', value: liveSessions.length, icon: Radio, color: 'text-red-400', sparkColor: '#f87171', data: [0,1,2,1,0,1,liveSessions.length].map((v,i) => ({v})) },
+              ].map(stat => (
+                <div key={stat.label} className="glass-card rounded-2xl p-5 relative overflow-hidden">
+                  <div className="flex items-center justify-between mb-2">
+                    <stat.icon size={16} className={stat.color} />
+                    <div className="w-16"><MiniSparkline data={stat.data} color={stat.sparkColor} /></div>
+                  </div>
+                  <p className="text-2xl font-black text-white"><AnimatedStat value={stat.value} /></p>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">{stat.label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Recent Interviews Quick View */}
+            {interviews.length > 0 && (
+              <div className="glass-card rounded-3xl p-6 mb-10">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
+                    <TrendingUp size={14} className="text-purple-400" /> Top Candidates
+                  </h3>
+                  <button onClick={() => setActiveTab('Evaluation Reports')} className="text-xs text-purple-400 font-bold hover:text-purple-300 transition-colors">View All →</button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {interviews.slice(0, 3).map(interview => (
+                    <div key={interview.id} className="bg-white/5 border border-white/5 rounded-2xl p-4 flex items-center space-x-3 hover:bg-white/10 transition-all cursor-pointer" onClick={() => handleViewReport(interview.id)}>
+                      <div className="w-10 h-10 bg-purple-600/20 rounded-xl flex items-center justify-center text-purple-400 font-black text-sm">
+                        {interview.overall_score ? interview.overall_score.toFixed(1) : '—'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-bold truncate">{interview.candidate_name || interview.candidate_email || `#${interview.id}`}</p>
+                        <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{interview.job_role || 'Unknown'}</p>
+                      </div>
+                      <ChevronRight size={14} className="text-slate-600" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          {drives.length === 0 ? (
             <div className="bg-white/2 border-2 border-dashed border-white/10 rounded-[2.5rem] p-20 text-center space-y-6">
               <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto text-slate-600">
                 <Briefcase size={40} />
@@ -1496,7 +1577,8 @@ const HRDashboard = () => {
                 </motion.div>
               ))}
             </div>
-          )
+          )}
+          </>
         ) : activeTab === 'Live Monitoring' ? (
           <div className="bg-white/2 border border-white/5 rounded-[2.5rem] overflow-hidden">
             <div className="px-10 py-6 border-b border-white/5 bg-white/2">
