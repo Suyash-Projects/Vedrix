@@ -52,7 +52,13 @@ async def db_session(test_session_factory):
     async with test_session_factory() as session:
         yield session
         await session.rollback()
-        # Clean up test data after each test
+        # Clean up test data after each test (order matters for FK constraints)
+        await session.execute(__import__('sqlalchemy').text("DELETE FROM trace_entries"))
+        await session.execute(__import__('sqlalchemy').text("DELETE FROM match_result"))
+        await session.execute(__import__('sqlalchemy').text("DELETE FROM coaching_plan"))
+        await session.execute(__import__('sqlalchemy').text("DELETE FROM violation_record"))
+        await session.execute(__import__('sqlalchemy').text("DELETE FROM candidate_workflow"))
+        await session.execute(__import__('sqlalchemy').text("DELETE FROM longitudinal_profile"))
         await session.execute(__import__('sqlalchemy').text("DELETE FROM interview_session"))
         await session.execute(__import__('sqlalchemy').text("DELETE FROM drive_invite_token"))
         await session.execute(__import__('sqlalchemy').text("DELETE FROM job_drive"))
