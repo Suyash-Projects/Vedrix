@@ -8,10 +8,12 @@ import {
   Users, TrendingUp, Award, Clock, Target, Download, ChevronLeft,
   Briefcase, Activity, Loader2
 } from 'lucide-react';
+import useToastStore from '../store/useToastStore';
 import apiClient from '../services/api';
 
 const TeamAnalytics = () => {
   const navigate = useNavigate();
+  const addToast = useToastStore((s) => s.addToast);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -43,7 +45,7 @@ const TeamAnalytics = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch {
-      alert('Export failed.');
+      addToast({ type: 'error', title: 'Export failed', message: 'Could not export the analytics CSV.' });
     } finally {
       setExporting(false);
     }

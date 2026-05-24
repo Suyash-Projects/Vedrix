@@ -46,10 +46,12 @@ const TwitterIcon = ({ size = 18 }) => (
   </svg>
 );
 import apiClient from '../services/api';
+import useToastStore from '../store/useToastStore';
 
 const InterviewReport = () => {
   const { sessionId } = useParams();
   const navigate = useNavigate();
+  const addToast = useToastStore((s) => s.addToast);
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -75,7 +77,7 @@ const InterviewReport = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch {
-      alert('Export failed. Ensure you have HR permissions to export this report.');
+      addToast({ type: 'error', title: 'Export failed', message: 'Ensure you have HR permissions to export this report.' });
     } finally {
       setExporting(false);
     }
@@ -95,7 +97,7 @@ const InterviewReport = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch {
-      alert('Failed to download certificate.');
+      addToast({ type: 'error', title: 'Download failed', message: 'Failed to download certificate.' });
     } finally {
       setExporting(false);
     }
@@ -114,7 +116,7 @@ const InterviewReport = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch {
-      alert('Failed to download certificate image.');
+      addToast({ type: 'error', title: 'Download failed', message: 'Failed to download certificate image.' });
     } finally {
       setExporting(false);
     }
@@ -127,7 +129,7 @@ const InterviewReport = () => {
       setShareData(res.data);
       setShowShareMenu(true);
     } catch {
-      alert('Failed to generate share link.');
+      addToast({ type: 'error', title: 'Share failed', message: 'Failed to generate share link.' });
     }
   };
 
@@ -136,7 +138,7 @@ const InterviewReport = () => {
     if (shareData?.share_url) {
       const fullUrl = `${window.location.origin}${shareData.share_url}`;
       navigator.clipboard.writeText(fullUrl);
-      alert('Verification link copied to clipboard!');
+      addToast({ type: 'success', title: 'Copied', message: 'Verification link copied to clipboard.' });
     }
   };
 

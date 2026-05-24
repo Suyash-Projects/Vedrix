@@ -35,10 +35,16 @@ import ObservabilityPanel from './pages/ObservabilityPanel';
 import QAQualityWidget from './pages/QAQualityWidget';
 import SentimentTimeline from './pages/SentimentTimeline';
 import EnrichmentSummary from './pages/EnrichmentSummary';
+import NotFound from './pages/NotFound';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import CookieConsent from './components/CookieConsent';
 import ProtectedRoute from './components/ProtectedRoute';
+import CommandPalette from './components/CommandPalette';
+import Toast from './components/Toast';
+import AIAssistant from './components/AIAssistant';
+import AgentActivityPanel from './components/AgentActivityPanel';
+import PageTransition from './components/PageTransition';
 import useAuthStore from './store/useAuthStore';
 
 function App() {
@@ -67,6 +73,13 @@ function App() {
   const showNavbar = !isInterviewRoom && !isReport && !isVerify && !isReplay && !isSkillGap && !isTeamAnalytics && !isLegalPage;
   const showFooter = !isInterviewRoom && !isReport && !isVerify;
 
+  // Show the agent activity panel only on admin/HR-facing routes
+  const isAdminOrHRRoute =
+    isAuthenticated &&
+    (user?.user_type === 'admin' || user?.user_type === 'hr') &&
+    (location.pathname.startsWith('/admin') || location.pathname.startsWith('/hr')) &&
+    !isInterviewRoom;
+
   return (
     <div className="min-h-screen bg-[#020617] text-white">
       {/* Skip to main content link for accessibility */}
@@ -77,216 +90,219 @@ function App() {
       {showNavbar && <Navbar />}
 
       <main id="main-content" className={showNavbar ? 'pt-20' : 'pt-0'}>
-        <Routes>
-          {/* Public Routes */}
-          <Route path="/home" element={<LandingPage />} />
-          <Route path="/" element={
-            isAuthenticated ? <Navigate to={getDashboardPath(user)} replace /> : <LandingPage />
-          } />
-          
-          <Route path="/login" element={
-            <div className="min-h-screen flex items-center justify-center px-4 py-16">
-              <Login />
-            </div>
-          } />
-          <Route path="/register" element={
-            <div className="min-h-screen flex items-center justify-center px-4 py-16">
-              <Register />
-            </div>
-          } />
-          
-          {/* Interview Room (Public-ish/Self-protected) */}
-          <Route path="/interview" element={<InterviewRoom />} />
+        <PageTransition>
+          <Routes location={location} key={location.pathname}>
+            {/* Public Routes */}
+            <Route path="/home" element={<LandingPage />} />
+            <Route path="/" element={
+              isAuthenticated ? <Navigate to={getDashboardPath(user)} replace /> : <LandingPage />
+            } />
 
-          {/* Protected Student Routes */}
-          <Route path="/dashboard" element={
-            <ProtectedRoute allowedRoles={['student']}>
-              <StudentDashboard />
-            </ProtectedRoute>
-          } />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
 
-          {/* Protected HR Routes */}
-          <Route path="/hr" element={
-            <ProtectedRoute allowedRoles={['hr', 'admin']}>
-              <HRDashboard />
-            </ProtectedRoute>
-          } />
+            {/* Interview Room (Public-ish/Self-protected) */}
+            <Route path="/interview" element={<InterviewRoom />} />
 
-          {/* Protected Admin Routes */}
-          <Route path="/admin" element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <AdminDashboard />
-            </ProtectedRoute>
-          } />
+            {/* Protected Student Routes */}
+            <Route path="/dashboard" element={
+              <ProtectedRoute allowedRoles={['student']}>
+                <StudentDashboard />
+              </ProtectedRoute>
+            } />
 
-          {/* Protected Report Route */}
-          <Route path="/report/:sessionId" element={
-            <ProtectedRoute>
-              <InterviewReport />
-            </ProtectedRoute>
-          } />
+            {/* Protected HR Routes */}
+            <Route path="/hr" element={
+              <ProtectedRoute allowedRoles={['hr', 'admin']}>
+                <HRDashboard />
+              </ProtectedRoute>
+            } />
 
-          {/* Protected Replay Route */}
-          <Route path="/replay/:sessionId" element={
-            <ProtectedRoute>
-              <InterviewReplay />
-            </ProtectedRoute>
-          } />
+            {/* Protected Admin Routes */}
+            <Route path="/admin" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            } />
 
-          {/* Protected Skill Gap Analysis Route */}
-          <Route path="/skill-gap/:sessionId" element={
-            <ProtectedRoute>
-              <SkillGapAnalysis />
-            </ProtectedRoute>
-          } />
+            {/* Protected Report Route */}
+            <Route path="/report/:sessionId" element={
+              <ProtectedRoute>
+                <InterviewReport />
+              </ProtectedRoute>
+            } />
 
-          {/* Protected Team Analytics Route (Admin only) */}
-          <Route path="/analytics/team" element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <TeamAnalytics />
-            </ProtectedRoute>
-          } />
+            {/* Protected Replay Route */}
+            <Route path="/replay/:sessionId" element={
+              <ProtectedRoute>
+                <InterviewReplay />
+              </ProtectedRoute>
+            } />
 
-          {/* Public Certificate Verification Route */}
-          <Route path="/verify/:token" element={<CertificateVerification />} />
+            {/* Protected Skill Gap Analysis Route */}
+            <Route path="/skill-gap/:sessionId" element={
+              <ProtectedRoute>
+                <SkillGapAnalysis />
+              </ProtectedRoute>
+            } />
 
-          {/* Protected System Health Route (Admin only) */}
-          <Route path="/admin/health" element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <SystemHealth />
-            </ProtectedRoute>
-          } />
+            {/* Protected Team Analytics Route (Admin only) */}
+            <Route path="/analytics/team" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <TeamAnalytics />
+              </ProtectedRoute>
+            } />
 
-          {/* Protected Audit Logs Route (Admin only) */}
-          <Route path="/admin/audit-logs" element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <AuditLogs />
-            </ProtectedRoute>
-          } />
+            {/* Public Certificate Verification Route */}
+            <Route path="/verify/:token" element={<CertificateVerification />} />
 
-          {/* Protected System Config Route (Admin only) */}
-          <Route path="/admin/config" element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <SystemConfig />
-            </ProtectedRoute>
-          } />
+            {/* Protected System Health Route (Admin only) */}
+            <Route path="/admin/health" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <SystemHealth />
+              </ProtectedRoute>
+            } />
 
-          {/* Protected AI Supervisor Route (Admin only) */}
-          <Route path="/admin/supervisor" element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <SupervisorDashboard />
-            </ProtectedRoute>
-          } />
+            {/* Protected Audit Logs Route (Admin only) */}
+            <Route path="/admin/audit-logs" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <AuditLogs />
+              </ProtectedRoute>
+            } />
 
-          {/* Protected Candidate Pipeline Route (HR/Admin) */}
-          <Route path="/hr/pipeline" element={
-            <ProtectedRoute allowedRoles={['hr', 'admin']}>
-              <CandidatePipeline />
-            </ProtectedRoute>
-          } />
+            {/* Protected System Config Route (Admin only) */}
+            <Route path="/admin/config" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <SystemConfig />
+              </ProtectedRoute>
+            } />
 
-          {/* Public Feedback Survey Route */}
-          <Route path="/feedback/survey" element={<FeedbackSurvey />} />
+            {/* Protected AI Supervisor Route (Admin only) */}
+            <Route path="/admin/supervisor" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <SupervisorDashboard />
+              </ProtectedRoute>
+            } />
 
-          {/* Protected HR Feedback Route */}
-          <Route path="/hr/feedback/:sessionId" element={
-            <ProtectedRoute allowedRoles={['hr', 'admin']}>
-              <HRFeedback />
-            </ProtectedRoute>
-          } />
+            {/* Protected Candidate Pipeline Route (HR/Admin) */}
+            <Route path="/hr/pipeline" element={
+              <ProtectedRoute allowedRoles={['hr', 'admin']}>
+                <CandidatePipeline />
+              </ProtectedRoute>
+            } />
 
-          {/* Protected Schedule Route (HR/Admin) */}
-          <Route path="/hr/schedule" element={
-            <ProtectedRoute allowedRoles={['hr', 'admin']}>
-              <Schedule />
-            </ProtectedRoute>
-          } />
+            {/* Public Feedback Survey Route */}
+            <Route path="/feedback/survey" element={<FeedbackSurvey />} />
 
-          {/* Protected Settings Route */}
-          <Route path="/settings" element={
-            <ProtectedRoute>
-              <SettingsPage />
-            </ProtectedRoute>
-          } />
+            {/* Protected HR Feedback Route */}
+            <Route path="/hr/feedback/:sessionId" element={
+              <ProtectedRoute allowedRoles={['hr', 'admin']}>
+                <HRFeedback />
+              </ProtectedRoute>
+            } />
 
-          {/* ── Agentic Platform Routes ─────────────────────────────── */}
+            {/* Protected Schedule Route (HR/Admin) */}
+            <Route path="/hr/schedule" element={
+              <ProtectedRoute allowedRoles={['hr', 'admin']}>
+                <Schedule />
+              </ProtectedRoute>
+            } />
 
-          {/* Candidate Skill Profile (Student) */}
-          <Route path="/dashboard/profile" element={
-            <ProtectedRoute allowedRoles={['student']}>
-              <CandidateProfilePage />
-            </ProtectedRoute>
-          } />
+            {/* Protected Settings Route */}
+            <Route path="/settings" element={
+              <ProtectedRoute>
+                <SettingsPage />
+              </ProtectedRoute>
+            } />
 
-          {/* Coaching Plan (Student) */}
-          <Route path="/dashboard/coaching/:planId" element={
-            <ProtectedRoute allowedRoles={['student']}>
-              <CoachingPlanPage />
-            </ProtectedRoute>
-          } />
+            {/* ── Agentic Platform Routes ─────────────────────────────── */}
 
-          {/* HR Matching Dashboard */}
-          <Route path="/hr/drives/:driveId/rankings" element={
-            <ProtectedRoute allowedRoles={['hr', 'admin']}>
-              <HRMatchingDashboard />
-            </ProtectedRoute>
-          } />
+            {/* Candidate Skill Profile (Student) */}
+            <Route path="/dashboard/profile" element={
+              <ProtectedRoute allowedRoles={['student']}>
+                <CandidateProfilePage />
+              </ProtectedRoute>
+            } />
 
-          {/* Workflow Kanban Pipeline */}
-          <Route path="/hr/drives/:driveId/pipeline" element={
-            <ProtectedRoute allowedRoles={['hr', 'admin']}>
-              <WorkflowKanban />
-            </ProtectedRoute>
-          } />
+            {/* Coaching Plan (Student) */}
+            <Route path="/dashboard/coaching/:planId" element={
+              <ProtectedRoute allowedRoles={['student']}>
+                <CoachingPlanPage />
+              </ProtectedRoute>
+            } />
 
-          {/* Violation Monitor / Proctor */}
-          <Route path="/hr/interviews/:sessionId/proctor" element={
-            <ProtectedRoute allowedRoles={['hr', 'admin']}>
-              <ViolationMonitor />
-            </ProtectedRoute>
-          } />
+            {/* HR Matching Dashboard */}
+            <Route path="/hr/drives/:driveId/rankings" element={
+              <ProtectedRoute allowedRoles={['hr', 'admin']}>
+                <HRMatchingDashboard />
+              </ProtectedRoute>
+            } />
 
-          {/* Sentiment Timeline */}
-          <Route path="/hr/interviews/:sessionId/sentiment" element={
-            <ProtectedRoute allowedRoles={['hr', 'admin']}>
-              <SentimentTimeline />
-            </ProtectedRoute>
-          } />
+            {/* Workflow Kanban Pipeline */}
+            <Route path="/hr/drives/:driveId/pipeline" element={
+              <ProtectedRoute allowedRoles={['hr', 'admin']}>
+                <WorkflowKanban />
+              </ProtectedRoute>
+            } />
 
-          {/* Enrichment Summary */}
-          <Route path="/hr/candidates/:candidateId/enrichment" element={
-            <ProtectedRoute allowedRoles={['hr', 'admin']}>
-              <EnrichmentSummary />
-            </ProtectedRoute>
-          } />
+            {/* Violation Monitor / Proctor */}
+            <Route path="/hr/interviews/:sessionId/proctor" element={
+              <ProtectedRoute allowedRoles={['hr', 'admin']}>
+                <ViolationMonitor />
+              </ProtectedRoute>
+            } />
 
-          {/* Admin Audit Trail / Observability */}
-          <Route path="/admin/audit-trail" element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <ObservabilityPanel />
-            </ProtectedRoute>
-          } />
+            {/* Sentiment Timeline */}
+            <Route path="/hr/interviews/:sessionId/sentiment" element={
+              <ProtectedRoute allowedRoles={['hr', 'admin']}>
+                <SentimentTimeline />
+              </ProtectedRoute>
+            } />
 
-          {/* Admin QA Monitor */}
-          <Route path="/admin/qa-monitor" element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <QAQualityWidget />
-            </ProtectedRoute>
-          } />
+            {/* Enrichment Summary */}
+            <Route path="/hr/candidates/:candidateId/enrichment" element={
+              <ProtectedRoute allowedRoles={['hr', 'admin']}>
+                <EnrichmentSummary />
+              </ProtectedRoute>
+            } />
 
-          {/* Public Legal Pages */}
-          <Route path="/privacy" element={<PrivacyPolicy />} />
-          <Route path="/terms" element={<TermsOfService />} />
-          <Route path="/dpa" element={<DataProcessingAgreement />} />
-          <Route path="/accessibility" element={<AccessibilityStatement />} />
+            {/* Admin Audit Trail / Observability */}
+            <Route path="/admin/audit-trail" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <ObservabilityPanel />
+              </ProtectedRoute>
+            } />
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            {/* Admin QA Monitor */}
+            <Route path="/admin/qa-monitor" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <QAQualityWidget />
+              </ProtectedRoute>
+            } />
+
+            {/* Public Legal Pages */}
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/terms" element={<TermsOfService />} />
+            <Route path="/dpa" element={<DataProcessingAgreement />} />
+            <Route path="/accessibility" element={<AccessibilityStatement />} />
+
+            {/* 404 */}
+            <Route path="/404" element={<NotFound />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </PageTransition>
       </main>
 
       {showFooter && <Footer />}
       <CookieConsent />
+
+      {/* Global UI: command palette, toasts */}
+      <CommandPalette />
+      <Toast />
+
+      {/* Authenticated-only floating UI */}
+      {isAuthenticated && <AIAssistant />}
+      {isAdminOrHRRoute && <AgentActivityPanel />}
     </div>
   );
 }

@@ -11,9 +11,11 @@ import {
 } from 'lucide-react';
 import apiClient from '../services/api';
 import { useNavigate } from 'react-router-dom';
+import useToastStore from '../store/useToastStore';
 
 const AuditLogs = () => {
   const navigate = useNavigate();
+  const addToast = useToastStore((s) => s.addToast);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -329,7 +331,7 @@ const AuditLogs = () => {
                       <td className="px-8 py-5 text-right">
                         {log.details && (
                           <button
-                            onClick={() => alert(log.details)}
+                            onClick={() => addToast({ type: 'info', title: 'Log details', message: log.details, duration: 8000 })}
                             className="text-slate-500 hover:text-purple-400 p-1.5 rounded-lg hover:bg-purple-500/10 transition-colors"
                             title="View details"
                           >

@@ -338,3 +338,251 @@ textarea:focus-visible,
 .text-slate-600 {
   color: #718096;
 }
+
+
+/* ── Glow Cursor (radial gradient that follows mouse) ─────────────────────── */
+.glow-cursor {
+  position: relative;
+  isolation: isolate;
+}
+.glow-cursor::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    600px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(124, 58, 237, 0.15),
+    transparent 40%
+  );
+  pointer-events: none;
+  transition: background 0.2s ease;
+  z-index: 0;
+}
+.glow-cursor > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Shimmer Text Effect ──────────────────────────────────────────────────── */
+@keyframes shimmer-text-flow {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+.shimmer-text {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.4) 0%,
+    rgba(255, 255, 255, 0.95) 25%,
+    rgba(167, 139, 250, 1) 50%,
+    rgba(255, 255, 255, 0.95) 75%,
+    rgba(255, 255, 255, 0.4) 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer-text-flow 3.5s linear infinite;
+}
+
+/* ── Holographic Premium Badge ────────────────────────────────────────────── */
+@keyframes holographic-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+.holographic {
+  background: linear-gradient(
+    135deg,
+    #a78bfa 0%,
+    #818cf8 20%,
+    #38bdf8 40%,
+    #f472b6 60%,
+    #a78bfa 80%,
+    #818cf8 100%
+  );
+  background-size: 300% 300%;
+  animation: holographic-shift 5s ease-in-out infinite;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  position: relative;
+}
+.holographic-bg {
+  background: linear-gradient(
+    135deg,
+    rgba(167, 139, 250, 0.2) 0%,
+    rgba(129, 140, 248, 0.2) 25%,
+    rgba(56, 189, 248, 0.2) 50%,
+    rgba(244, 114, 182, 0.2) 75%,
+    rgba(167, 139, 250, 0.2) 100%
+  );
+  background-size: 300% 300%;
+  animation: holographic-shift 5s ease-in-out infinite;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(12px);
+}
+
+/* ── Scan Line (Cyber/Futuristic) ─────────────────────────────────────────── */
+@keyframes scan-line-sweep {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+.scan-line {
+  position: relative;
+  overflow: hidden;
+}
+.scan-line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(124, 58, 237, 0.08) 45%,
+    rgba(167, 139, 250, 0.4) 50%,
+    rgba(124, 58, 237, 0.08) 55%,
+    transparent 100%
+  );
+  animation: scan-line-sweep 3s linear infinite;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ── Cyber Border (animated rotating gradient) ────────────────────────────── */
+@keyframes cyber-border-rotate {
+  0% { --cyber-angle: 0deg; }
+  100% { --cyber-angle: 360deg; }
+}
+@property --cyber-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+.cyber-border {
+  position: relative;
+  background: rgba(2, 6, 23, 0.85);
+  border-radius: 16px;
+  isolation: isolate;
+}
+.cyber-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--cyber-angle, 0deg),
+    rgba(124, 58, 237, 0.9),
+    rgba(99, 102, 241, 0.4),
+    rgba(56, 189, 248, 0.7),
+    rgba(124, 58, 237, 0.4),
+    rgba(167, 139, 250, 0.9),
+    rgba(124, 58, 237, 0.9)
+  );
+  animation: cyber-border-rotate 4s linear infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* ── Keyboard Key Visual ──────────────────────────────────────────────────── */
+.kbd-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.4rem;
+  font-family: 'Inter', ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #cbd5e1;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-bottom-width: 2px;
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* ── Floating Orb Drift ───────────────────────────────────────────────────── */
+@keyframes orb-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(40px, -30px) scale(1.1); }
+  66% { transform: translate(-30px, 20px) scale(0.95); }
+}
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  pointer-events: none;
+  will-change: transform;
+}
+.orb-purple {
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.5), transparent 70%);
+}
+.orb-indigo {
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.4), transparent 70%);
+}
+.orb-pink {
+  background: radial-gradient(circle, rgba(244, 114, 182, 0.3), transparent 70%);
+}
+.orb-cyan {
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.35), transparent 70%);
+}
+
+/* ── Toast Progress Bar ───────────────────────────────────────────────────── */
+@keyframes toast-progress {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+.toast-progress {
+  transform-origin: left;
+  animation: toast-progress linear forwards;
+}
+
+/* ── AI Assistant Bubble Pulse ────────────────────────────────────────────── */
+@keyframes ai-bubble-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 0 rgba(124, 58, 237, 0.5),
+      0 8px 32px rgba(124, 58, 237, 0.4);
+  }
+  50% {
+    box-shadow:
+      0 0 0 12px rgba(124, 58, 237, 0),
+      0 8px 32px rgba(124, 58, 237, 0.6);
+  }
+}
+.ai-bubble-pulse {
+  animation: ai-bubble-pulse 2.5s ease-in-out infinite;
+}
+
+/* ── 404 Glitch Text ─────────────────────────────────────────────────────── */
+@keyframes glitch-skew {
+  0%, 100% { transform: skewX(0deg); }
+  20% { transform: skewX(-2deg); }
+  40% { transform: skewX(1deg); }
+  60% { transform: skewX(-1deg); }
+  80% { transform: skewX(0.5deg); }
+}
+.glitch-text {
+  animation: glitch-skew 4s ease-in-out infinite;
+}
+
+
+/* ── Button Shimmer Sweep (loading state) ─────────────────────────────────── */
+@keyframes button-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.animate-button-shimmer {
+  animation: button-shimmer 1.4s linear infinite;
+}
