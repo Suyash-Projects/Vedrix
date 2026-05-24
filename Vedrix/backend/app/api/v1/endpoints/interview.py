@@ -402,6 +402,7 @@ async def websocket_endpoint(
             "messages": [],
             "resume_text": resume_text,
             "job_role": job_role,
+            "candidate_first_name": candidate_name,
             "current_question_index": 0,
             "max_questions": 15,
             "interview_complete": False,

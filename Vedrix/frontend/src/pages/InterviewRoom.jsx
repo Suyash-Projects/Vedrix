@@ -744,17 +744,17 @@ const InterviewRoom = () => {
 
       const timeSinceActivity = Date.now() - lastUserActivityRef.current;
 
-      // After 5 seconds of no activity, show confirmation
-      if (timeSinceActivity > 5000 && !showTimeoutConfirm) {
+      // After 60 seconds of no activity, show a gentle nudge
+      if (timeSinceActivity > 60000 && !showTimeoutConfirm) {
         setShowTimeoutConfirm(true);
-        setAgentStatus("Are you still there? Please respond to continue the interview.");
+        setAgentStatus("Take your time, I'm here when you're ready. No pressure.");
         noResponseTimerRef.current = setTimeout(() => {
-          // If no response after 5 more seconds, end interview
-          setAgentStatus("No response detected. Ending interview...");
+          // If still no response after another 2 minutes, end interview
+          setAgentStatus("It looks like you've been away for a while. I'll wrap up the interview now — feel free to start a new one anytime.");
           setTimeout(() => {
             handleEndInterview();
           }, 3000);
-        }, 5000);
+        }, 120000);
       }
     }, 1000);
 

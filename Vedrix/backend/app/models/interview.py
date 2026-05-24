@@ -92,6 +92,13 @@ class InterviewSession(SQLModel, table=True):
     # Phase 1.5: Soft delete support
     deleted_at: Optional[datetime] = Field(default=None)
 
+    # Agentic Platform: planner / orchestrator / proctor / sentiment / QA fields
+    interview_plan_id: Optional[int] = Field(default=None, foreign_key="interview_plan.id")
+    workflow_state: Optional[str] = None
+    empathy_timeline: Optional[Any] = Field(default=None, sa_column=Column(JSON))
+    qa_quality_score: Optional[float] = None
+    proctor_consent_granted: Optional[bool] = Field(default=False)
+
     # Relationships — must match back_populates on User and JobDrive
     candidate: "User" = Relationship(back_populates="interview_sessions")
     job_drive: Optional["JobDrive"] = Relationship(back_populates="interview_sessions")

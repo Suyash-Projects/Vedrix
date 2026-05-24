@@ -39,6 +39,18 @@ BEHAVIORAL_AREAS = [
     "challenge", "goal", "learning", "communication", "motivation"
 ]
 
+# Phrases candidates use when they need a moment to think — never penalize these.
+THINKING_INDICATORS = [
+    "hmm",
+    "let me think",
+    "give me a moment",
+    "thinking",
+    "one second",
+    "hold on",
+    "let me think about that",
+    "give me a second",
+]
+
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -293,6 +305,8 @@ async def generate_question_node(state: InterviewState) -> Dict[str, Any]:
             elif difficulty == "medium":
                 difficulty = "hard"
 
+    is_thinking_pause = last_eval.get("is_thinking_pause", False) if last_eval else False
+
     # Get LLM based on complexity
     llm = get_adaptive_llm() if should_deep_dive else get_fast_llm()
     parser = JsonOutputParser(pydantic_object=QuestionSchema)
@@ -342,13 +356,44 @@ async def generate_question_node(state: InterviewState) -> Dict[str, Any]:
     # First question - natural greeting
     if idx == 0:
         greeting = random.choice(GREETING_MESSAGES)
-        context_instructions.append(f"FIRST IMPRESSION: Start with a warm, human greeting like '{greeting}' Then ask them to introduce themselves naturally. Use their name if known. Sound like a real person, not a script.")
+        candidate_first_name = state.get("candidate_first_name")
+        if candidate_first_name:
+            context_instructions.append(
+                f"FIRST IMPRESSION (CRITICAL): The candidate's name is {candidate_first_name}. "
+                f"You MUST address them by their first name '{candidate_first_name}' in your very first sentence. "
+                f"For example: 'Hey {candidate_first_name}, thanks for joining today!' or "
+                f"'Hi {candidate_first_name} — great to have you here.' "
+                f"Then invite them to share a bit about themselves. "
+                f"Sound like a real person, not a script. Keep it warm and short."
+            )
+        else:
+            context_instructions.append(f"FIRST IMPRESSION: Start with a warm, human greeting like '{greeting}' Then ask them to introduce themselves naturally. Use their name if known. Sound like a real person, not a script.")
 
     # Phase transition - natural bridge
     if phase_transition and previous_phase and current_phase:
         bridge = PHASE_TRANSITIONS.get((previous_phase, current_phase), "")
         if bridge:
             context_instructions.append(f"PHASE TRANSITION: Begin your response with something natural like '{bridge}' This should feel like a smooth, conversational shift.")
+
+    # Candidate asked for a moment to think — be kind, re-state the question
+    if is_thinking_pause:
+        # Find the actual previous question text to repeat
+        prev_q_text = ""
+        for m in reversed(messages[:-1]):  # skip the user's "thinking" message
+            if m.get("role") == "assistant":
+                prev_q_text = m.get("content", "")
+                break
+
+        context_instructions.append(
+            f"THINKING PAUSE (CRITICAL OVERRIDE): The candidate said they need a moment to think — "
+            f"they did NOT answer yet. Do NOT ask a new question. "
+            f"Instead, your output 'question' field MUST start with a kind, reassuring phrase like "
+            f"'Take your time, no rush.' or 'Of course, no problem.' "
+            f"Then re-state the previous question more simply. "
+            f"The previous question was: \"{prev_q_text[:300]}\". "
+            f"Rephrase it in simpler words after your reassurance. "
+            f"Example: 'Take your time. To put it another way: <simpler version of the question>'"
+        )
 
     # Skills coverage - naturally weave in
     if pending_skills and current_phase in ["technical", "stress"]:
@@ -615,6 +660,32 @@ async def evaluate_answer_node(state: InterviewState) -> Dict[str, Any]:
 
     last_message = state['messages'][-1]['content'] if state.get('messages') else ""
 
+    # Check for "thinking pause" — candidate explicitly asking for time to think.
+    # We don't penalize these — flag them so generate_question_node can re-prompt kindly.
+    is_thinking = (
+        last_message.lower().strip() in THINKING_INDICATORS or
+        any(thinking_phrase in last_message.lower() for thinking_phrase in THINKING_INDICATORS)
+    ) and len(last_message.strip()) < 50
+
+    if is_thinking:
+        # Don't penalize — return a "patient" eval that signals the next node to gently re-prompt
+        return {
+            "last_evaluation": {
+                "score": 5.0,  # neutral
+                "metrics": {"accuracy": 5, "clarity": 5, "depth": 5, "communication": 5},
+                "topic": "thinking_pause",
+                "skill_category": "behavioral",
+                "should_deep_dive": False,
+                "needs_easier": False,
+                "low_effort": False,
+                "is_thinking_pause": True,  # flag for generate_question to re-prompt kindly
+                "skill_identified": "patience"
+            },
+            "latest_score": 5.0,
+            "metrics": {"accuracy": 5, "clarity": 5, "depth": 5, "communication": 5},
+            "total_responses": state.get('total_responses', 0),  # don't increment
+        }
+
     # Check for low effort responses
     low_effort_indicators = ['ok', 'yes', 'no', 'okay', 'uh', 'um', 'idk', 'maybe', 'shrug', '🤷']
     is_low_effort = (
@@ -769,6 +840,15 @@ async def update_memory_node(state: InterviewState) -> Dict[str, Any]:
     """Decision & Memory Agent — adaptive difficulty, skill tracking, completion detection."""
     try:
         eval_result = state.get('last_evaluation', {})
+
+        # ── Thinking-pause short-circuit ──────────────────────────────────────
+        # Don't advance the question index, don't mark complete, just pass through.
+        if isinstance(eval_result, dict) and eval_result.get("is_thinking_pause"):
+            logger.info("update_memory_node: thinking pause — skipping index advance.")
+            return {
+                "is_coding_mode": False,
+            }
+
         score = eval_result.get('score', 5.0)
         topic = eval_result.get('topic', 'general')
         skill_category = eval_result.get('skill_category', 'behavioral')
@@ -1134,6 +1214,48 @@ Provide your assessment in 1-2 bullet points."""
 async def consensus_synthesizer_node(state: InterviewState) -> Dict[str, Any]:
     """Debate Agent — Consensus Synthesizer: Reconciles all three critiques into structured EvaluationSchema."""
     logger.info("Running consensus_synthesizer_node...")
+
+    # ── Thinking-pause short-circuit ──────────────────────────────────────
+    # The candidate said something like "hmm, let me think" — don't penalize.
+    # Return a neutral eval with is_thinking_pause=True so generate_question_node
+    # gently re-prompts/rephrases instead of asking a new question.
+    last_user_message = ""
+    for m in reversed(state.get("messages", [])):
+        if m.get("role") == "user":
+            last_user_message = m.get("content", "")
+            break
+
+    is_thinking = (
+        last_user_message
+        and len(last_user_message.strip()) < 50
+        and (
+            last_user_message.lower().strip() in THINKING_INDICATORS
+            or any(p in last_user_message.lower() for p in THINKING_INDICATORS)
+        )
+    )
+
+    if is_thinking:
+        logger.info("Detected thinking pause — skipping debate, returning neutral eval.")
+        return {
+            "last_evaluation": {
+                "score": 5.0,
+                "metrics": {"accuracy": 5, "clarity": 5, "depth": 5, "communication": 5},
+                "topic": "thinking_pause",
+                "skill_category": "behavioral",
+                "should_deep_dive": False,
+                "needs_easier": False,
+                "low_effort": False,
+                "is_thinking_pause": True,
+                "skill_identified": "patience",
+            },
+            "latest_score": 5.0,
+            "metrics": {"accuracy": 5, "clarity": 5, "depth": 5, "communication": 5},
+            "total_responses": state.get("total_responses", 0),  # don't increment
+            "skeptic_critique": None,
+            "pragmatist_critique": None,
+            "bias_auditor_critique": None,
+        }
+
     llm = get_strong_llm()
     parser = JsonOutputParser(pydantic_object=EvaluationSchema)
     

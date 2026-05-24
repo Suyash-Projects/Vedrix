@@ -8,6 +8,7 @@ class InterviewState(TypedDict):
     # Context
     resume_text: str
     job_role: str
+    candidate_first_name: Optional[str]
 
     # Interview Tracking
     current_question_index: int
