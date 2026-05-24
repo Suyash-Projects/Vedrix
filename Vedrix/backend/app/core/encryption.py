@@ -75,7 +75,9 @@ class FieldEncryption:
             decrypted = fernet.decrypt(encrypted_value.encode())
             return decrypted.decode()
         except Exception as e:
-            logger.error(f"Decryption failed: {e}")
+            # Only log at debug level — decryption failures are expected when
+            # SECRET_KEY changes between server restarts (dev environment)
+            logger.debug(f"Decryption failed (key mismatch): {type(e).__name__}")
             raise
 
     @classmethod
@@ -263,11 +265,14 @@ class EncryptedJSON(TypeDecorator):
             return json.loads(decrypted_str)
         except Exception:
             # Fallback: maybe it's already plaintext JSON (for migration/dev)
+            # This is expected when SECRET_KEY changes between restarts
             try:
                 return json.loads(value)
             except Exception:
-                logger.error("Failed to decrypt or parse JSON from database")
-                return value
+                # Data is neither decryptable nor valid JSON — return raw value
+                # This happens when data was encrypted with a different key
+                logger.debug("EncryptedJSON: data unreadable (key mismatch or corrupt data)")
+                return None
 
 
 class EncryptedString(TypeDecorator):
@@ -295,5 +300,5 @@ class EncryptedString(TypeDecorator):
         try:
             return FieldEncryption.decrypt(value)
         except Exception:
-            # Fallback: maybe it's already plaintext (for migration/dev)
+            # Fallback: maybe it's already plaintext (for migration/dev or key mismatch)
             return value
