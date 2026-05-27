@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Shield, AlertTriangle, Eye, Clipboard, Keyboard, RefreshCw, Clock } from 'lucide-react';
+import { Shield, AlertTriangle, Eye, Clipboard, Keyboard, RefreshCw, Clock, UserCheck, UserMinus, EyeOff } from 'lucide-react';
 import apiClient from '../services/api';
 
 const fadeUp = {
@@ -10,9 +10,12 @@ const fadeUp = {
 };
 
 const violationConfig = {
-  tab_switch: { icon: Eye, color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20', label: 'Tab Switch' },
-  paste_detected: { icon: Clipboard, color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/20', label: 'Paste Detected' },
-  anomalous_typing: { icon: Keyboard, color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/20', label: 'Anomalous Typing' },
+  tab_switch: { icon: Eye, color: 'text-amber-400', dot: 'bg-amber-400', bg: 'bg-amber-500/10 border-amber-500/20', label: 'Tab Switch' },
+  paste_detected: { icon: Clipboard, color: 'text-red-400', dot: 'bg-red-400', bg: 'bg-red-500/10 border-red-500/20', label: 'Paste Detected' },
+  anomalous_typing: { icon: Keyboard, color: 'text-purple-400', dot: 'bg-purple-400', bg: 'bg-purple-500/10 border-purple-500/20', label: 'Anomalous Typing' },
+  multiple_faces: { icon: UserCheck, color: 'text-red-500', dot: 'bg-red-500', bg: 'bg-red-500/10 border-red-500/20', label: 'Multiple Faces' },
+  no_face: { icon: UserMinus, color: 'text-rose-400', dot: 'bg-rose-400', bg: 'bg-rose-500/10 border-rose-500/20', label: 'No Face Detected' },
+  gaze_deviation: { icon: EyeOff, color: 'text-orange-400', dot: 'bg-orange-400', bg: 'bg-orange-500/10 border-orange-500/20', label: 'Gaze Deviation' },
 };
 
 const ViolationMonitor = () => {
@@ -35,7 +38,11 @@ const ViolationMonitor = () => {
     }
   }, [sessionId]);
 
-  useEffect(() => { fetchViolations(); }, [fetchViolations]);
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      fetchViolations();
+    });
+  }, [fetchViolations]);
 
   // Auto-scroll feed
   useEffect(() => {
@@ -145,7 +152,7 @@ const ViolationMonitor = () => {
                 return (
                   <div
                     key={i}
-                    className={`absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full ${cfg.color.replace('text-', 'bg-')} opacity-80`}
+                    className={`absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full ${cfg.dot} opacity-80`}
                     style={{ left: `${Math.min(pos, 97)}%` }}
                     title={`${cfg.label} at ${new Date(v.timestamp).toLocaleTimeString()}`}
                   />

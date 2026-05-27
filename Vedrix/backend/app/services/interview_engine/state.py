@@ -107,6 +107,8 @@ class InterviewState(TypedDict):
     qa_regeneration_count: int  # How many times current question was regenerated
     qa_session_quality_score: float  # Ratio of approved to total questions
     qa_flags: List[Dict[str, Any]]  # All flags for this session
-
+    qa_total_questions: int  # Total generated questions evaluated by QA
+    qa_flagged_questions: int  # Generated questions flagged by QA
+    qa_paused: bool  # Whether question generation is paused for QA review
 
 

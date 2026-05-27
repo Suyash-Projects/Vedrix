@@ -69,17 +69,18 @@ const AIAssistant = () => {
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Greeting injected once on first open
   useEffect(() => {
     if (open && messages.length === 0) {
       const name = user?.first_name ? `, ${user.first_name}` : '';
-      setMessages([
-        {
-          id: 'greet',
-          role: 'assistant',
-          text: `Hey${name} — I'm Vedra, your AI assistant. Ask me anything, or pick a quick prompt below.`,
-        },
-      ]);
+      Promise.resolve().then(() => {
+        setMessages([
+          {
+            id: 'greet',
+            role: 'assistant',
+            text: `Hey${name} — I'm Vedra, your AI assistant. Ask me anything, or pick a quick prompt below.`,
+          },
+        ]);
+      });
     }
   }, [open, messages.length, user]);
 
@@ -153,7 +154,7 @@ const AIAssistant = () => {
             transition={{ type: 'spring', damping: 18, stiffness: 280 }}
             onClick={() => setOpen(true)}
             aria-label="Open Vedra AI assistant"
-            className="fixed bottom-6 right-6 z-[9990] w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-500 text-white flex items-center justify-center ai-bubble-pulse hover:scale-110 active:scale-95 transition-transform"
+            className="fixed floating-safe z-[9990] w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-500 text-white flex items-center justify-center ai-bubble-pulse hover:scale-110 active:scale-95 transition-transform"
           >
             <Sparkles size={22} />
           </motion.button>
@@ -169,7 +170,7 @@ const AIAssistant = () => {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.96 }}
             transition={{ type: 'spring', damping: 24, stiffness: 280 }}
-            className="fixed bottom-6 right-6 z-[9990] w-[400px] max-w-[calc(100vw-2rem)] h-[600px] max-h-[calc(100vh-3rem)] flex flex-col bg-[#0a0f1e]/95 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl shadow-black/60 overflow-hidden"
+            className="fixed inset-x-4 bottom-[var(--floating-panel-bottom)] sm:left-auto sm:right-[var(--floating-panel-right)] z-[9990] w-auto sm:w-[400px] sm:max-w-[calc(100vw-2rem)] h-[min(600px,calc(100svh-var(--nav-height)-2rem))] max-h-[calc(100svh-2rem)] flex flex-col bg-[#0a0f1e]/95 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl shadow-black/60 overflow-hidden"
             role="dialog"
             aria-label="AI assistant chat"
           >

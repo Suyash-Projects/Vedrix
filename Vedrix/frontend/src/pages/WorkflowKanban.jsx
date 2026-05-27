@@ -13,6 +13,15 @@ const COLUMNS = [
   { id: 'decided', label: 'Decided', color: 'border-amber-500/30' },
 ];
 
+const TRANSITION_TRIGGERS = {
+  invited: { scheduled: 'schedule', decided: 'withdraw' },
+  scheduled: { invited: 'cancel', in_progress: 'start', decided: 'withdraw' },
+  in_progress: { invited: 'abandon', evaluated: 'complete' },
+  evaluated: { shortlisted: 'shortlist', decided: 'reject' },
+  shortlisted: { decided: 'hire' },
+  decided: {},
+};
+
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } }
@@ -64,7 +73,7 @@ const CandidateCard = ({ candidate, selected, onSelect }) => {
         <div className="mt-3 pt-3 border-t border-white/5 space-y-1">
           {candidate.transition_history.map((t, i) => (
             <p key={i} className="text-[10px] text-slate-500">
-              {t.from} → {t.to} <span className="text-slate-600">({t.timestamp})</span>
+              {t.from_state || t.from} → {t.to_state || t.to} <span className="text-slate-600">({t.timestamp})</span>
             </p>
           ))}
         </div>
@@ -81,6 +90,7 @@ const WorkflowKanban = () => {
   const [selected, setSelected] = useState(new Set());
   const [bulkTarget, setBulkTarget] = useState('');
   const [transitioning, setTransitioning] = useState(false);
+  const [transitionError, setTransitionError] = useState(null);
 
   const fetchPipeline = useCallback(async () => {
     setLoading(true);
@@ -95,26 +105,47 @@ const WorkflowKanban = () => {
     }
   }, [driveId]);
 
-  useEffect(() => { fetchPipeline(); }, [fetchPipeline]);
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      fetchPipeline();
+    });
+  }, [fetchPipeline]);
 
-  const handleTransition = async (candidateId, toState) => {
+  const handleTransition = useCallback(async (candidateId, fromState, toState) => {
+    if (fromState === toState) return;
+
+    const trigger = TRANSITION_TRIGGERS[fromState]?.[toState];
+    if (!trigger) {
+      setTransitionError(`Cannot move candidate from ${fromState} to ${toState}`);
+      return;
+    }
+
     try {
-      await apiClient.post(`/hr/drives/${driveId}/workflow/${candidateId}/transition`, {
-        to_state: toState
+      setTransitionError(null);
+      const res = await apiClient.post(`/hr/drives/${driveId}/workflow/${candidateId}/transition`, {
+        trigger
       });
       setCandidates(prev => prev.map(c =>
-        c.candidate_id === candidateId ? { ...c, state: toState } : c
+        c.candidate_id === candidateId
+          ? {
+              ...c,
+              state: res.data?.current_state || toState,
+              transition_history: res.data?.transition_history || c.transition_history
+            }
+          : c
       ));
     } catch (err) {
       console.error('Transition failed:', err);
+      setTransitionError(err.response?.data?.detail || 'Transition failed');
     }
-  };
+  }, [driveId]);
 
   const handleDrop = useCallback((e, toState) => {
     e.preventDefault();
-    const candidateId = e.dataTransfer.getData('candidateId');
-    if (candidateId) handleTransition(candidateId, toState);
-  }, [driveId]);
+    const candidateId = Number(e.dataTransfer.getData('candidateId'));
+    const fromState = e.dataTransfer.getData('fromState');
+    if (candidateId) handleTransition(candidateId, fromState, toState);
+  }, [handleTransition]);
 
   const handleDragOver = (e) => e.preventDefault();
 
@@ -132,7 +163,10 @@ const WorkflowKanban = () => {
     setTransitioning(true);
     try {
       await Promise.all(
-        [...selected].map(id => handleTransition(id, bulkTarget))
+        [...selected].map(id => {
+          const candidate = candidates.find(c => c.candidate_id === id);
+          return candidate ? handleTransition(id, candidate.state, bulkTarget) : Promise.resolve();
+        })
       );
       setSelected(new Set());
       setBulkTarget('');
@@ -208,6 +242,9 @@ const WorkflowKanban = () => {
               </div>
             )}
           </div>
+          {transitionError && (
+            <p className="mt-4 text-sm text-amber-300 font-bold">{transitionError}</p>
+          )}
         </motion.div>
 
         {/* Kanban Board */}

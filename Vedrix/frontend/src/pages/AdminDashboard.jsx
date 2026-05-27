@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import {
-  Users, Plus, Search, X, Edit2, Trash2, ChevronDown, ChevronUp,
+  Users, Plus, X, Edit2, Trash2,
   RefreshCcw, FileText, User, Lock, Settings, Briefcase,
-  Database, Activity, BarChart3, AlertTriangle, Eye,
-  Shield, Fingerprint, Sliders, Mail, Key, CheckCircle, XCircle,
-  Brain, Server, Cpu, Wifi, Clock, Zap, ExternalLink, Check
+  Database, Activity, BarChart3, Eye,
+  Shield, Mail, Key,
+  Brain, Server, Clock, Zap, ExternalLink, Check,
+  PlayCircle, Network
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import apiClient from '../services/api';
@@ -89,7 +90,7 @@ const AdminDashboard = () => {
       setUsers(usersRes.data);
       setStats(statsRes.data);
       setDrives(drivesRes.data);
-      setInterviews(interviewsRes.data);
+      setInterviews(Array.isArray(interviewsRes.data) ? interviewsRes.data : (interviewsRes.data?.interviews ?? []));
       setTemplates(templatesRes.data);
       
       // Extract HR users for drive assignment

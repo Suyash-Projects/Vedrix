@@ -106,7 +106,7 @@ describe('SupervisorDashboard', () => {
       .mockResolvedValueOnce({ data: mockActiveSessions })
       .mockResolvedValueOnce({ data: mockStats });
 
-    const { container } = renderWithRouter(<SupervisorDashboard />);
+    renderWithRouter(<SupervisorDashboard />);
 
     await waitFor(() => {
       // "2" appears in both the active_sessions stat and the observations_count badge

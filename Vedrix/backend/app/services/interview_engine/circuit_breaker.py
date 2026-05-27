@@ -131,6 +131,7 @@ async def execute_with_circuit_breaker(
     func: Callable,
     *args,
     fallback: Optional[Callable] = None,
+    timeout: Optional[float] = None,
     **kwargs,
 ) -> Any:
     """
@@ -150,7 +151,10 @@ async def execute_with_circuit_breaker(
         raise CircuitBreakerOpenError(f"Circuit breaker '{provider}' is OPEN")
 
     try:
-        result = await func(*args, **kwargs)
+        if timeout is not None:
+            result = await asyncio.wait_for(func(*args, **kwargs), timeout=timeout)
+        else:
+            result = await func(*args, **kwargs)
         cb.record_success()
         return result
     except Exception as e:

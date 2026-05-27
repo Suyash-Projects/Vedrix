@@ -25,6 +25,14 @@ class SkillScoreEntry(BaseModel):
     timestamp: str
 
 
+class SkillProfileEntry(BaseModel):
+    """Frontend-friendly skill summary derived from longitudinal profile data."""
+    name: str
+    average_score: float
+    trend: str = "stable"
+    history: List[Dict[str, Any]] = Field(default_factory=list)
+
+
 class LongitudinalProfileResponse(BaseModel):
     """
     Response schema for the Memory Agent profile endpoint.
@@ -46,6 +54,10 @@ class LongitudinalProfileResponse(BaseModel):
         default_factory=dict,
         description="Per-skill trend direction: 'improving', 'stable', or 'declining'"
     )
+    skills: List[SkillProfileEntry] = Field(
+        default_factory=list,
+        description="Compatibility projection for frontend charts."
+    )
     github_last_indexed: Optional[datetime] = None
     linkedin_last_indexed: Optional[datetime] = None
     enrichment_sources: Dict[str, Any] = Field(default_factory=dict)
@@ -60,26 +72,51 @@ class LongitudinalProfileResponse(BaseModel):
 async def get_candidate_profile(
     candidate_id: int,
     db: AsyncSession = Depends(get_session),
-    current_user: User = Depends(deps.get_current_hr_or_admin),
+    current_user: User = Depends(deps.get_current_user),
 ) -> Any:
     """
     Retrieve a candidate's LongitudinalProfile including skill history and trend directions.
 
-    **Access**: HR_Users and Admins only (RBAC enforced).
+    **Access**: HR_Users and Admins can view candidates; students can view only their own profile.
 
     Returns per-skill trend direction (improving / stable / declining) computed
     from the candidate's chronological score history across all interview sessions.
     """
+    if current_user.user_type == "student" and current_user.id != candidate_id:
+        raise HTTPException(status_code=403, detail="Students can only view their own profile")
+    if current_user.user_type not in ("student", "hr", "admin"):
+        raise HTTPException(status_code=403, detail="Role not authorized to view profiles")
+
     profile = await memory_service.get_or_create_profile(candidate_id=candidate_id, db=db)
     if not profile:
         raise HTTPException(status_code=404, detail="Longitudinal profile not found")
 
+    skill_history = profile.skill_history or {}
+    skill_averages = profile.skill_averages or {}
+    skill_trends = profile.skill_trends or {}
+    skills = [
+        SkillProfileEntry(
+            name=skill,
+            average_score=float(avg_score or 0.0),
+            trend=skill_trends.get(skill, "stable"),
+            history=[
+                {
+                    **entry,
+                    "date": entry.get("timestamp"),
+                }
+                for entry in skill_history.get(skill, [])
+            ],
+        )
+        for skill, avg_score in skill_averages.items()
+    ]
+
     return LongitudinalProfileResponse(
         id=profile.id,
         candidate_id=profile.candidate_id,
-        skill_history=profile.skill_history or {},
-        skill_averages=profile.skill_averages or {},
-        skill_trends=profile.skill_trends or {},
+        skill_history=skill_history,
+        skill_averages=skill_averages,
+        skill_trends=skill_trends,
+        skills=skills,
         github_last_indexed=profile.github_last_indexed,
         linkedin_last_indexed=profile.linkedin_last_indexed,
         enrichment_sources=profile.enrichment_sources or {},

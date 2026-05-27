@@ -190,35 +190,19 @@ async def logout() -> Any:
 async def forgot_password(
     request: Request,
     db: AsyncSession = Depends(get_session),
-    background_tasks: BackgroundTasks = None,
 ) -> Any:
     """
     Request a password reset email.
     Body: {"email": "user@example.com"}
     Always returns 200 to prevent email enumeration.
     """
-    from app.services.email_service import send_password_reset_email
+    from app.services.password_reset_service import PasswordResetService
 
     body = await request.json()
     email = body.get("email", "")
 
-    result = await db.execute(select(User).where(User.email == email))
-    user = result.scalars().first()
-
-    if user and user.is_active:
-        # Generate a reset token (JWT with short expiry)
-        reset_token = security.create_access_token(
-            user.id, expires_delta=timedelta(hours=1)
-        )
-        # Send reset email in background
-        if background_tasks:
-            background_tasks.add_task(
-                send_password_reset_email,
-                user.email,
-                user.first_name,
-                reset_token,
-                settings.FRONTEND_URL,
-            )
+    reset_service = PasswordResetService(db)
+    await reset_service.request_reset(email)
 
     # Always return 200 — don't reveal if email exists
     return {"status": "ok", "message": "If the email exists, a reset link has been sent."}
@@ -233,6 +217,8 @@ async def reset_password(
     Reset password using a valid reset token.
     Body: {"token": "...", "new_password": "..."}
     """
+    from app.services.password_reset_service import PasswordResetService
+
     body = await request.json()
     token = body.get("token", "")
     new_password = body.get("new_password", "")
@@ -246,22 +232,10 @@ async def reset_password(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # Decode token
-    user_id = security.decode_token(token)
-    if not user_id:
+    reset_service = PasswordResetService(db)
+    success = await reset_service.execute_reset(token, new_password)
+    if not success:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
-
-    # Find user
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalars().first()
-    if not user or not user.is_active:
-        raise HTTPException(status_code=400, detail="User not found or inactive")
-
-    # Update password and reset lockout
-    user.password_hash = security.get_password_hash(new_password)
-    user.failed_login_attempts = 0
-    user.locked_until = None
-    await db.commit()
 
     return {"status": "ok", "message": "Password reset successfully."}
 

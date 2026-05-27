@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { Cpu, LogOut, Menu, X, ChevronDown, Bell, LayoutDashboard, User, Settings } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Cpu, LogOut, Menu, X, ChevronDown, Bell, LayoutDashboard, Settings } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import useAuthStore from '../store/useAuthStore';
@@ -19,11 +19,11 @@ const Navbar = () => {
     navigate('/');
   };
 
-  const getDashboardPath = () => {
+  const getDashboardPath = useCallback(() => {
     if (user?.user_type === 'hr') return '/hr';
     if (user?.user_type === 'admin') return '/admin';
     return '/dashboard';
-  };
+  }, [user]);
 
   // Close user menu on outside click
   useEffect(() => {
@@ -38,8 +38,10 @@ const Navbar = () => {
 
   // Close mobile menu on route change
   useEffect(() => {
-    setIsOpen(false);
-    setUserMenuOpen(false);
+    Promise.resolve().then(() => {
+      setIsOpen(false);
+      setUserMenuOpen(false);
+    });
   }, [location.pathname]);
 
   // Keyboard shortcuts
@@ -57,32 +59,33 @@ const Navbar = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isAuthenticated, navigate, user]);
+  }, [isAuthenticated, navigate, getDashboardPath]);
 
   const isActive = (path) => location.pathname === path || location.pathname.startsWith(path + '/');
 
   const userInitial = user?.first_name?.charAt(0)?.toUpperCase() || 'U';
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-[100]" role="navigation" aria-label="Main navigation">
-      <div className="bg-[#020617]/80 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-8 h-20 flex items-center justify-between">
+    <nav className="fixed top-0 left-0 right-0 z-[110]" role="navigation" aria-label="Main navigation">
+      <div className="navbar-shell backdrop-blur-xl">
+        <div className="navbar-surface max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-3">
           <Link
             to="/home"
-            className="flex items-center space-x-3 cursor-pointer group"
+            className="flex min-w-0 items-center space-x-3 cursor-pointer group"
             aria-label="Vedrix AI - Home"
           >
-            <div className="w-10 h-10 bg-gradient-to-tr from-purple-600 to-indigo-400 rounded-xl flex items-center justify-center text-white shadow-lg shadow-purple-900/20 group-hover:scale-110 transition-all">
+            <div className="w-10 h-10 shrink-0 bg-gradient-to-tr from-purple-600 via-indigo-500 to-cyan-400 rounded-xl flex items-center justify-center text-white shadow-lg shadow-purple-900/20 group-hover:scale-110 transition-all">
               <Cpu size={22} />
             </div>
-            <span className="text-2xl font-black tracking-tighter text-white">Vedrix <span className="text-purple-400 text-sm align-top ml-1">AI</span></span>
+            <span className="truncate text-xl sm:text-2xl font-black tracking-tighter text-white">Vedrix <span className="text-purple-400 text-sm align-top ml-1">AI</span></span>
           </Link>
 
           {/* Desktop Nav */}
-          <div className="hidden md:flex items-center space-x-8">
+          <div className="hidden lg:flex items-center gap-1 xl:gap-3">
             <Link
               to="/home"
-              className={`font-bold text-sm uppercase tracking-widest transition-colors relative ${isActive('/home') ? 'text-white' : 'text-slate-400 hover:text-white'}`}
+              aria-current={isActive('/home') ? 'page' : undefined}
+              className={`nav-link-futuristic px-2 xl:px-3 font-bold text-xs xl:text-sm uppercase tracking-widest transition-colors ${isActive('/home') ? 'text-white' : 'text-slate-400 hover:text-white'}`}
             >
               Home
               {isActive('/home') && (
@@ -93,7 +96,8 @@ const Navbar = () => {
               <>
                 <Link
                   to={getDashboardPath()}
-                  className={`font-bold text-sm uppercase tracking-widest transition-colors relative ${isActive(getDashboardPath()) ? 'text-white' : 'text-slate-400 hover:text-white'}`}
+                  aria-current={isActive(getDashboardPath()) ? 'page' : undefined}
+                  className={`nav-link-futuristic px-2 xl:px-3 font-bold text-xs xl:text-sm uppercase tracking-widest transition-colors ${isActive(getDashboardPath()) ? 'text-white' : 'text-slate-400 hover:text-white'}`}
                 >
                   Dashboard
                   {isActive(getDashboardPath()) && (
@@ -106,7 +110,7 @@ const Navbar = () => {
                   <div className="relative" onMouseLeave={() => setDropdownOpen(null)}>
                     <button
                       onMouseEnter={() => setDropdownOpen('student')}
-                      className="flex items-center gap-1 text-slate-400 hover:text-white font-bold text-sm uppercase tracking-widest transition-colors"
+                      className="nav-link-futuristic px-2 xl:px-3 flex items-center gap-1 text-slate-400 hover:text-white font-bold text-xs xl:text-sm uppercase tracking-widest transition-colors"
                       aria-expanded={dropdownOpen === 'student'}
                       aria-haspopup="true"
                     >
@@ -119,7 +123,7 @@ const Navbar = () => {
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 8, scale: 0.95 }}
                           transition={{ duration: 0.15 }}
-                          className="absolute top-full left-0 mt-2 bg-[#0f172a]/95 backdrop-blur-xl border border-white/10 rounded-xl p-2 min-w-[200px] shadow-2xl z-50"
+                          className="absolute top-full left-0 mt-2 bg-[#0f172a]/95 backdrop-blur-xl border border-white/10 rounded-xl p-2 min-w-[200px] shadow-2xl z-[140]"
                         >
                           <Link to="/dashboard/profile" className="flex items-center justify-between px-4 py-2.5 text-slate-300 hover:text-white hover:bg-white/5 rounded-lg text-sm font-bold transition-all">
                             <span>Skill Profile</span>
@@ -138,7 +142,7 @@ const Navbar = () => {
                   <div className="relative" onMouseLeave={() => setDropdownOpen(null)}>
                     <button
                       onMouseEnter={() => setDropdownOpen('hr')}
-                      className="flex items-center gap-1 text-slate-400 hover:text-white font-bold text-sm uppercase tracking-widest transition-colors"
+                      className="nav-link-futuristic px-2 xl:px-3 flex items-center gap-1 text-slate-400 hover:text-white font-bold text-xs xl:text-sm uppercase tracking-widest transition-colors"
                       aria-expanded={dropdownOpen === 'hr'}
                       aria-haspopup="true"
                     >
@@ -151,7 +155,7 @@ const Navbar = () => {
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 8, scale: 0.95 }}
                           transition={{ duration: 0.15 }}
-                          className="absolute top-full left-0 mt-2 bg-[#0f172a]/95 backdrop-blur-xl border border-white/10 rounded-xl p-2 min-w-[200px] shadow-2xl z-50"
+                          className="absolute top-full left-0 mt-2 bg-[#0f172a]/95 backdrop-blur-xl border border-white/10 rounded-xl p-2 min-w-[200px] shadow-2xl z-[140]"
                         >
                           <Link to="/hr/pipeline" className="flex items-center justify-between px-4 py-2.5 text-slate-300 hover:text-white hover:bg-white/5 rounded-lg text-sm font-bold transition-all">
                             <span>Pipeline</span>
@@ -170,7 +174,7 @@ const Navbar = () => {
                   <div className="relative" onMouseLeave={() => setDropdownOpen(null)}>
                     <button
                       onMouseEnter={() => setDropdownOpen('admin')}
-                      className="flex items-center gap-1 text-amber-400 hover:text-amber-300 font-bold text-sm uppercase tracking-widest transition-colors"
+                      className="nav-link-futuristic px-2 xl:px-3 flex items-center gap-1 text-amber-400 hover:text-amber-300 font-bold text-xs xl:text-sm uppercase tracking-widest transition-colors"
                       aria-expanded={dropdownOpen === 'admin'}
                       aria-haspopup="true"
                     >
@@ -183,7 +187,7 @@ const Navbar = () => {
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 8, scale: 0.95 }}
                           transition={{ duration: 0.15 }}
-                          className="absolute top-full left-0 mt-2 bg-[#0f172a]/95 backdrop-blur-xl border border-white/10 rounded-xl p-2 min-w-[220px] shadow-2xl z-50"
+                          className="absolute top-full left-0 mt-2 bg-[#0f172a]/95 backdrop-blur-xl border border-white/10 rounded-xl p-2 min-w-[220px] shadow-2xl z-[140]"
                         >
                           <Link to="/admin" className="flex items-center justify-between px-4 py-2.5 text-slate-300 hover:text-white hover:bg-white/5 rounded-lg text-sm font-bold transition-all">
                             <span>Overview</span>
@@ -210,7 +214,7 @@ const Navbar = () => {
             )}
           </div>
 
-          <div className="hidden md:flex items-center space-x-3">
+          <div className="hidden lg:flex items-center space-x-3">
             {!isAuthenticated ? (
               <>
                 <Link to="/login" className="text-white font-bold px-6 py-2.5 rounded-xl hover:bg-white/5 transition-all">Sign In</Link>
@@ -257,7 +261,7 @@ const Navbar = () => {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 8, scale: 0.95 }}
                         transition={{ duration: 0.15 }}
-                        className="absolute top-full right-0 mt-2 bg-[#0f172a]/95 backdrop-blur-xl border border-white/10 rounded-xl p-2 min-w-[220px] shadow-2xl z-50"
+                        className="absolute top-full right-0 mt-2 bg-[#0f172a]/95 backdrop-blur-xl border border-white/10 rounded-xl p-2 min-w-[220px] shadow-2xl z-[140]"
                       >
                         <div className="px-4 py-3 border-b border-white/5 mb-2">
                           <p className="text-white font-bold text-sm">{user?.first_name} {user?.last_name}</p>
@@ -286,7 +290,7 @@ const Navbar = () => {
 
           {/* Mobile toggle */}
           <button
-            className="md:hidden text-white w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/5 transition-all"
+            className="lg:hidden text-white w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/5 transition-all"
             onClick={() => setIsOpen(!isOpen)}
             aria-label={isOpen ? 'Close menu' : 'Open menu'}
             aria-expanded={isOpen}
@@ -307,7 +311,7 @@ const Navbar = () => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm md:hidden z-[98]"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm lg:hidden z-[120]"
               onClick={() => setIsOpen(false)}
             />
             <motion.div
@@ -315,7 +319,7 @@ const Navbar = () => {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed top-0 right-0 bottom-0 w-[80%] max-w-[320px] bg-[#0a0f1e]/98 backdrop-blur-xl border-l border-white/10 md:hidden z-[99] overflow-y-auto"
+              className="fixed top-0 right-0 bottom-0 w-[min(86vw,340px)] bg-[#0a0f1e]/98 backdrop-blur-xl border-l border-white/10 lg:hidden z-[130] overflow-y-auto shadow-2xl shadow-black/60"
             >
               <div className="p-6 space-y-2">
                 <div className="flex items-center justify-between mb-8">

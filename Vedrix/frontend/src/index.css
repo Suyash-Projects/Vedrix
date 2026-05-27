@@ -2,6 +2,11 @@
 @import "tailwindcss";
 
 :root {
+  --nav-height: 4.5rem;
+  --nav-safe-gap: 1rem;
+  --floating-panel-right: 1rem;
+  --floating-panel-bottom: 1rem;
+
   font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
@@ -22,6 +27,95 @@ body {
   min-height: 100vh;
   background-color: #020617;
   color: #F8FAFC;
+  overflow-x: hidden;
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --nav-height: 5rem;
+    --floating-panel-right: 1.5rem;
+    --floating-panel-bottom: 1.5rem;
+  }
+}
+
+#root {
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at 15% 0%, rgba(124, 58, 237, 0.08), transparent 32rem),
+    radial-gradient(ellipse at 85% 12%, rgba(56, 189, 248, 0.05), transparent 34rem),
+    #020617;
+}
+
+.app-shell {
+  position: relative;
+  min-height: 100vh;
+  isolation: isolate;
+}
+
+.app-shell::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.75), transparent 75%);
+}
+
+.app-main {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding-bottom: calc(var(--floating-panel-bottom) + 5.5rem);
+}
+
+.app-main--with-navbar {
+  min-height: calc(100vh - var(--nav-height));
+  padding-top: var(--nav-height);
+}
+
+.navbar-shell {
+  min-height: var(--nav-height);
+  background:
+    linear-gradient(90deg, rgba(2, 6, 23, 0.94), rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.94));
+  box-shadow: 0 18px 60px rgba(2, 6, 23, 0.42);
+}
+
+.navbar-surface {
+  min-height: var(--nav-height);
+}
+
+.nav-link-futuristic {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.25rem;
+  white-space: nowrap;
+}
+
+.nav-link-futuristic::before {
+  content: '';
+  position: absolute;
+  inset: -0.35rem -0.55rem;
+  border-radius: 0.75rem;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.16), rgba(56, 189, 248, 0.08));
+  opacity: 0;
+  transform: scale(0.96);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: -1;
+}
+
+.nav-link-futuristic:hover::before,
+.nav-link-futuristic[aria-current='page']::before {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.floating-safe {
+  right: var(--floating-panel-right);
+  bottom: var(--floating-panel-bottom);
 }
 
 /* ── Premium Scrollbar ─────────────────────────────────────────────────────── */

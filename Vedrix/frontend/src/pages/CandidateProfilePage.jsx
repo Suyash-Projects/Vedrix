@@ -59,7 +59,11 @@ const CandidateProfilePage = () => {
   }, [candidateId]);
 
   useEffect(() => {
-    if (candidateId) fetchProfile();
+    if (candidateId) {
+      Promise.resolve().then(() => {
+        fetchProfile();
+      });
+    }
   }, [candidateId, fetchProfile]);
 
   const computeTrend = (history) => {

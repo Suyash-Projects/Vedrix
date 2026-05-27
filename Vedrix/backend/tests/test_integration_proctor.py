@@ -281,3 +281,23 @@ async def test_analyze_typing_cadence_normal(db_session, proctor_setup):
     )
 
     assert violation is None
+
+
+@pytest.mark.asyncio
+async def test_multimodal_video_proctoring_events(db_session, proctor_setup):
+    """Test that multiple_faces, no_face, and gaze_deviation events are registered as violations."""
+    setup = proctor_setup
+    session_id = setup["session"].id
+
+    for event in ("multiple_faces", "no_face", "gaze_deviation"):
+        violation = await proctor_service.handle_browser_event(
+            session_id=session_id,
+            event_type=event,
+            payload={"confidence": 0.88, "duration_seconds": 1.5},
+            session_status="in_progress",
+            consent_granted=True,
+            db=db_session,
+        )
+        assert violation is not None
+        assert violation.violation_type == event
+        assert violation.payload["confidence"] == 0.88

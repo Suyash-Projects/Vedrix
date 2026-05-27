@@ -100,7 +100,7 @@ const Toast = () => {
 
   return (
     <div
-      className="fixed bottom-6 right-6 z-[9999] flex flex-col-reverse gap-3 pointer-events-none"
+      className="fixed bottom-[calc(var(--floating-panel-bottom)+4.5rem)] right-[var(--floating-panel-right)] z-[9999] flex flex-col-reverse gap-3 pointer-events-none"
       aria-label="Notifications"
     >
       <AnimatePresence initial={false}>

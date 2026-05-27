@@ -33,7 +33,7 @@ Task-to-Model Mapping:
 """
 import logging
 from enum import Enum
-from typing import List, Optional
+from typing import Any, List, Optional
 from dataclasses import dataclass, field
 
 from langchain_openai import ChatOpenAI
@@ -43,6 +43,65 @@ from langchain_core.language_models import BaseChatModel
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+PROVIDER_CONFIG = {
+    "groq": {
+        "base_url_attr": "GROQ_BASE_URL",
+        "api_key_attr": "GROQ_API_KEY",
+        "capabilities": ["chat", "stt"],
+    },
+    "nvidia": {
+        "base_url_attr": "NVIDIA_BASE_URL",
+        "api_key_attr": "NVIDIA_API_KEY",
+        "capabilities": ["chat"],
+    },
+    "openrouter": {
+        "base_url_attr": "OPENROUTER_BASE_URL",
+        "api_key_attr": "OPENROUTER_API_KEY",
+        "capabilities": ["chat"],
+    },
+    "apifree": {
+        "base_url_attr": "APIFREE_BASE_URL",
+        "api_key_attr": "APIFREE_API_KEY",
+        "capabilities": ["chat"],
+    },
+    "openai": {
+        "base_url_attr": None,
+        "api_key_attr": "OPENAI_API_KEY",
+        "capabilities": ["stt", "tts"],
+    },
+}
+
+
+def _setting_has_value(attr: str | None) -> bool:
+    if not attr:
+        return True
+    return bool(str(getattr(settings, attr, "") or "").strip())
+
+
+def is_provider_configured(provider: str) -> bool:
+    """Return whether a provider has the config needed for its configured role."""
+    config = PROVIDER_CONFIG.get(provider)
+    if not config:
+        return False
+
+    return _setting_has_value(config["api_key_attr"]) and _setting_has_value(
+        config["base_url_attr"]
+    )
+
+
+def get_provider_statuses() -> dict[str, dict[str, Any]]:
+    """Expose non-secret AI provider configuration status for health endpoints."""
+    statuses = {}
+    for provider, config in PROVIDER_CONFIG.items():
+        statuses[provider] = {
+            "configured": is_provider_configured(provider),
+            "capabilities": config["capabilities"],
+            "has_api_key": _setting_has_value(config["api_key_attr"]),
+            "has_base_url": _setting_has_value(config["base_url_attr"]),
+        }
+    return statuses
 
 
 class TaskType(str, Enum):
@@ -96,6 +155,8 @@ def _make_llm(spec: ModelSpec) -> BaseChatModel:
 
     if not base_url:
         raise ValueError(f"Unknown provider: {spec.provider}")
+    if not api_key:
+        raise ValueError(f"Provider is not configured: {spec.provider}")
 
     kwargs = {
         "api_key": api_key,
@@ -118,6 +179,14 @@ def _build_chain(route: TaskRoute):
 
     llms = []
     for spec in route.chain:
+        if not is_provider_configured(spec.provider):
+            logger.info(
+                "[%s] Skipping unconfigured provider: %s/%s",
+                route.task.value,
+                spec.provider,
+                spec.model_id,
+            )
+            continue
         try:
             llm = _make_llm(spec)
             llms.append((spec, llm))
@@ -125,7 +194,14 @@ def _build_chain(route: TaskRoute):
             logger.warning(f"Failed to initialize {spec.provider}/{spec.model_id}: {e}")
 
     if not llms:
-        raise RuntimeError(f"All models failed for task: {route.task}")
+        configured = ", ".join(
+            name for name, status in get_provider_statuses().items()
+            if status["configured"] and "chat" in status["capabilities"]
+        ) or "none"
+        raise RuntimeError(
+            f"No configured chat providers available for task: {route.task}. "
+            f"Configured chat providers: {configured}"
+        )
 
     primary_spec, primary_llm = llms[0]
     fallback_llms = [llm for _, llm in llms[1:]]
@@ -216,6 +292,29 @@ def _get_routes() -> dict[TaskType, TaskRoute]:
     }
 
 
+def get_route_statuses() -> dict[str, dict[str, Any]]:
+    """Return route provider availability without constructing LLM clients."""
+    routes = _get_routes()
+    route_statuses: dict[str, dict[str, Any]] = {}
+
+    for task_type, route in routes.items():
+        providers = []
+        for spec in route.chain:
+            providers.append({
+                "provider": spec.provider,
+                "model": spec.model_id,
+                "configured": is_provider_configured(spec.provider),
+            })
+
+        route_statuses[task_type.value] = {
+            "description": route.description,
+            "available": any(provider["configured"] for provider in providers),
+            "providers": providers,
+        }
+
+    return route_statuses
+
+
 # ── Cached LLM Instances ────────────────────────────────────────────────────────
 
 _llm_cache: dict[TaskType, BaseChatModel] = {}
@@ -297,6 +396,9 @@ def get_chat_llm():
 
 def get_fallback_llm():
     """Universal fallback — most reliable free model."""
+    if not is_provider_configured("groq"):
+        raise RuntimeError("Groq is not configured for fallback LLM")
+
     return ChatOpenAI(
         api_key=settings.GROQ_API_KEY,
         base_url=settings.GROQ_BASE_URL,

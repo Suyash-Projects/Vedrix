@@ -3,6 +3,7 @@ import asyncio
 import io
 import base64
 import logging
+import time
 from groq import Groq
 from openai import AsyncOpenAI
 from pydub import AudioSegment
@@ -41,39 +42,109 @@ class VoiceService:
         """
         Transcribe audio bytes → text via Groq Whisper Large V3.
         Uses pydub to ensure compatible format and normalize audio.
+        Falls back to OpenAI Whisper if Groq fails or is unavailable.
         """
+        start_time = time.monotonic()
+
         if not self._groq:
-            return ""
+            logger.warning("Groq not configured for STT. Trying OpenAI Whisper fallback directly.")
+            return await self._transcribe_openai_fallback(audio_bytes, Exception("Groq not configured"))
 
-        def _run():
+        def _prepare_audio():
             try:
-                # 1. Load audio from bytes (supports webm, ogg, wav, etc.)
                 audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
-                
-                # 2. Basic validation
                 if len(audio) < 100:  # Less than 100ms
-                    return ""
-
-                # 3. Standardize format for Groq (MP3 is compact and reliable)
+                    return None
                 buffer = io.BytesIO()
                 audio.export(buffer, format="mp3", bitrate="64k")
                 buffer.seek(0)
-                
-                # 4. Transcribe via Groq
-                result = self._groq.audio.transcriptions.create(
-                    file=("audio.mp3", buffer),
-                    model="whisper-large-v3",
-                    response_format="json",
-                    language="en",
-                    temperature=0.0,
-                )
-                return result.text or ""
+                return buffer
             except Exception as e:
-                logger.error(f"STT error: {e}")
-                return ""
+                logger.error(f"Audio normalization failed: {e}")
+                return None
 
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, _run)
+        buffer = await loop.run_in_executor(None, _prepare_audio)
+        if not buffer:
+            return ""
+
+        def _run_groq():
+            result = self._groq.audio.transcriptions.create(
+                file=("audio.mp3", buffer),
+                model="whisper-large-v3",
+                response_format="json",
+                language="en",
+                temperature=0.0,
+            )
+            return result.text or ""
+
+        try:
+            # Groq API call is synchronous, run in executor
+            text = await loop.run_in_executor(None, _run_groq)
+            return text
+        except Exception as e:
+            logger.error(f"Primary Groq STT failed: {e}. Attempting OpenAI fallback.")
+            duration_ms = int((time.monotonic() - start_time) * 1000)
+            await self._log_stt_failure_trace("groq_whisper_failed", e, duration_ms)
+            return await self._transcribe_openai_fallback(audio_bytes, e)
+
+    async def _transcribe_openai_fallback(self, audio_bytes: bytes, original_error: Exception) -> str:
+        if not self._openai:
+            logger.warning("OpenAI fallback STT not configured")
+            return ""
+
+        start_time = time.monotonic()
+        try:
+            def _prepare_audio():
+                try:
+                    audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
+                    if len(audio) < 100:
+                        return None
+                    buffer = io.BytesIO()
+                    audio.export(buffer, format="mp3", bitrate="64k")
+                    buffer.seek(0)
+                    return buffer
+                except Exception:
+                    return None
+
+            loop = asyncio.get_running_loop()
+            buffer = await loop.run_in_executor(None, _prepare_audio)
+            if not buffer:
+                return ""
+
+            # OpenAI audio transcription is async under AsyncOpenAI
+            response = await self._openai.audio.transcriptions.create(
+                model="whisper-1",
+                file=("audio.mp3", buffer),
+                response_format="json",
+                language="en",
+                temperature=0.0,
+            )
+            return response.text or ""
+        except Exception as oe:
+            logger.error(f"OpenAI fallback STT failed: {oe}")
+            duration_ms = int((time.monotonic() - start_time) * 1000)
+            await self._log_stt_failure_trace("openai_whisper_fallback_failed", oe, duration_ms)
+            return ""
+
+    async def _log_stt_failure_trace(self, action_type: str, error: Exception, duration_ms: int):
+        try:
+            from app.db.session import async_session
+            from app.services.observability_service import ObservabilityService
+            from app.models.trace_entry import TraceEntryCreate
+            async with async_session() as db:
+                obs = ObservabilityService(db)
+                await obs.record(TraceEntryCreate(
+                    agent_name="voice_service",
+                    action_type=action_type,
+                    input_summary="audio_bytes",
+                    reasoning_summary=f"STT call failed: {str(error)[:300]}",
+                    output_summary="Failed transcription, attempting fallback/exiting",
+                    confidence_score=0.0,
+                    duration_ms=duration_ms,
+                ))
+        except Exception as trace_err:
+            logger.error(f"Failed to record TraceEntry for STT failure: {trace_err}")
 
     # ── TTS ──────────────────────────────────────────────────────────────────
 

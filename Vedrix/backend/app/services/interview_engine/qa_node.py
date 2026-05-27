@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+import asyncio
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -151,7 +152,7 @@ class QANode:
         bias_flag = self.check_bias(question_text)
 
         # ── Relevance Check ───────────────────────────────────────────────────
-        relevance_flag = self.check_relevance(question_text, required_skills)
+        relevance_flag = await self.check_relevance(question_text, required_skills)
 
         # ── Decision Logic ────────────────────────────────────────────────────
         is_flagged = bias_flag is not None or relevance_flag is not None
@@ -271,7 +272,7 @@ class QANode:
 
         return None
 
-    def check_relevance(
+    async def check_relevance(
         self,
         question_text: str,
         required_skills: List[str],
@@ -301,9 +302,9 @@ class QANode:
             # Lazy import to avoid module-level ChromaDB initialization failures
             from app.services.rag_service import rag_service
 
-            # Embed question and skills using existing SentenceTransformer
-            question_embedding = rag_service.model.encode([question_text])[0]
-            skill_embeddings = rag_service.model.encode(required_skills)
+            # Embed question and skills using existing SentenceTransformer asynchronously
+            question_embedding = (await asyncio.to_thread(rag_service.model.encode, [question_text]))[0]
+            skill_embeddings = await asyncio.to_thread(rag_service.model.encode, required_skills)
 
             # Compute cosine similarity against each skill
             max_similarity = -1.0
@@ -435,7 +436,7 @@ class QAAgentInline:
         start_time = time.monotonic()
 
         bias_flag_obj = self._qa.check_bias(question_text)
-        relevance_flag_obj = self._qa.check_relevance(question_text, required_skills)
+        relevance_flag_obj = await self._qa.check_relevance(question_text, required_skills)
 
         duration_ms = int((time.monotonic() - start_time) * 1000)
 

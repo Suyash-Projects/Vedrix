@@ -18,6 +18,18 @@ COPY . .
 # Build application
 RUN npm run build
 
+# Development stage for docker-compose.yml
+FROM node:20-slim AS dev
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+EXPOSE 5173
+
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+
 # Production stage
 FROM nginx:alpine
 

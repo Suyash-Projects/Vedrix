@@ -275,12 +275,12 @@ const Login = () => {
                 >
                   Password
                 </label>
-                <a
-                  href="#"
+                <Link
+                  to="/forgot-password"
                   className="text-[10px] font-bold text-purple-400 hover:text-purple-300 uppercase tracking-widest"
                 >
                   Forgot?
-                </a>
+                </Link>
               </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
@@ -330,7 +330,7 @@ const Login = () => {
           </form>
 
           <p className="mt-7 text-center text-sm text-slate-500">
-            New to Vedrix?{' '}
+            Don't have an account?{' '}
             <Link
               to="/register"
               className="text-purple-400 font-bold hover:text-purple-300"

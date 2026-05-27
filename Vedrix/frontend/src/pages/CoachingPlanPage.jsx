@@ -51,7 +51,9 @@ const CoachingPlanPage = () => {
   }, [planId]);
 
   useEffect(() => {
-    fetchPlan();
+    Promise.resolve().then(() => {
+      fetchPlan();
+    });
   }, [fetchPlan]);
 
   if (loading) {

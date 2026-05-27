@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import { motion } from 'framer-motion';
 import { Search, Download, ChevronDown, ChevronRight, RefreshCw, Activity, Filter } from 'lucide-react';
 import apiClient from '../services/api';
@@ -69,7 +69,11 @@ const ObservabilityPanel = () => {
     }
   }, [page, filters]);
 
-  useEffect(() => { fetchTraces(); }, [fetchTraces]);
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      fetchTraces();
+    });
+  }, [fetchTraces]);
 
   const handleExport = async (sessionId) => {
     try {
@@ -210,8 +214,8 @@ const ObservabilityPanel = () => {
                     const agentColor = getAgentColor(trace.agent_name, agentColorMap);
                     const isExpanded = expandedRow === idx;
                     return (
-                      <>
-                        <tr key={idx}
+                      <Fragment key={trace.id || idx}>
+                        <tr
                           className="border-b border-white/5 hover:bg-white/[0.02] cursor-pointer transition-colors"
                           onClick={() => setExpandedRow(isExpanded ? null : idx)}
                           role="row"
@@ -236,7 +240,7 @@ const ObservabilityPanel = () => {
                           </td>
                         </tr>
                         {isExpanded && (
-                          <tr key={`${idx}-detail`} className="bg-white/[0.01]">
+                          <tr className="bg-white/[0.01]">
                             <td colSpan={6} className="px-6 py-4">
                               <pre className="text-xs text-slate-400 bg-white/[0.02] border border-white/5 rounded-xl p-4 overflow-x-auto max-h-[200px]">
                                 {JSON.stringify(trace, null, 2)}
@@ -244,7 +248,7 @@ const ObservabilityPanel = () => {
                             </td>
                           </tr>
                         )}
-                      </>
+                      </Fragment>
                     );
                   })}
                 </tbody>

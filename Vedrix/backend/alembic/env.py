@@ -19,7 +19,13 @@ if config.config_file_name is not None:
 from app.core.config import settings
 from sqlmodel import SQLModel
 # Import all models
-from app.models import User, StudentProfile, HRProfile, JobDrive, InterviewSession, DriveInviteToken
+from app.models import (
+    User, StudentProfile, HRProfile, JobDrive, InterviewSession, DriveInviteToken,
+    PlatformConfig, ConfigChangeLog, PasswordResetToken, InterviewSlot, SlotBooking,
+    AuditLog, CandidateFeedback, HRFeedback, UserConsent, TraceEntry,
+    LongitudinalProfile, InterviewPlan, ViolationRecord, CoachingPlan,
+    MatchResult, CandidateWorkflow
+)
 
 # add your model's MetaData object here
 # for 'autogenerate' support

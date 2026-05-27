@@ -481,15 +481,24 @@ class OrchestratorService:
         Escalate workflows that have been in "evaluated" state for more than
         5 business days without HR action.
         """
-        # Approximate 5 business days as 7 calendar days (conservative)
-        cutoff = now - timedelta(days=7)
-
         stmt = select(CandidateWorkflow).where(
             CandidateWorkflow.current_state == "evaluated",
-            CandidateWorkflow.updated_at <= cutoff,
         )
         result = await db.execute(stmt)
         workflows = list(result.scalars().all())
+
+        def count_business_days(start: datetime, end: datetime) -> int:
+            """Count the number of business days (Monday-Friday) between start and end."""
+            if start > end:
+                return 0
+            current = start.date()
+            target = end.date()
+            days = 0
+            while current < target:
+                current += timedelta(days=1)
+                if current.weekday() < 5:  # Monday to Friday
+                    days += 1
+            return days
 
         for workflow in workflows:
             # Skip if already escalated recently (within 48h)
@@ -497,6 +506,13 @@ class OrchestratorService:
                 workflow.last_reminder_sent_at is not None
                 and workflow.last_reminder_sent_at > now - timedelta(hours=48)
             ):
+                continue
+
+            # Verify it is stale for >= 5 business days
+            if not workflow.updated_at:
+                continue
+
+            if count_business_days(workflow.updated_at, now) < STALE_EVALUATED_BUSINESS_DAYS:
                 continue
 
             # Fetch the job drive to find the HR user

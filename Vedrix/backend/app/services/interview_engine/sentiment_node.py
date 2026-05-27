@@ -51,6 +51,25 @@ CONFIDENCE_INDICATORS = [
 ]
 
 
+_hf_pipeline = None
+_hf_lock = asyncio.Lock()
+
+
+async def get_hf_sentiment_pipeline():
+    """Lazy loader for the HuggingFace sentiment analysis pipeline."""
+    global _hf_pipeline
+    async with _hf_lock:
+        if _hf_pipeline is None:
+            import transformers
+            def _load():
+                return transformers.pipeline(
+                    "sentiment-analysis",
+                    model="distilbert-base-uncased-finetuned-sst-2-english"
+                )
+            _hf_pipeline = await asyncio.to_thread(_load)
+    return _hf_pipeline
+
+
 class SentimentNode:
     """
     LangGraph node that performs real-time sentiment analysis on candidate
@@ -80,6 +99,7 @@ class SentimentNode:
         On timeout (>2s), preserves previous empathy_metrics from state.
         Stores metrics in empathy_timeline for post-session analysis.
         """
+        start_time_ms = int(time.time() * 1000)
         messages = state.get("messages", [])
         session_id_str = state.get("supervisor_session_id")
 
@@ -106,7 +126,12 @@ class SentimentNode:
 
         try:
             empathy_metrics = await asyncio.wait_for(
-                self._analyze(last_user_message),
+                self._analyze(
+                    text=last_user_message,
+                    db=db,
+                    session_id_str=session_id_str,
+                    start_time_ms=start_time_ms
+                ),
                 timeout=2.0,
             )
         except (asyncio.TimeoutError, Exception) as exc:
@@ -186,16 +211,119 @@ class SentimentNode:
 
     # ── Core Analysis Methods ─────────────────────────────────────────────────
 
-    async def _analyze(self, text: str) -> Dict[str, Any]:
+    async def _analyze(
+        self,
+        text: str,
+        db: Optional[AsyncSession] = None,
+        session_id_str: Optional[str] = None,
+        start_time_ms: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """Orchestrate text + acoustic analysis and merge results."""
-        text_metrics = self.analyze_text(text)
+        if start_time_ms is None:
+            start_time_ms = int(time.time() * 1000)
+        session_id = int(session_id_str) if session_id_str else None
+
+        rule_based_metrics = self.analyze_text(text)
+        text_metrics = await self.analyze_text_hf(
+            text=text,
+            rule_based_metrics=rule_based_metrics,
+            db=db,
+            session_id=session_id,
+            start_time_ms=start_time_ms
+        )
+
         acoustic_metrics = self.analyze_acoustic()
         merged = self.merge_metrics(text_metrics, acoustic_metrics)
         return merged
 
-    async def _analyze_response(self, text: str, state: InterviewState) -> Dict[str, Any]:
+    async def _analyze_response(
+        self,
+        text: str,
+        state: InterviewState,
+        db: Optional[AsyncSession] = None,
+        session_id_str: Optional[str] = None,
+        start_time_ms: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """Backward-compatible alias for _analyze (used by existing tests)."""
-        return await self._analyze(text)
+        return await self._analyze(
+            text=text,
+            db=db,
+            session_id_str=session_id_str or state.get("supervisor_session_id"),
+            start_time_ms=start_time_ms
+        )
+
+    async def analyze_text_hf(
+        self,
+        text: str,
+        rule_based_metrics: EmpathyMetrics,
+        db: Optional[AsyncSession] = None,
+        session_id: Optional[int] = None,
+        start_time_ms: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        HuggingFace model-based sentiment analysis with a 2-second timeout.
+        If it succeeds, it adjusts the rule-based metrics.
+        If it fails/times out, logs a TraceEntry and returns rule_based_metrics.
+        """
+        if start_time_ms is None:
+            start_time_ms = int(time.time() * 1000)
+
+        try:
+            pipeline = await get_hf_sentiment_pipeline()
+            result = await asyncio.wait_for(
+                asyncio.to_thread(pipeline, text),
+                timeout=2.0
+            )
+            if result and isinstance(result, list) and len(result) > 0:
+                label = result[0].get("label", "POSITIVE").upper()
+                score = result[0].get("score", 0.0)
+
+                rule_sentiment = rule_based_metrics.get("sentiment_score", 0.0)
+                rule_stress = rule_based_metrics.get("stress_level", 0.0)
+                rule_confidence = rule_based_metrics.get("confidence_level", 0.5)
+
+                if "POS" in label:
+                    sentiment_score = score
+                    stress_level = max(0.0, rule_stress - 0.2)
+                    confidence_level = min(1.0, rule_confidence + (score * 0.2))
+                else:
+                    sentiment_score = -score
+                    stress_level = min(1.0, rule_stress + (score * 0.3))
+                    confidence_level = max(0.0, rule_confidence - (score * 0.2))
+
+                return {
+                    "sentiment_score": round(max(-1.0, min(1.0, sentiment_score)), 3),
+                    "stress_level": round(max(0.0, min(1.0, stress_level)), 3),
+                    "hesitation_rating": rule_based_metrics.get("hesitation_rating", 0.0),
+                    "confidence_level": round(max(0.0, min(1.0, confidence_level)), 3),
+                    "analyzed_at": datetime.now(timezone.utc).isoformat(),
+                }
+        except Exception as e:
+            logger.warning(
+                "Local HuggingFace sentiment analysis failed or timed out: %s. "
+                "Logging to trace entries and falling back to rule-based metrics.",
+                e,
+            )
+            if db and session_id:
+                try:
+                    from app.services.observability_service import ObservabilityService
+                    from app.models.trace_entry import TraceEntryCreate
+                    obs = ObservabilityService(db)
+                    duration = int(time.time() * 1000) - start_time_ms
+                    await obs.record(TraceEntryCreate(
+                        agent_name="sentiment_agent",
+                        action_type="sentiment_hf_failed",
+                        session_id=session_id,
+                        input_summary=f"Text length: {len(text)}",
+                        reasoning_summary=f"HF model failed/timed out: {str(e)[:300]}",
+                        output_summary="Falling back to rule-based metrics",
+                        confidence_score=0.0,
+                        duration_ms=duration,
+                    ))
+                except Exception as trace_err:
+                    logger.error("Failed to record TraceEntry for sentiment failure: %s", trace_err)
+
+        return rule_based_metrics
 
     def analyze_text(self, text: str) -> EmpathyMetrics:
         """

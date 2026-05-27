@@ -5,14 +5,12 @@ import { motion, useInView } from 'framer-motion';
 import useAuthStore from '../store/useAuthStore';
 
 /* ── Animated Counter Hook ─────────────────────────────────────────────────── */
-const useCountUp = (end, duration = 2000, startOnView = true) => {
+const useCountUp = (end, duration = 2000, inView = true) => {
   const [count, setCount] = useState(0);
-  const ref = useRef(null);
-  const inView = useInView(ref, { once: true });
   const started = useRef(false);
 
   useEffect(() => {
-    if (startOnView && !inView) return;
+    if (!inView) return;
     if (started.current) return;
     started.current = true;
 
@@ -24,9 +22,9 @@ const useCountUp = (end, duration = 2000, startOnView = true) => {
       if (progress < 1) requestAnimationFrame(animate);
     };
     requestAnimationFrame(animate);
-  }, [end, duration, inView, startOnView]);
+  }, [end, duration, inView]);
 
-  return { count, ref };
+  return count;
 };
 
 /* ── Typewriter Effect ─────────────────────────────────────────────────────── */
@@ -89,9 +87,12 @@ const LandingPage = () => {
     return '/dashboard';
   };
 
-  const interviewCount = useCountUp(12847, 2500);
-  const companyCount = useCountUp(340, 2000);
-  const satisfactionCount = useCountUp(97, 1800);
+  const containerRef = useRef(null);
+  const inView = useInView(containerRef, { once: true });
+
+  const interviewCount = useCountUp(12847, 2500, inView);
+  const companyCount = useCountUp(340, 2000, inView);
+  const satisfactionCount = useCountUp(97, 1800, inView);
 
   return (
     <div className="bg-[#020617] overflow-hidden">
@@ -261,11 +262,11 @@ const LandingPage = () => {
       {/* ── LIVE COUNTER SECTION ───────────────────────────────────────────── */}
       <section className="py-16 px-6 md:px-12 border-t border-white/5">
         <div className="max-w-5xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8" ref={interviewCount.ref}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8" ref={containerRef}>
             {[
-              { count: interviewCount.count, suffix: '+', label: 'Interviews Conducted', color: 'text-purple-400' },
-              { count: companyCount.count, suffix: '+', label: 'Companies Trust Us', color: 'text-indigo-400' },
-              { count: satisfactionCount.count, suffix: '%', label: 'Satisfaction Rate', color: 'text-emerald-400' },
+              { count: interviewCount, suffix: '+', label: 'Interviews Conducted', color: 'text-purple-400' },
+              { count: companyCount, suffix: '+', label: 'Companies Trust Us', color: 'text-indigo-400' },
+              { count: satisfactionCount, suffix: '%', label: 'Satisfaction Rate', color: 'text-emerald-400' },
             ].map((stat) => (
               <FadeInSection key={stat.label} className="text-center">
                 <p className={`text-5xl md:text-6xl font-black ${stat.color} count-up`}>

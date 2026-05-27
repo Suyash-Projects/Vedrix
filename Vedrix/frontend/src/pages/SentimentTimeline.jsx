@@ -21,7 +21,7 @@ const METRICS = [
 ];
 
 const CustomTooltip = ({ active, payload, label }) => {
-  if (!active || !payload) return null;
+  if (!active || !payload || !payload.length) return null;
   return (
     <div className="bg-[#0f172a] border border-white/10 rounded-xl p-3 shadow-xl">
       <p className="text-slate-400 text-xs font-bold mb-2">{label}</p>
@@ -58,7 +58,11 @@ const SentimentTimeline = () => {
     }
   }, [sessionId]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      fetchData();
+    });
+  }, [fetchData]);
 
   // Find high-stress zones (stress_level > 0.7)
   const highStressZones = [];
@@ -157,6 +161,7 @@ const SentimentTimeline = () => {
                     tickFormatter={(val) => {
                       if (!val) return '';
                       const d = new Date(val);
+                      if (isNaN(d.getTime())) return val;
                       return `${d.getMinutes()}:${d.getSeconds().toString().padStart(2, '0')}`;
                     }}
                   />

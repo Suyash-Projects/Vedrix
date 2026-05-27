@@ -1,0 +1,1305 @@
+{
+  "base": "http://localhost:5173",
+  "backend": "http://127.0.0.1:8000",
+  "artifacts": "D:\\Projects\\AI Interview System (own)\\Vedrix\\test-artifacts\\browser-smoke",
+  "results": [
+    {
+      "route": "landing",
+      "path": "/",
+      "viewport": "1440x900",
+      "mobile": false,
+      "screenshot": "D:\\Projects\\AI Interview System (own)\\Vedrix\\test-artifacts\\browser-smoke\\landing_1440x900.png",
+      "layout": {
+        "url": "http://localhost:5173/",
+        "title": "Vedrix - AI Interview Platform",
+        "bodyText": "Skip to main content\nVedrix AI\nHOME\nSign In\nRegister\nAI-POWERED INTERVIEW PLATFORM\nSmarter Interviews.\nBetter Hires.\n\nVedrix conducts adaptive AI interviews, evaluates candidates in real-time, and delivers structured reports \u2014 so your team can focus on the right people.\n\nGet Started Free\nSign In\n\nAdaptive\n\nAI QUESTIONS\n\nReal-time\n\nEVALUATION\n\nInstant\n\nREPORTS\n\nVedrix AI Interviewer\n\nLIVE\n\n\"Can you walk me through how you'd design a scalable REST API for a high-traffic application?\"\nTECHNICAL ACCURACY\n88%\nCOMMUNICATION\n74%\nDEPTH OF KNOWLEDGE\n91%\n\n0+\n\nINTERVIEWS CONDUCTED\n\n0+\n\nCOMPANIES TRUST US\n\n0%\n\nSATISFACTION RATE\n\nTRUSTED BY INNOVATIVE TEAMS\n\nTechCorp\nInnovateLab\nDataFlow\nCloudScale\nNexGe",
+        "navBox": {
+          "top": 0,
+          "bottom": 81,
+          "left": 0,
+          "right": 1434,
+          "width": 1434,
+          "height": 81
+        },
+        "mainBox": {
+          "top": 0,
+          "bottom": 4496.5,
+          "left": 0,
+          "right": 1434,
+          "width": 1434,
+          "height": 4496.5
+        },
+        "firstBox": {
+          "top": 80,
+          "bottom": 4384.5,
+          "left": 0,
+          "right": 1434,
+          "width": 1434,
+          "height": 4304.5
+        },
+        "navOverlap": false,
+        "overlaps": [
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 116154
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.min-h-[inherit]",
+            "area": 1434
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.bg-[#020617] overflow-hidden",
+            "area": 1434
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "SECTION.relative min-h-[calc(100vh-80px)] flex items-center px-6 md:",
+            "area": 1434
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.absolute inset-0 gradient-mesh pointer-events-none",
+            "area": 1434
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.absolute inset-0 pointer-events-none overflow-hidden",
+            "area": 1434
+          },
+          {
+            "a": "DIV.navbar-shell backdrop-blur-xl",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 114720
+          },
+          {
+            "a": "DIV.navbar-surface max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex i",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 102400
+          },
+          {
+            "a": "A.flex min-w-0 items-center space-x-3 cursor-pointer group",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 5792
+          },
+          {
+            "a": "DIV.w-10 h-10 shrink-0 bg-gradient-to-tr from-purple-600 via-ind",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 1600
+          },
+          {
+            "a": "SPAN.truncate text-xl sm:text-2xl font-black tracking-tighter tex",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 2970
+          },
+          {
+            "a": "DIV.hidden lg:flex items-center gap-1 xl:gap-3",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 2607
+          }
+        ]
+      },
+      "console_count": 3,
+      "network_count": 0
+    },
+    {
+      "route": "login",
+      "path": "/login",
+      "viewport": "1440x900",
+      "mobile": false,
+      "screenshot": "D:\\Projects\\AI Interview System (own)\\Vedrix\\test-artifacts\\browser-smoke\\login_1440x900.png",
+      "layout": {
+        "url": "http://localhost:5173/login",
+        "title": "Vedrix - AI Interview Platform",
+        "bodyText": "Skip to main content\nVedrix AI\nHOME\nSign In\nRegister\nVedrix AI\nTHE NEXT GENERATION OF HIRING INTELLIGENCE\nWhere talent meets an agentic AI.\n\nSign in to run intelligent interviews, see live agent activity, and unlock coaching that adapts in real time.\n\nVedra \u00b7 Live\n\n10 AGENTS ONLINE\n\nAdaptive AI Interviews\n\nA 10-agent orchestrator tailors every question to the candidate.\n\nTRUSTED BY 340+ COMPANIES ACROSS 27 COUNTRIES\nWelcome back\n\nSign in to your Vedrix workspace and pick up where you left off.\n\nGOOGLE\nGITHUB\nOR CONTINUE WITH EMAIL\nUSERNAME\nPASSWORD\nFORGOT?\nKeep me signed in\nSIGN IN\n\nDon't have an account? Create an account\n\nVedrix AI\n\nAI-powered interview platform that conducts adaptive inte",
+        "navBox": {
+          "top": 0,
+          "bottom": 81,
+          "left": 0,
+          "right": 1440,
+          "width": 1440,
+          "height": 81
+        },
+        "mainBox": {
+          "top": 0,
+          "bottom": 1012,
+          "left": 0,
+          "right": 1440,
+          "width": 1440,
+          "height": 1012
+        },
+        "firstBox": {
+          "top": 80,
+          "bottom": 900,
+          "left": 0,
+          "right": 1440,
+          "width": 1440,
+          "height": 820
+        },
+        "navOverlap": false,
+        "overlaps": [
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 116640
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.min-h-[inherit]",
+            "area": 1440
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.grid lg:grid-cols-5 bg-[#020617] min-h-[calc(100vh-5rem)]",
+            "area": 1440
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.orb orb-purple",
+            "area": 38880
+          },
+          {
+            "a": "DIV.navbar-shell backdrop-blur-xl",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 115200
+          },
+          {
+            "a": "DIV.navbar-shell backdrop-blur-xl",
+            "b": "DIV.orb orb-purple",
+            "area": 38400
+          },
+          {
+            "a": "DIV.navbar-surface max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex i",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 102400
+          },
+          {
+            "a": "DIV.navbar-surface max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex i",
+            "b": "DIV.orb orb-purple",
+            "area": 32000
+          },
+          {
+            "a": "A.flex min-w-0 items-center space-x-3 cursor-pointer group",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 5792
+          },
+          {
+            "a": "A.flex min-w-0 items-center space-x-3 cursor-pointer group",
+            "b": "DIV.orb orb-purple",
+            "area": 5792
+          },
+          {
+            "a": "DIV.w-10 h-10 shrink-0 bg-gradient-to-tr from-purple-600 via-ind",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 1600
+          },
+          {
+            "a": "DIV.w-10 h-10 shrink-0 bg-gradient-to-tr from-purple-600 via-ind",
+            "b": "DIV.orb orb-purple",
+            "area": 1600
+          }
+        ]
+      },
+      "console_count": 3,
+      "network_count": 0
+    },
+    {
+      "route": "register",
+      "path": "/register",
+      "viewport": "1440x900",
+      "mobile": false,
+      "screenshot": "D:\\Projects\\AI Interview System (own)\\Vedrix\\test-artifacts\\browser-smoke\\register_1440x900.png",
+      "layout": {
+        "url": "http://localhost:5173/register",
+        "title": "Vedrix - AI Interview Platform",
+        "bodyText": "Skip to main content\nVedrix AI\nHOME\nSign In\nRegister\nVedrix AI\nJOIN THE PLATFORM\nBuild the future of interviews.\n\nWhether you're growing your career or hiring world-class talent \u2014 Vedrix gives you a thoughtful, agentic AI partner.\n\nALREADY A MEMBER? SIGN IN\n1\n2\n3\n\nSTEP 1 OF 3\n\nHow will you use Vedrix?\n\nStudent / Candidate\n\nPractice mock interviews, get coaching, and grow your skills.\n\nRecruiter / HR\n\nRun hiring drives, screen candidates, and surface top talent.\n\nBACK\nCONTINUE\nVedrix AI\n\nAI-powered interview platform that conducts adaptive interviews, evaluates candidates in real-time, and delivers structured reports.\n\nSTAY UPDATED\n\nPRODUCT\nAI Interviews\nFor Recruiters\nFor Candidates\nPricing\n",
+        "navBox": {
+          "top": 0,
+          "bottom": 81,
+          "left": 0,
+          "right": 1440,
+          "width": 1440,
+          "height": 81
+        },
+        "mainBox": {
+          "top": 0,
+          "bottom": 1012,
+          "left": 0,
+          "right": 1440,
+          "width": 1440,
+          "height": 1012
+        },
+        "firstBox": {
+          "top": 80,
+          "bottom": 900,
+          "left": 0,
+          "right": 1440,
+          "width": 1440,
+          "height": 820
+        },
+        "navOverlap": false,
+        "overlaps": [
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 116640
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.min-h-[inherit]",
+            "area": 1440
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.grid lg:grid-cols-5 bg-[#020617] min-h-[calc(100vh-5rem)]",
+            "area": 1440
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.orb orb-purple",
+            "area": 38880
+          },
+          {
+            "a": "DIV.navbar-shell backdrop-blur-xl",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 115200
+          },
+          {
+            "a": "DIV.navbar-shell backdrop-blur-xl",
+            "b": "DIV.orb orb-purple",
+            "area": 38400
+          },
+          {
+            "a": "DIV.navbar-surface max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex i",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 102400
+          },
+          {
+            "a": "DIV.navbar-surface max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex i",
+            "b": "DIV.orb orb-purple",
+            "area": 32000
+          },
+          {
+            "a": "A.flex min-w-0 items-center space-x-3 cursor-pointer group",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 5792
+          },
+          {
+            "a": "A.flex min-w-0 items-center space-x-3 cursor-pointer group",
+            "b": "DIV.orb orb-purple",
+            "area": 5792
+          },
+          {
+            "a": "DIV.w-10 h-10 shrink-0 bg-gradient-to-tr from-purple-600 via-ind",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 1600
+          },
+          {
+            "a": "DIV.w-10 h-10 shrink-0 bg-gradient-to-tr from-purple-600 via-ind",
+            "b": "DIV.orb orb-purple",
+            "area": 1600
+          }
+        ]
+      },
+      "console_count": 3,
+      "network_count": 0
+    },
+    {
+      "route": "dashboard_redirect",
+      "path": "/dashboard",
+      "viewport": "1440x900",
+      "mobile": false,
+      "screenshot": "D:\\Projects\\AI Interview System (own)\\Vedrix\\test-artifacts\\browser-smoke\\dashboard_redirect_1440x900.png",
+      "layout": {
+        "url": "http://localhost:5173/login",
+        "title": "Vedrix - AI Interview Platform",
+        "bodyText": "Skip to main content\nVedrix AI\nHOME\nSign In\nRegister\nVedrix AI\nTHE NEXT GENERATION OF HIRING INTELLIGENCE\nWhere talent meets an agentic AI.\n\nSign in to run intelligent interviews, see live agent activity, and unlock coaching that adapts in real time.\n\nVedra \u00b7 Live\n\n10 AGENTS ONLINE\n\nAdaptive AI Interviews\n\nA 10-agent orchestrator tailors every question to the candidate.\n\nTRUSTED BY 340+ COMPANIES ACROSS 27 COUNTRIES\nWelcome back\n\nSign in to your Vedrix workspace and pick up where you left off.\n\nGOOGLE\nGITHUB\nOR CONTINUE WITH EMAIL\nUSERNAME\nPASSWORD\nFORGOT?\nKeep me signed in\nSIGN IN\n\nDon't have an account? Create an account\n\nVedrix AI\n\nAI-powered interview platform that conducts adaptive inte",
+        "navBox": {
+          "top": 0,
+          "bottom": 81,
+          "left": 0,
+          "right": 1440,
+          "width": 1440,
+          "height": 81
+        },
+        "mainBox": {
+          "top": 0,
+          "bottom": 1012,
+          "left": 0,
+          "right": 1440,
+          "width": 1440,
+          "height": 1012
+        },
+        "firstBox": {
+          "top": 80,
+          "bottom": 900,
+          "left": 0,
+          "right": 1440,
+          "width": 1440,
+          "height": 820
+        },
+        "navOverlap": false,
+        "overlaps": [
+          {
+            "a": "A.skip-link",
+            "b": "DIV.orb orb-purple",
+            "area": 7066
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 116640
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.min-h-[inherit]",
+            "area": 1440
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.grid lg:grid-cols-5 bg-[#020617] min-h-[calc(100vh-5rem)]",
+            "area": 1440
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.orb orb-purple",
+            "area": 42488
+          },
+          {
+            "a": "DIV.navbar-shell backdrop-blur-xl",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 115200
+          },
+          {
+            "a": "DIV.navbar-shell backdrop-blur-xl",
+            "b": "DIV.orb orb-purple",
+            "area": 41963
+          },
+          {
+            "a": "DIV.navbar-surface max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex i",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 102400
+          },
+          {
+            "a": "DIV.navbar-surface max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex i",
+            "b": "DIV.orb orb-purple",
+            "area": 36751
+          },
+          {
+            "a": "A.flex min-w-0 items-center space-x-3 cursor-pointer group",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 5792
+          },
+          {
+            "a": "A.flex min-w-0 items-center space-x-3 cursor-pointer group",
+            "b": "DIV.orb orb-purple",
+            "area": 5792
+          },
+          {
+            "a": "DIV.w-10 h-10 shrink-0 bg-gradient-to-tr from-purple-600 via-ind",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 1600
+          }
+        ]
+      },
+      "console_count": 3,
+      "network_count": 0
+    },
+    {
+      "route": "hr_redirect",
+      "path": "/hr",
+      "viewport": "1440x900",
+      "mobile": false,
+      "screenshot": "D:\\Projects\\AI Interview System (own)\\Vedrix\\test-artifacts\\browser-smoke\\hr_redirect_1440x900.png",
+      "layout": {
+        "url": "http://localhost:5173/login",
+        "title": "Vedrix - AI Interview Platform",
+        "bodyText": "Skip to main content\nVedrix AI\nHOME\nSign In\nRegister\nVedrix AI\nTHE NEXT GENERATION OF HIRING INTELLIGENCE\nWhere talent meets an agentic AI.\n\nSign in to run intelligent interviews, see live agent activity, and unlock coaching that adapts in real time.\n\nVedra \u00b7 Live\n\n10 AGENTS ONLINE\n\nAdaptive AI Interviews\n\nA 10-agent orchestrator tailors every question to the candidate.\n\nTRUSTED BY 340+ COMPANIES ACROSS 27 COUNTRIES\nWelcome back\n\nSign in to your Vedrix workspace and pick up where you left off.\n\nGOOGLE\nGITHUB\nOR CONTINUE WITH EMAIL\nUSERNAME\nPASSWORD\nFORGOT?\nKeep me signed in\nSIGN IN\n\nDon't have an account? Create an account\n\nVedrix AI\n\nAI-powered interview platform that conducts adaptive inte",
+        "navBox": {
+          "top": 0,
+          "bottom": 81,
+          "left": 0,
+          "right": 1440,
+          "width": 1440,
+          "height": 81
+        },
+        "mainBox": {
+          "top": 0,
+          "bottom": 1012,
+          "left": 0,
+          "right": 1440,
+          "width": 1440,
+          "height": 1012
+        },
+        "firstBox": {
+          "top": 80,
+          "bottom": 900,
+          "left": 0,
+          "right": 1440,
+          "width": 1440,
+          "height": 820
+        },
+        "navOverlap": false,
+        "overlaps": [
+          {
+            "a": "A.skip-link",
+            "b": "DIV.orb orb-purple",
+            "area": 7066
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 116640
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.min-h-[inherit]",
+            "area": 1440
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.grid lg:grid-cols-5 bg-[#020617] min-h-[calc(100vh-5rem)]",
+            "area": 1440
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.orb orb-purple",
+            "area": 42486
+          },
+          {
+            "a": "DIV.navbar-shell backdrop-blur-xl",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 115200
+          },
+          {
+            "a": "DIV.navbar-shell backdrop-blur-xl",
+            "b": "DIV.orb orb-purple",
+            "area": 41962
+          },
+          {
+            "a": "DIV.navbar-surface max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex i",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 102400
+          },
+          {
+            "a": "DIV.navbar-surface max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex i",
+            "b": "DIV.orb orb-purple",
+            "area": 36749
+          },
+          {
+            "a": "A.flex min-w-0 items-center space-x-3 cursor-pointer group",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 5792
+          },
+          {
+            "a": "A.flex min-w-0 items-center space-x-3 cursor-pointer group",
+            "b": "DIV.orb orb-purple",
+            "area": 5792
+          },
+          {
+            "a": "DIV.w-10 h-10 shrink-0 bg-gradient-to-tr from-purple-600 via-ind",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 1600
+          }
+        ]
+      },
+      "console_count": 3,
+      "network_count": 0
+    },
+    {
+      "route": "admin_redirect",
+      "path": "/admin",
+      "viewport": "1440x900",
+      "mobile": false,
+      "screenshot": "D:\\Projects\\AI Interview System (own)\\Vedrix\\test-artifacts\\browser-smoke\\admin_redirect_1440x900.png",
+      "layout": {
+        "url": "http://localhost:5173/login",
+        "title": "Vedrix - AI Interview Platform",
+        "bodyText": "Skip to main content\nVedrix AI\nHOME\nSign In\nRegister\nVedrix AI\nTHE NEXT GENERATION OF HIRING INTELLIGENCE\nWhere talent meets an agentic AI.\n\nSign in to run intelligent interviews, see live agent activity, and unlock coaching that adapts in real time.\n\nVedra \u00b7 Live\n\n10 AGENTS ONLINE\n\nAdaptive AI Interviews\n\nA 10-agent orchestrator tailors every question to the candidate.\n\nTRUSTED BY 340+ COMPANIES ACROSS 27 COUNTRIES\nWelcome back\n\nSign in to your Vedrix workspace and pick up where you left off.\n\nGOOGLE\nGITHUB\nOR CONTINUE WITH EMAIL\nUSERNAME\nPASSWORD\nFORGOT?\nKeep me signed in\nSIGN IN\n\nDon't have an account? Create an account\n\nVedrix AI\n\nAI-powered interview platform that conducts adaptive inte",
+        "navBox": {
+          "top": 0,
+          "bottom": 81,
+          "left": 0,
+          "right": 1440,
+          "width": 1440,
+          "height": 81
+        },
+        "mainBox": {
+          "top": 0,
+          "bottom": 1012,
+          "left": 0,
+          "right": 1440,
+          "width": 1440,
+          "height": 1012
+        },
+        "firstBox": {
+          "top": 80,
+          "bottom": 900,
+          "left": 0,
+          "right": 1440,
+          "width": 1440,
+          "height": 820
+        },
+        "navOverlap": false,
+        "overlaps": [
+          {
+            "a": "A.skip-link",
+            "b": "DIV.orb orb-purple",
+            "area": 7071
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 116640
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.min-h-[inherit]",
+            "area": 1440
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.grid lg:grid-cols-5 bg-[#020617] min-h-[calc(100vh-5rem)]",
+            "area": 1440
+          },
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "DIV.orb orb-purple",
+            "area": 42456
+          },
+          {
+            "a": "DIV.navbar-shell backdrop-blur-xl",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 115200
+          },
+          {
+            "a": "DIV.navbar-shell backdrop-blur-xl",
+            "b": "DIV.orb orb-purple",
+            "area": 41931
+          },
+          {
+            "a": "DIV.navbar-surface max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex i",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 102400
+          },
+          {
+            "a": "DIV.navbar-surface max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex i",
+            "b": "DIV.orb orb-purple",
+            "area": 36709
+          },
+          {
+            "a": "A.flex min-w-0 items-center space-x-3 cursor-pointer group",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 5792
+          },
+          {
+            "a": "A.flex min-w-0 items-center space-x-3 cursor-pointer group",
+            "b": "DIV.orb orb-purple",
+            "area": 5792
+          },
+          {
+            "a": "DIV.w-10 h-10 shrink-0 bg-gradient-to-tr from-purple-600 via-ind",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 1600
+          }
+        ]
+      },
+      "console_count": 3,
+      "network_count": 0
+    },
+    {
+      "route": "interview",
+      "path": "/interview",
+      "viewport": "1440x900",
+      "mobile": false,
+      "screenshot": "D:\\Projects\\AI Interview System (own)\\Vedrix\\test-artifacts\\browser-smoke\\interview_1440x900.png",
+      "layout": {
+        "url": "http://localhost:5173/interview",
+        "title": "Vedrix - AI Interview Platform",
+        "bodyText": "Skip to main content\nVedrix Proctor\nHardware\nValidation\n\nWe will quickly check your microphone and camera so the interview can run smoothly.\n\nMICROPHONE\nCHECK REQUIRED\nCAMERA\nCHECK REQUIRED\nSTART VALIDATION\n\n\ud83c\udf6a We use cookies to improve your experience\n\nWe use cookies to enhance your browsing experience, serve personalized content, and analyze our traffic. Click \"Accept All\" to consent to all cookies.\n\nSettings\nReject Non-Essential\nAccept All",
+        "navBox": null,
+        "mainBox": {
+          "top": 0,
+          "bottom": 1012,
+          "left": 0,
+          "right": 1440,
+          "width": 1440,
+          "height": 1012
+        },
+        "firstBox": {
+          "top": 0,
+          "bottom": 900,
+          "left": 0,
+          "right": 1440,
+          "width": 1440,
+          "height": 900
+        },
+        "navOverlap": false,
+        "overlaps": [
+          {
+            "a": "A.skip-link",
+            "b": "DIV.absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-purple-60",
+            "area": 7660
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "DIV.fixed bottom-0 left-0 right-0 bg-[#0f1420] border-t border-w",
+            "area": 203040
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "DIV.max-w-4xl mx-auto",
+            "area": 82432
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "DIV.flex flex-col md:flex-row items-start md:items-center justif",
+            "area": 82432
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "DIV.flex-1",
+            "area": 42516
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "P.text-white font-bold text-lg mb-1",
+            "area": 12940
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "P.text-slate-400 text-sm",
+            "area": 27728
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "DIV.flex items-center space-x-3 flex-shrink-0",
+            "area": 15879
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "BUTTON.flex items-center space-x-2 px-4 py-2 bg-white/5 border bord",
+            "area": 4363
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "BUTTON.px-4 py-2 bg-white/5 border border-white/10 text-slate-300 r",
+            "area": 6718
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "BUTTON.px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white round",
+            "area": 3682
+          },
+          {
+            "a": "DIV.min-h-[inherit]",
+            "b": "DIV.fixed bottom-0 left-0 right-0 bg-[#0f1420] border-t border-w",
+            "area": 203040
+          }
+        ]
+      },
+      "console_count": 3,
+      "network_count": 0
+    },
+    {
+      "route": "landing_mobile",
+      "path": "/",
+      "viewport": "390x844",
+      "mobile": true,
+      "screenshot": "D:\\Projects\\AI Interview System (own)\\Vedrix\\test-artifacts\\browser-smoke\\landing_mobile_390x844.png",
+      "layout": {
+        "url": "http://localhost:5173/",
+        "title": "Vedrix - AI Interview Platform",
+        "bodyText": "Skip to main content\nVedrix AI\nAI-POWERED INTERVIEW PLATFORM\nSmarter Interviews.\nBetter Hires.\n\nVedrix conducts adaptive AI interviews, evaluates candidates in real-time, and delivers structured reports \u2014 so your team can focus on the right people.\n\nGet Started Free\nSign In\n\nAdaptive\n\nAI QUESTIONS\n\nReal-time\n\nEVALUATION\n\nInstant\n\nREPORTS\n\n0+\n\nINTERVIEWS CONDUCTED\n\n0+\n\nCOMPANIES TRUST US\n\n0%\n\nSATISFACTION RATE\n\nTRUSTED BY INNOVATIVE TEAMS\n\nTechCorp\nInnovateLab\nDataFlow\nCloudScale\nNexGen\n\nWHAT VEDRIX DOES\n\nEverything you need to hire better\nAdaptive AI\n\nQuestions evolve based on every answer. No two interviews are the same.\n\nVoice-First\n\nCandidates speak naturally. Groq Whisper transcribes in ",
+        "navBox": {
+          "top": 0,
+          "bottom": 73,
+          "left": 0,
+          "right": 390,
+          "width": 390,
+          "height": 73
+        },
+        "mainBox": {
+          "top": 0,
+          "bottom": 6683.5,
+          "left": 0,
+          "right": 390,
+          "width": 390,
+          "height": 6683.5
+        },
+        "firstBox": {
+          "top": 72,
+          "bottom": 6579.5,
+          "left": 0,
+          "right": 390,
+          "width": 390,
+          "height": 6507.5
+        },
+        "navOverlap": false,
+        "overlaps": [
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 28470
+          },
+          {
+            "a": "DIV.navbar-shell backdrop-blur-xl",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 28080
+          },
+          {
+            "a": "DIV.navbar-surface max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex i",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 28080
+          },
+          {
+            "a": "A.flex min-w-0 items-center space-x-3 cursor-pointer group",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 5301
+          },
+          {
+            "a": "DIV.w-10 h-10 shrink-0 bg-gradient-to-tr from-purple-600 via-ind",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 1600
+          },
+          {
+            "a": "SPAN.truncate text-xl sm:text-2xl font-black tracking-tighter tex",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 2254
+          },
+          {
+            "a": "BUTTON.lg:hidden text-white w-10 h-10 flex items-center justify-cen",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 1600
+          },
+          {
+            "a": "MAIN.app-main app-main--with-navbar",
+            "b": "DIV.fixed bottom-0 left-0 right-0 bg-[#0f1420] border-t border-w",
+            "area": 102570
+          },
+          {
+            "a": "MAIN.app-main app-main--with-navbar",
+            "b": "DIV.max-w-4xl mx-auto",
+            "area": 73188
+          },
+          {
+            "a": "MAIN.app-main app-main--with-navbar",
+            "b": "DIV.flex flex-col md:flex-row items-start md:items-center justif",
+            "area": 73188
+          },
+          {
+            "a": "MAIN.app-main app-main--with-navbar",
+            "b": "DIV.flex-1",
+            "area": 47880
+          },
+          {
+            "a": "MAIN.app-main app-main--with-navbar",
+            "b": "P.text-white font-bold text-lg mb-1",
+            "area": 19152
+          }
+        ]
+      },
+      "console_count": 3,
+      "network_count": 0
+    },
+    {
+      "route": "login_mobile",
+      "path": "/login",
+      "viewport": "390x844",
+      "mobile": true,
+      "screenshot": "D:\\Projects\\AI Interview System (own)\\Vedrix\\test-artifacts\\browser-smoke\\login_mobile_390x844.png",
+      "layout": {
+        "url": "http://localhost:5173/login",
+        "title": "Vedrix - AI Interview Platform",
+        "bodyText": "Skip to main content\nVedrix AI\nVedrix AI\nWelcome back\n\nSign in to your Vedrix workspace and pick up where you left off.\n\nGOOGLE\nGITHUB\nOR CONTINUE WITH EMAIL\nUSERNAME\nPASSWORD\nFORGOT?\nKeep me signed in\nSIGN IN\n\nDon't have an account? Create an account\n\nTRUSTED BY 340+ COMPANIES\nVedrix AI\n\nAI-powered interview platform that conducts adaptive interviews, evaluates candidates in real-time, and delivers structured reports.\n\nSTAY UPDATED\n\nPRODUCT\nAI Interviews\nFor Recruiters\nFor Candidates\nPricing\nCOMPANY\nAbout Us\nCareers\nBlog\nContact\nRESOURCES\nDocumentation\nAPI Reference\nSystem Status\nChangelog\nLEGAL\nPrivacy Policy\nTerms of Service\nData Processing\nAccessibility\n\n\u00a9 2026 Vedrix. All rights reserve",
+        "navBox": {
+          "top": 0,
+          "bottom": 73,
+          "left": 0,
+          "right": 390,
+          "width": 390,
+          "height": 73
+        },
+        "mainBox": {
+          "top": 0,
+          "bottom": 948,
+          "left": 0,
+          "right": 390,
+          "width": 390,
+          "height": 948
+        },
+        "firstBox": {
+          "top": 72,
+          "bottom": 844,
+          "left": 0,
+          "right": 390,
+          "width": 390,
+          "height": 772
+        },
+        "navOverlap": false,
+        "overlaps": [
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 28470
+          },
+          {
+            "a": "DIV.navbar-shell backdrop-blur-xl",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 28080
+          },
+          {
+            "a": "DIV.navbar-surface max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex i",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 28080
+          },
+          {
+            "a": "A.flex min-w-0 items-center space-x-3 cursor-pointer group",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 5301
+          },
+          {
+            "a": "DIV.w-10 h-10 shrink-0 bg-gradient-to-tr from-purple-600 via-ind",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 1600
+          },
+          {
+            "a": "SPAN.truncate text-xl sm:text-2xl font-black tracking-tighter tex",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 2254
+          },
+          {
+            "a": "BUTTON.lg:hidden text-white w-10 h-10 flex items-center justify-cen",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 1600
+          },
+          {
+            "a": "MAIN.app-main app-main--with-navbar",
+            "b": "DIV.fixed bottom-0 left-0 right-0 bg-[#0f1420] border-t border-w",
+            "area": 102570
+          },
+          {
+            "a": "MAIN.app-main app-main--with-navbar",
+            "b": "DIV.max-w-4xl mx-auto",
+            "area": 73188
+          },
+          {
+            "a": "MAIN.app-main app-main--with-navbar",
+            "b": "DIV.flex flex-col md:flex-row items-start md:items-center justif",
+            "area": 73188
+          },
+          {
+            "a": "MAIN.app-main app-main--with-navbar",
+            "b": "DIV.flex-1",
+            "area": 47880
+          },
+          {
+            "a": "MAIN.app-main app-main--with-navbar",
+            "b": "P.text-white font-bold text-lg mb-1",
+            "area": 19152
+          }
+        ]
+      },
+      "console_count": 3,
+      "network_count": 0
+    },
+    {
+      "route": "register_mobile",
+      "path": "/register",
+      "viewport": "390x844",
+      "mobile": true,
+      "screenshot": "D:\\Projects\\AI Interview System (own)\\Vedrix\\test-artifacts\\browser-smoke\\register_mobile_390x844.png",
+      "layout": {
+        "url": "http://localhost:5173/register",
+        "title": "Vedrix - AI Interview Platform",
+        "bodyText": "Skip to main content\nVedrix AI\nVedrix AI\n1\n2\n3\n\nSTEP 1 OF 3\n\nHow will you use Vedrix?\n\nStudent / Candidate\n\nPractice mock interviews, get coaching, and grow your skills.\n\nRecruiter / HR\n\nRun hiring drives, screen candidates, and surface top talent.\n\nBACK\nCONTINUE\n\nAlready have an account? Sign in\n\nVedrix AI\n\nAI-powered interview platform that conducts adaptive interviews, evaluates candidates in real-time, and delivers structured reports.\n\nSTAY UPDATED\n\nPRODUCT\nAI Interviews\nFor Recruiters\nFor Candidates\nPricing\nCOMPANY\nAbout Us\nCareers\nBlog\nContact\nRESOURCES\nDocumentation\nAPI Reference\nSystem Status\nChangelog\nLEGAL\nPrivacy Policy\nTerms of Service\nData Processing\nAccessibility\n\n\u00a9 2026 Vedrix",
+        "navBox": {
+          "top": 0,
+          "bottom": 73,
+          "left": 0,
+          "right": 390,
+          "width": 390,
+          "height": 73
+        },
+        "mainBox": {
+          "top": 0,
+          "bottom": 948,
+          "left": 0,
+          "right": 390,
+          "width": 390,
+          "height": 948
+        },
+        "firstBox": {
+          "top": 72,
+          "bottom": 844,
+          "left": 0,
+          "right": 390,
+          "width": 390,
+          "height": 772
+        },
+        "navOverlap": false,
+        "overlaps": [
+          {
+            "a": "NAV.fixed top-0 left-0 right-0 z-[110]",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 28470
+          },
+          {
+            "a": "DIV.navbar-shell backdrop-blur-xl",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 28080
+          },
+          {
+            "a": "DIV.navbar-surface max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex i",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 28080
+          },
+          {
+            "a": "A.flex min-w-0 items-center space-x-3 cursor-pointer group",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 5301
+          },
+          {
+            "a": "DIV.w-10 h-10 shrink-0 bg-gradient-to-tr from-purple-600 via-ind",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 1600
+          },
+          {
+            "a": "SPAN.truncate text-xl sm:text-2xl font-black tracking-tighter tex",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 2254
+          },
+          {
+            "a": "BUTTON.lg:hidden text-white w-10 h-10 flex items-center justify-cen",
+            "b": "MAIN.app-main app-main--with-navbar",
+            "area": 1600
+          },
+          {
+            "a": "MAIN.app-main app-main--with-navbar",
+            "b": "DIV.fixed bottom-0 left-0 right-0 bg-[#0f1420] border-t border-w",
+            "area": 102570
+          },
+          {
+            "a": "MAIN.app-main app-main--with-navbar",
+            "b": "DIV.max-w-4xl mx-auto",
+            "area": 73188
+          },
+          {
+            "a": "MAIN.app-main app-main--with-navbar",
+            "b": "DIV.flex flex-col md:flex-row items-start md:items-center justif",
+            "area": 73188
+          },
+          {
+            "a": "MAIN.app-main app-main--with-navbar",
+            "b": "DIV.flex-1",
+            "area": 47880
+          },
+          {
+            "a": "MAIN.app-main app-main--with-navbar",
+            "b": "P.text-white font-bold text-lg mb-1",
+            "area": 19152
+          }
+        ]
+      },
+      "console_count": 3,
+      "network_count": 0
+    },
+    {
+      "route": "interview_mobile",
+      "path": "/interview",
+      "viewport": "390x844",
+      "mobile": true,
+      "screenshot": "D:\\Projects\\AI Interview System (own)\\Vedrix\\test-artifacts\\browser-smoke\\interview_mobile_390x844.png",
+      "layout": {
+        "url": "http://localhost:5173/interview",
+        "title": "Vedrix - AI Interview Platform",
+        "bodyText": "Skip to main content\nDesktop Required\n\nInterviews require a desktop computer for the best experience. Features like the code editor, webcam, and screen sharing are not available on mobile devices.\n\nAVAILABLE ON MOBILE\nView dashboard and analytics\nCheck interview reports\nManage recruitment drives\nUpdate profile settings\nREQUIRES DESKTOP\nConduct interviews\nCode editor & execution\nWebcam & voice recording\n\nPlease switch to a desktop or laptop computer to continue.\n\n\ud83c\udf6a We use cookies to improve your experience\n\nWe use cookies to enhance your browsing experience, serve personalized content, and analyze our traffic. Click \"Accept All\" to consent to all cookies.\n\nSettings\nReject Non-Essential\nAccep",
+        "navBox": null,
+        "mainBox": {
+          "top": 0,
+          "bottom": 948,
+          "left": 0,
+          "right": 390,
+          "width": 390,
+          "height": 948
+        },
+        "firstBox": {
+          "top": 0,
+          "bottom": 844,
+          "left": 0,
+          "right": 390,
+          "width": 390,
+          "height": 844
+        },
+        "navOverlap": false,
+        "overlaps": [
+          {
+            "a": "MAIN.app-main ",
+            "b": "DIV.fixed bottom-0 left-0 right-0 bg-[#0f1420] border-t border-w",
+            "area": 102570
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "DIV.max-w-4xl mx-auto",
+            "area": 73188
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "DIV.flex flex-col md:flex-row items-start md:items-center justif",
+            "area": 73188
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "DIV.flex-1",
+            "area": 47880
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "P.text-white font-bold text-lg mb-1",
+            "area": 19152
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "P.text-slate-400 text-sm",
+            "area": 27360
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "DIV.flex items-center space-x-3 flex-shrink-0",
+            "area": 19836
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "BUTTON.flex items-center space-x-2 px-4 py-2 bg-white/5 border bord",
+            "area": 4363
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "BUTTON.px-4 py-2 bg-white/5 border border-white/10 text-slate-300 r",
+            "area": 7092
+          },
+          {
+            "a": "MAIN.app-main ",
+            "b": "BUTTON.px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white round",
+            "area": 4531
+          },
+          {
+            "a": "DIV.min-h-[inherit]",
+            "b": "DIV.fixed bottom-0 left-0 right-0 bg-[#0f1420] border-t border-w",
+            "area": 102570
+          },
+          {
+            "a": "DIV.min-h-[inherit]",
+            "b": "DIV.max-w-4xl mx-auto",
+            "area": 73188
+          }
+        ]
+      },
+      "console_count": 3,
+      "network_count": 0
+    }
+  ],
+  "console": [
+    {
+      "type": "debug",
+      "text": "[vite] connecting...",
+      "url": "http://localhost:5173/",
+      "route": "landing"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected.",
+      "url": "http://localhost:5173/",
+      "route": "landing"
+    },
+    {
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "url": "http://localhost:5173/",
+      "route": "landing"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connecting...",
+      "url": "http://localhost:5173/login",
+      "route": "login"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected.",
+      "url": "http://localhost:5173/login",
+      "route": "login"
+    },
+    {
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "url": "http://localhost:5173/login",
+      "route": "login"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connecting...",
+      "url": "http://localhost:5173/register",
+      "route": "register"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected.",
+      "url": "http://localhost:5173/register",
+      "route": "register"
+    },
+    {
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "url": "http://localhost:5173/register",
+      "route": "register"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connecting...",
+      "url": "http://localhost:5173/login",
+      "route": "dashboard_redirect"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected.",
+      "url": "http://localhost:5173/login",
+      "route": "dashboard_redirect"
+    },
+    {
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "url": "http://localhost:5173/login",
+      "route": "dashboard_redirect"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connecting...",
+      "url": "http://localhost:5173/login",
+      "route": "hr_redirect"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected.",
+      "url": "http://localhost:5173/login",
+      "route": "hr_redirect"
+    },
+    {
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "url": "http://localhost:5173/login",
+      "route": "hr_redirect"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connecting...",
+      "url": "http://localhost:5173/login",
+      "route": "admin_redirect"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected.",
+      "url": "http://localhost:5173/login",
+      "route": "admin_redirect"
+    },
+    {
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "url": "http://localhost:5173/login",
+      "route": "admin_redirect"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connecting...",
+      "url": "http://localhost:5173/interview",
+      "route": "interview"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected.",
+      "url": "http://localhost:5173/interview",
+      "route": "interview"
+    },
+    {
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "url": "http://localhost:5173/interview",
+      "route": "interview"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connecting...",
+      "url": "http://localhost:5173/",
+      "route": "landing_mobile"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected.",
+      "url": "http://localhost:5173/",
+      "route": "landing_mobile"
+    },
+    {
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "url": "http://localhost:5173/",
+      "route": "landing_mobile"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connecting...",
+      "url": "http://localhost:5173/login",
+      "route": "login_mobile"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected.",
+      "url": "http://localhost:5173/login",
+      "route": "login_mobile"
+    },
+    {
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "url": "http://localhost:5173/login",
+      "route": "login_mobile"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connecting...",
+      "url": "http://localhost:5173/register",
+      "route": "register_mobile"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected.",
+      "url": "http://localhost:5173/register",
+      "route": "register_mobile"
+    },
+    {
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "url": "http://localhost:5173/register",
+      "route": "register_mobile"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connecting...",
+      "url": "http://localhost:5173/interview",
+      "route": "interview_mobile"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected.",
+      "url": "http://localhost:5173/interview",
+      "route": "interview_mobile"
+    },
+    {
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "url": "http://localhost:5173/interview",
+      "route": "interview_mobile"
+    }
+  ],
+  "network": []
+}

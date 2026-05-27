@@ -62,14 +62,29 @@ app.add_middleware(AuditLogMiddleware)
 # Performance Monitoring — tracks request latency and metrics
 app.add_middleware(PerformanceMonitoringMiddleware)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        settings.FRONTEND_URL,
+# CORS Middleware configuration
+if settings.ENVIRONMENT == "production":
+    origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]
+    if "*" in origins or not origins:
+        raise ValueError(
+            "CORS: Wildcard '*' is not allowed and ALLOWED_ORIGINS must be configured when ENVIRONMENT is production."
+        )
+else:
+    origins = [
         "http://localhost:5173",
         "http://localhost:5174",
         "http://localhost:5175",
-    ],
+    ]
+    if settings.FRONTEND_URL:
+        origins.append(settings.FRONTEND_URL)
+    if settings.ALLOWED_ORIGINS:
+        for o in [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]:
+            if o not in origins:
+                origins.append(o)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

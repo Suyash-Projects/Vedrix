@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
-  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend
+  ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend
 } from 'recharts';
 import {
   ChevronLeft, Target, AlertTriangle, CheckCircle2,
@@ -150,7 +150,7 @@ const SkillGapAnalysis = () => {
                       />
                       <Bar dataKey="gap" radius={[0, 6, 6, 0]} barSize={24}>
                         {gapChartData.map((entry, index) => (
-                          <cell key={`cell-${index}`} fill={entry.fill} />
+                          <Cell key={`cell-${index}`} fill={entry.fill} />
                         ))}
                       </Bar>
                     </BarChart>

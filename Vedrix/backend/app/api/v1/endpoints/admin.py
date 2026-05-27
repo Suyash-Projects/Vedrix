@@ -299,23 +299,36 @@ async def get_ai_provider_health(
     and the current fallback chain status.
     """
     from app.services.interview_engine.circuit_breaker import get_all_circuit_breaker_statuses
-    from app.services.interview_engine.model_router import TaskType, _get_routes
+    from app.services.interview_engine.model_router import (
+        get_provider_statuses,
+        get_route_statuses,
+    )
 
     # Get circuit breaker statuses
     circuit_statuses = get_all_circuit_breaker_statuses()
-
-    # Get route configurations
-    routes = _get_routes()
-    route_info = {}
-    for task_type, route in routes.items():
-        route_info[task_type.value] = {
-            "description": route.description,
-            "providers": [f"{s.provider}/{s.model_id}" for s in route.chain],
-        }
+    providers = get_provider_statuses()
+    routes = get_route_statuses()
+    configured_chat_providers = [
+        name for name, status in providers.items()
+        if status["configured"] and "chat" in status["capabilities"]
+    ]
+    configured_voice_providers = [
+        name for name, status in providers.items()
+        if status["configured"]
+        and any(cap in status["capabilities"] for cap in ("stt", "tts"))
+    ]
 
     return {
+        "status": "healthy" if configured_chat_providers or configured_voice_providers else "degraded",
+        "providers": providers,
         "circuit_breakers": circuit_statuses,
-        "routes": route_info,
+        "routes": routes,
+        "summary": {
+            "chat_providers_configured": configured_chat_providers,
+            "voice_providers_configured": configured_voice_providers,
+            "routes_available": sum(1 for route in routes.values() if route["available"]),
+            "routes_total": len(routes),
+        },
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -1381,4 +1394,59 @@ async def get_supervisor_stats(
         "suggest_mode_sessions": suggest_mode_count,
     }
 
+
+from pydantic import BaseModel
+from app.services.config_service import ConfigService
+
+class ConfigUpdateRequest(BaseModel):
+    value: Any
+
+@router.get("/config")
+async def get_system_config(
+    current_admin: User = Depends(deps.get_current_admin),
+    db: AsyncSession = Depends(get_session)
+) -> Dict[str, Any]:
+    """Retrieve all configuration keys and values."""
+    return await ConfigService.get_all(db)
+
+@router.put("/config/{key}")
+async def update_system_config(
+    key: str,
+    payload: ConfigUpdateRequest,
+    current_admin: User = Depends(deps.get_current_admin),
+    db: AsyncSession = Depends(get_session)
+) -> Any:
+    """Update a specific configuration key."""
+    updated_cfg = await ConfigService.update(
+        db=db,
+        key=key,
+        value=payload.value,
+        changed_by_user_id=current_admin.id
+    )
+    import json
+    return {
+        "key": updated_cfg.key,
+        "value": json.loads(updated_cfg.value),
+        "updated_at": updated_cfg.updated_at
+    }
+
+@router.get("/config/history")
+async def get_config_history(
+    current_admin: User = Depends(deps.get_current_admin),
+    db: AsyncSession = Depends(get_session)
+) -> List[Any]:
+    """Retrieve configuration update history."""
+    history = await ConfigService.get_history(db)
+    import json
+    return [
+        {
+            "id": item.id,
+            "key": item.key,
+            "old_value": json.loads(item.old_value) if item.old_value else None,
+            "new_value": json.loads(item.new_value),
+            "changed_by_user_id": item.changed_by_user_id,
+            "changed_at": item.changed_at
+        }
+        for item in history
+    ]
 

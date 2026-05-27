@@ -3,6 +3,16 @@ import { motion } from 'framer-motion';
 import { Home, ArrowLeft, Cpu, Sparkles, Compass, Orbit } from 'lucide-react';
 import AnimatedBackground from '../components/AnimatedBackground';
 
+const sparkles = Array.from({ length: 12 }, (_, i) => ({
+  id: i,
+  x: `${10 + Math.random() * 80}%`,
+  y: `${10 + Math.random() * 80}%`,
+  yAnimate: [`${10 + Math.random() * 80}%`, `${5 + Math.random() * 80}%`],
+  duration: 4 + Math.random() * 4,
+  delay: Math.random() * 3,
+  size: 10 + Math.random() * 10,
+}));
+
 const NotFound = () => {
   const navigate = useNavigate();
 
@@ -11,27 +21,27 @@ const NotFound = () => {
       <AnimatedBackground variant="auth" />
 
       {/* Floating sparkles */}
-      {[...Array(12)].map((_, i) => (
+      {sparkles.map((sparkle) => (
         <motion.div
-          key={i}
+          key={sparkle.id}
           className="absolute pointer-events-none text-purple-400/40"
           initial={{
-            x: `${10 + Math.random() * 80}%`,
-            y: `${10 + Math.random() * 80}%`,
+            x: sparkle.x,
+            y: sparkle.y,
             opacity: 0,
           }}
           animate={{
-            y: [`${10 + Math.random() * 80}%`, `${5 + Math.random() * 80}%`],
+            y: sparkle.yAnimate,
             opacity: [0, 0.8, 0],
           }}
           transition={{
-            duration: 4 + Math.random() * 4,
+            duration: sparkle.duration,
             repeat: Infinity,
-            delay: Math.random() * 3,
+            delay: sparkle.delay,
           }}
           aria-hidden="true"
         >
-          <Sparkles size={10 + Math.random() * 10} />
+          <Sparkles size={sparkle.size} />
         </motion.div>
       ))}
 

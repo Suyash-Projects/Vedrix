@@ -198,6 +198,41 @@ class ResearchService:
         clean = re.sub(r"\s+", " ", clean).strip()
         return clean
 
+    async def _check_robots_txt(self, url: str) -> bool:
+        """Check if robots.txt allows scraping the given URL."""
+        try:
+            from urllib.parse import urlparse
+            import urllib.robotparser
+
+            if not url.startswith("http"):
+                if "linkedin" in url:
+                    url = f"https://linkedin.com/in/{url}"
+                else:
+                    url = f"https://github.com/{url}"
+
+            parsed_url = urlparse(url)
+            domain = parsed_url.netloc
+            if not domain:
+                return True
+
+            robots_url = f"{parsed_url.scheme}://{domain}/robots.txt"
+            await self._rate_limiter.acquire(domain)
+
+            headers = {
+                "User-Agent": "Vedrix-AI-Interview-System (respects robots.txt)",
+            }
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(robots_url, headers=headers)
+                if getattr(resp, "status_code", None) == 200:
+                    text = getattr(resp, "text", "")
+                    if text:
+                        rp = urllib.robotparser.RobotFileParser()
+                        rp.parse(text.splitlines())
+                        return rp.can_fetch("Vedrix-AI-Interview-System", url)
+        except Exception as e:
+            logger.warning("Failed to check robots.txt for %s: %s", url, e)
+        return True
+
     # ── Public Methods ────────────────────────────────────────────────────────
 
     @trace_agent_action("research_agent", "enrich_profile")
@@ -333,6 +368,35 @@ class ResearchService:
                 indexed_at=None,
             )
 
+        # Check robots.txt
+        full_url = github_url
+        if not full_url.startswith("http"):
+            full_url = f"https://github.com/{username}"
+        allowed = await self._check_robots_txt(full_url)
+        if not allowed:
+            logger.warning("Scraping %s disallowed by robots.txt", full_url)
+            if db:
+                try:
+                    from app.models.trace_entry import TraceEntryCreate
+                    from app.services.observability_service import ObservabilityService
+                    obs = ObservabilityService(db)
+                    await obs.record(TraceEntryCreate(
+                        agent_name="research_agent",
+                        action_type="robots_disallowed",
+                        candidate_id=candidate_id,
+                        input_summary=f"url={full_url}",
+                        output_summary="Skipped due to robots.txt",
+                        reasoning_summary="robots.txt disallows scraping this URL",
+                    ))
+                except Exception as trace_err:
+                    logger.error("Failed to write trace entry: %s", trace_err)
+            return GitHubIndexResult(
+                repos_indexed=0,
+                skipped=True,
+                reason="robots.txt disallows scraping",
+                indexed_at=None,
+            )
+
         # Rate limit: acquire slot for api.github.com
         await self._rate_limiter.acquire("api.github.com")
 
@@ -416,6 +480,26 @@ class ResearchService:
                 "Research agent: GitHub API error for candidate_id=%s: %s",
                 candidate_id, e,
             )
+            is_rate_limit = False
+            if hasattr(e, "response") and e.response is not None:
+                if e.response.status_code in (403, 429):
+                    is_rate_limit = True
+
+            if db:
+                try:
+                    from app.models.trace_entry import TraceEntryCreate
+                    from app.services.observability_service import ObservabilityService
+                    obs = ObservabilityService(db)
+                    await obs.record(TraceEntryCreate(
+                        agent_name="research_agent",
+                        action_type="rate_limit_error" if is_rate_limit else "api_error",
+                        candidate_id=candidate_id,
+                        input_summary=f"index_github: github_url={github_url}",
+                        output_summary=f"error={str(e)[:200]}",
+                        reasoning_summary=f"GitHub API call failed: {e}",
+                    ))
+                except Exception as trace_err:
+                    logger.error("Failed to write trace entry: %s", trace_err)
             raise
 
         # Parse repos into structured data and index into ChromaDB
@@ -556,12 +640,55 @@ class ResearchService:
                     candidate_id,
                 )
 
+                import urllib.robotparser
+                if getattr(robots_resp, "status_code", None) == 200:
+                    text = getattr(robots_resp, "text", "")
+                    if text:
+                        rp = urllib.robotparser.RobotFileParser()
+                        rp.parse(text.splitlines())
+                        if not rp.can_fetch("Vedrix-AI-Interview-System", linkedin_url):
+                            logger.warning("Scraping %s disallowed by robots.txt", linkedin_url)
+                            if db:
+                                try:
+                                    from app.models.trace_entry import TraceEntryCreate
+                                    from app.services.observability_service import ObservabilityService
+                                    obs = ObservabilityService(db)
+                                    await obs.record(TraceEntryCreate(
+                                        agent_name="research_agent",
+                                        action_type="robots_disallowed",
+                                        candidate_id=candidate_id,
+                                        input_summary=f"url={linkedin_url}",
+                                        output_summary="Extracting only user-provided structured data due to robots.txt",
+                                        reasoning_summary="robots.txt disallows scraping this URL",
+                                    ))
+                                except Exception as trace_err:
+                                    logger.error("Failed to write trace entry: %s", trace_err)
+
         except httpx.HTTPError as e:
             logger.warning(
                 "Research agent: LinkedIn access error for candidate_id=%s: %s",
                 candidate_id, e,
             )
-            # Continue with empty structured data rather than failing entirely
+            is_rate_limit = False
+            if hasattr(e, "response") and e.response is not None:
+                if e.response.status_code in (403, 429):
+                    is_rate_limit = True
+
+            if db:
+                try:
+                    from app.models.trace_entry import TraceEntryCreate
+                    from app.services.observability_service import ObservabilityService
+                    obs = ObservabilityService(db)
+                    await obs.record(TraceEntryCreate(
+                        agent_name="research_agent",
+                        action_type="rate_limit_error" if is_rate_limit else "api_error",
+                        candidate_id=candidate_id,
+                        input_summary=f"extract_linkedin: linkedin_url={linkedin_url}",
+                        output_summary=f"error={str(e)[:200]}",
+                        reasoning_summary=f"LinkedIn extraction failed: {e}",
+                    ))
+                except Exception as trace_err:
+                    logger.error("Failed to write trace entry: %s", trace_err)
 
         # Since direct LinkedIn scraping is restricted by robots.txt,
         # we store the URL reference and any structured data the candidate

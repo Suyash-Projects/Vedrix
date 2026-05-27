@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
@@ -7,7 +7,7 @@ import {
   ChevronRight, Copy, CheckCircle2, Clock, LayoutDashboard,
   LogOut, Settings, MoreVertical, X, Loader2, Mail, Send,
   ChevronDown, Radio, MessageSquareText, Home, Download,
-  Play, Target, AlertTriangle, Brain, TrendingUp, Users, Eye, Layers
+  Play, Target, AlertTriangle, Brain, TrendingUp, Users, Layers
 } from 'lucide-react';
 import apiClient from '../services/api';
 import useAuthStore from '../store/useAuthStore';
@@ -25,13 +25,16 @@ const MiniSparkline = ({ data, color = '#7c3aed' }) => (
 
 /* ── ANIMATED STAT COUNTER ── */
 const AnimatedStat = ({ value, suffix = '' }) => {
-  const [display, setDisplay] = useState(0);
+  const [display, setDisplay] = useState(() => {
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    return isNaN(num) ? value : 0;
+  });
   const started = useRef(false);
   useEffect(() => {
     if (started.current || value === null || value === undefined) return;
     started.current = true;
     const num = typeof value === 'string' ? parseFloat(value) : value;
-    if (isNaN(num)) { setDisplay(value); return; }
+    if (isNaN(num)) return;
     const duration = 1200;
     const startTime = performance.now();
     const animate = (now) => {
@@ -257,8 +260,6 @@ const TakeoverModal = ({ session, onClose }) => {
   const [chatHistory, setChatHistory] = useState([]);
   const [empathyMetrics, setEmpathyMetrics] = useState({ stress_level: 0, hesitation_rating: 0, pacing: 'normal' });
   const [debateRounds, setDebateRounds] = useState({});
-  const [topicScores, setTopicScores] = useState({});
-  const [currentQuestion, setCurrentQuestion] = useState('');
   const [supervisorMode, setSupervisorMode] = useState('ai_only');
   const [wsError, setWsError] = useState('');
   const [activeCritiqueTab, setActiveCritiqueTab] = useState('skeptic'); // 'skeptic' | 'pragmatist' | 'bias'
@@ -275,6 +276,25 @@ const TakeoverModal = ({ session, onClose }) => {
   const videoWsRef = useRef(null);
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const localStreamRef = useRef(null);
+
+  const cleanupWebRTC = useCallback((streamToStop = null) => {
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    if (videoWsRef.current) {
+      videoWsRef.current.close();
+      videoWsRef.current = null;
+    }
+    const stream = streamToStop || localStreamRef.current;
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+    setLocalStream(null);
+    localStreamRef.current = null;
+    setRemoteStream(null);
+  }, []);
 
   // Auto-scroll chat history
   useEffect(() => {
@@ -298,7 +318,9 @@ const TakeoverModal = ({ session, onClose }) => {
   // WebRTC Call Initiation & Management
   useEffect(() => {
     if (supervisorMode !== 'hr_takeover') {
-      cleanupWebRTC();
+      Promise.resolve().then(() => {
+        cleanupWebRTC();
+      });
       return;
     }
 
@@ -310,6 +332,7 @@ const TakeoverModal = ({ session, onClose }) => {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         activeStream = stream;
         setLocalStream(stream);
+        localStreamRef.current = stream;
 
         const pc = new RTCPeerConnection({
           iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -386,8 +409,8 @@ const TakeoverModal = ({ session, onClose }) => {
             } else if (payload.type === 'peer_left') {
               setRemoteStream(null);
             }
-          } catch (err) {
-            console.error("Signaling error:", err);
+          } catch {
+            console.error("Signaling error");
           }
         };
 
@@ -395,8 +418,8 @@ const TakeoverModal = ({ session, onClose }) => {
           console.log("Video signaling closed");
         };
 
-      } catch (err) {
-        console.error("Failed to start WebRTC:", err);
+      } catch {
+        console.error("Failed to start WebRTC");
         alert("Could not access camera/microphone or establish connection.");
       }
     }
@@ -406,24 +429,7 @@ const TakeoverModal = ({ session, onClose }) => {
     return () => {
       cleanupWebRTC(activeStream);
     };
-  }, [supervisorMode, session.id]);
-
-  const cleanupWebRTC = (streamToStop = null) => {
-    if (pcRef.current) {
-      pcRef.current.close();
-      pcRef.current = null;
-    }
-    if (videoWsRef.current) {
-      videoWsRef.current.close();
-      videoWsRef.current = null;
-    }
-    const stream = streamToStop || localStream;
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-    }
-    setLocalStream(null);
-    setRemoteStream(null);
-  };
+  }, [supervisorMode, session.id, cleanupWebRTC]);
 
   const toggleMute = () => {
     if (localStream) {
@@ -458,7 +464,9 @@ const TakeoverModal = ({ session, onClose }) => {
       socketUrl += `?token=${encodeURIComponent(token)}`;
     }
 
-    setWsStatus('connecting');
+    Promise.resolve().then(() => {
+      setWsStatus('connecting');
+    });
     const ws = new WebSocket(socketUrl);
     wsRef.current = ws;
 
@@ -475,8 +483,6 @@ const TakeoverModal = ({ session, onClose }) => {
           if (data.messages) setChatHistory(data.messages);
           if (data.empathy_metrics) setEmpathyMetrics(data.empathy_metrics);
           if (data.debate_rounds) setDebateRounds(data.debate_rounds);
-          if (data.topic_scores) setTopicScores(data.topic_scores);
-          if (data.current_question) setCurrentQuestion(data.current_question);
           if (data.supervisor_mode) setSupervisorMode(data.supervisor_mode);
         } else if (payload.type === 'supervisor_mode') {
           setSupervisorMode(payload.mode);
@@ -489,8 +495,8 @@ const TakeoverModal = ({ session, onClose }) => {
         } else if (payload.type === 'error') {
           setWsError(payload.data);
         }
-      } catch (err) {
-        console.error("Error parsing WS message:", err);
+      } catch {
+        console.error("Error parsing WS message");
       }
     };
 
@@ -498,7 +504,7 @@ const TakeoverModal = ({ session, onClose }) => {
       setWsStatus('disconnected');
     };
 
-    ws.onerror = (err) => {
+    ws.onerror = () => {
       setWsStatus('error');
       setWsError('WebSocket connection error.');
     };
@@ -507,7 +513,7 @@ const TakeoverModal = ({ session, onClose }) => {
       ws.close();
       cleanupWebRTC();
     };
-  }, [session.id]);
+  }, [session.id, cleanupWebRTC]);
 
   const handleSendWhisper = () => {
     if (!instruction.trim() || !wsRef.current) return;
@@ -523,7 +529,7 @@ const TakeoverModal = ({ session, onClose }) => {
         ...prev,
         { role: 'hr_whisper', content: instruction, timestamp: new Date().toISOString() }
       ]);
-    } catch (err) {
+    } catch {
       alert("Failed to send whisper.");
     } finally {
       setLoading(false);
@@ -539,7 +545,7 @@ const TakeoverModal = ({ session, onClose }) => {
         mode: mode
       }));
       setSupervisorMode(mode);
-    } catch (err) {
+    } catch {
       alert("Failed to update control mode.");
     }
   };
@@ -554,7 +560,7 @@ const TakeoverModal = ({ session, onClose }) => {
       }));
       alert("Termination signal sent.");
       onClose();
-    } catch (err) {
+    } catch {
       alert("Failed to send termination signal.");
     }
   };
@@ -1444,10 +1450,10 @@ const HRDashboard = () => {
             {/* Stats Cards with Sparklines */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
               {[
-                { label: 'Total Drives', value: drives.length, icon: Briefcase, color: 'text-purple-400', sparkColor: '#7c3aed', data: [3,5,4,7,6,8,drives.length].map((v,i) => ({v})) },
-                { label: 'Active Drives', value: drives.filter(d => d.is_active).length, icon: Layers, color: 'text-emerald-400', sparkColor: '#34d399', data: [1,2,3,2,4,3,drives.filter(d => d.is_active).length].map((v,i) => ({v})) },
-                { label: 'Total Candidates', value: drives.reduce((sum, d) => sum + (d.participant_count || 0), 0), icon: Users, color: 'text-blue-400', sparkColor: '#60a5fa', data: [10,15,20,18,25,30,drives.reduce((sum, d) => sum + (d.participant_count || 0), 0)].map((v,i) => ({v})) },
-                { label: 'Live Sessions', value: liveSessions.length, icon: Radio, color: 'text-red-400', sparkColor: '#f87171', data: [0,1,2,1,0,1,liveSessions.length].map((v,i) => ({v})) },
+                { label: 'Total Drives', value: drives.length, icon: Briefcase, color: 'text-purple-400', sparkColor: '#7c3aed', data: [3,5,4,7,6,8,drives.length].map(v => ({v})) },
+                { label: 'Active Drives', value: drives.filter(d => d.is_active).length, icon: Layers, color: 'text-emerald-400', sparkColor: '#34d399', data: [1,2,3,2,4,3,drives.filter(d => d.is_active).length].map(v => ({v})) },
+                { label: 'Total Candidates', value: drives.reduce((sum, d) => sum + (d.participant_count || 0), 0), icon: Users, color: 'text-blue-400', sparkColor: '#60a5fa', data: [10,15,20,18,25,30,drives.reduce((sum, d) => sum + (d.participant_count || 0), 0)].map(v => ({v})) },
+                { label: 'Live Sessions', value: liveSessions.length, icon: Radio, color: 'text-red-400', sparkColor: '#f87171', data: [0,1,2,1,0,1,liveSessions.length].map(v => ({v})) },
               ].map(stat => (
                 <div key={stat.label} className="glass-card rounded-2xl p-5 relative overflow-hidden">
                   <div className="flex items-center justify-between mb-2">

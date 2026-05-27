@@ -3,6 +3,8 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import InterviewRoom from './pages/InterviewRoom';
 import AdminDashboard from './pages/AdminDashboard';
 import HRDashboard from './pages/HRDashboard';
@@ -45,6 +47,7 @@ import Toast from './components/Toast';
 import AIAssistant from './components/AIAssistant';
 import AgentActivityPanel from './components/AgentActivityPanel';
 import PageTransition from './components/PageTransition';
+import ErrorBoundary from './components/ErrorBoundary';
 import useAuthStore from './store/useAuthStore';
 
 function App() {
@@ -81,7 +84,7 @@ function App() {
     !isInterviewRoom;
 
   return (
-    <div className="min-h-screen bg-[#020617] text-white">
+    <div className="app-shell bg-[#020617] text-white">
       {/* Skip to main content link for accessibility */}
       <a href="#main-content" className="skip-link">
         Skip to main content
@@ -89,7 +92,11 @@ function App() {
 
       {showNavbar && <Navbar />}
 
-      <main id="main-content" className={showNavbar ? 'pt-20' : 'pt-0'}>
+      <main
+        id="main-content"
+        className={`app-main ${showNavbar ? 'app-main--with-navbar' : ''}`}
+      >
+        <ErrorBoundary>
         <PageTransition>
           <Routes location={location} key={location.pathname}>
             {/* Public Routes */}
@@ -100,6 +107,8 @@ function App() {
 
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
 
             {/* Interview Room (Public-ish/Self-protected) */}
             <Route path="/interview" element={<InterviewRoom />} />
@@ -291,6 +300,7 @@ function App() {
             <Route path="*" element={<NotFound />} />
           </Routes>
         </PageTransition>
+        </ErrorBoundary>
       </main>
 
       {showFooter && <Footer />}

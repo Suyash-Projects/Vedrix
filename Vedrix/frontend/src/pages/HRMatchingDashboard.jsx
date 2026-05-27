@@ -103,7 +103,9 @@ const HRMatchingDashboard = () => {
   }, [driveId]);
 
   useEffect(() => {
-    fetchRankings();
+    Promise.resolve().then(() => {
+      fetchRankings();
+    });
   }, [fetchRankings]);
 
   const sorted = [...rankings].sort((a, b) =>

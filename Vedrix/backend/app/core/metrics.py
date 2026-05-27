@@ -59,6 +59,25 @@ db_query_duration = Histogram(
     ["query_type"]
 )
 
+# Active WebSocket connections
+active_websocket_connections = Gauge(
+    "active_websocket_connections",
+    "Number of currently active WebSocket connections"
+)
+
+# Email metrics
+email_sent_total = Counter(
+    "email_sent_total",
+    "Total emails sent",
+    ["status"]
+)
+
+# PDF generation metrics
+pdf_generated_total = Counter(
+    "pdf_generated_total",
+    "Total PDFs generated"
+)
+
 
 router = APIRouter()
 

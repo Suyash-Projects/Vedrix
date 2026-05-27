@@ -106,6 +106,24 @@ class PlannerNode:
             generated_by = "planner_agent"
         except Exception as e:
             logger.warning(f"Planner LLM failed or timed out: {e}. Falling back to default plan.")
+            # Record exception as a TraceEntry to the database
+            try:
+                from app.services.observability_service import ObservabilityService
+                from app.models.trace_entry import TraceEntryCreate
+                obs = ObservabilityService(db)
+                await obs.record(TraceEntryCreate(
+                    agent_name="planner_agent",
+                    action_type="planner_llm_failed",
+                    session_id=session_id,
+                    input_summary=f"Role: {state.get('job_role', 'Developer')}, Skills: {skills_required}",
+                    reasoning_summary=f"LLM planning failed or timed out: {str(e)[:300]}",
+                    output_summary="Falling back to default plan",
+                    confidence_score=0.0,
+                    duration_ms=int(time.time() * 1000) - start_time_ms,
+                ))
+            except Exception as trace_err:
+                logger.error(f"Failed to record TraceEntry for planner failure: {trace_err}")
+            
             plan_data = self.get_default_plan(skills_required, skill_difficulties)
             generated_by = "fallback"
 
@@ -189,16 +207,12 @@ class PlannerNode:
         async def _call_llm() -> Dict[str, Any]:
             return await self._generate_plan_llm(job_role, skills_required, skill_difficulties)
 
-        async def _fallback() -> Dict[str, Any]:
-            return self.get_default_plan(skills_required, skill_difficulties)
-
         # Wrap with circuit breaker (provider = "groq" for fast LLM)
-        result = await asyncio.wait_for(
-            execute_with_circuit_breaker(
-                provider="groq",
-                func=_call_llm,
-                fallback=_fallback,
-            ),
+        # Note: Do not pass fallback directly so that the caller can catch the exception,
+        # log it as a TraceEntry, and record the correct fallback status in the database.
+        result = await execute_with_circuit_breaker(
+            provider="groq",
+            func=_call_llm,
             timeout=timeout_seconds,
         )
         return result

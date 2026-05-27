@@ -1,53 +1,30 @@
+"""
+Health check endpoint for load balancers, container orchestration, and
+monitoring systems.
+
+Returns structured JSON with per-component status. No auth required.
+"""
 from fastapi import APIRouter
-from datetime import datetime, timezone
-import time
+from fastapi.responses import JSONResponse
+
+from app.services.health_service import health_service
 
 router = APIRouter()
-
-# Set at module import time (close enough to app start)
-_start_time = time.time()
 
 
 @router.get("/health")
 async def health_check():
-    """Health check endpoint for load balancers and container orchestration."""
-    uptime = int(time.time() - _start_time)
+    """
+    Health check endpoint — no authentication required.
 
-    # Check database connectivity
-    db_status = "healthy"
-    try:
-        from app.db.session import engine
-        from sqlalchemy import text
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-    except Exception as e:
-        db_status = f"unhealthy: {str(e)[:100]}"
+    Returns HTTP 200 when all components are healthy,
+    HTTP 503 when any component is degraded.
+    """
+    health = await health_service.check_all()
 
-    # Check Redis (optional — may not be configured)
-    redis_status = "healthy"
-    try:
-        from app.services.cache_service import redis_client
-        if redis_client:
-            await redis_client.ping()
-        else:
-            redis_status = "not_configured"
-    except Exception:
-        redis_status = "unavailable"
+    status_code = 200 if health.status == "healthy" else 503
 
-    all_healthy = db_status == "healthy"
-    status_code = 200 if all_healthy else 503
-
-    from fastapi.responses import JSONResponse
     return JSONResponse(
         status_code=status_code,
-        content={
-            "status": "healthy" if all_healthy else "degraded",
-            "version": "1.0.0",
-            "uptime_seconds": uptime,
-            "components": {
-                "database": db_status,
-                "redis": redis_status,
-            },
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
+        content=health.model_dump(),
     )

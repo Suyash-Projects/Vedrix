@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Play, Upload, FileText, BarChart3, Clock, CheckCircle2,
   TrendingUp, Award, ChevronRight, Loader2, Trash2,
-  Flame, Calendar, Target, Zap, BookOpen
+  Flame, Target, Zap, BookOpen
 } from 'lucide-react';
 import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer } from 'recharts';
 import apiClient from '../services/api';
@@ -12,15 +12,14 @@ import useAuthStore from '../store/useAuthStore';
 
 /* ── Animated Counter ──────────────────────────────────────────────────────── */
 const AnimatedNumber = ({ value, suffix = '' }) => {
-  const [display, setDisplay] = useState(0);
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  const isValNaN = isNaN(num);
+  const [display, setDisplay] = useState(() => isValNaN ? value : 0);
   const started = useRef(false);
 
   useEffect(() => {
-    if (started.current || value === null || value === undefined) return;
+    if (started.current || value === null || value === undefined || isValNaN) return;
     started.current = true;
-    const num = typeof value === 'string' ? parseFloat(value) : value;
-    if (isNaN(num)) { setDisplay(value); return; }
-    let start = 0;
     const duration = 1000;
     const startTime = performance.now();
     const animate = (now) => {
@@ -29,7 +28,7 @@ const AnimatedNumber = ({ value, suffix = '' }) => {
       if (progress < 1) requestAnimationFrame(animate);
     };
     requestAnimationFrame(animate);
-  }, [value]);
+  }, [value, num, isValNaN]);
 
   return <>{typeof display === 'number' ? display : value}{suffix}</>;
 };
@@ -426,7 +425,7 @@ const StudentDashboard = () => {
             </h3>
             {sessions.length > 0 ? (
               <div className="space-y-4">
-                {sessions.slice(0, 5).map((s, i) => (
+                {sessions.slice(0, 5).map((s) => (
                   <div key={s.id} className="flex items-start space-x-3">
                     <div className="mt-1 w-2 h-2 rounded-full bg-purple-500 shrink-0" />
                     <div className="flex-1 min-w-0">
@@ -635,11 +634,16 @@ const StudentDashboard = () => {
                 className="absolute bottom-16 right-0 space-y-2 mb-2"
               >
                 {[
-                  { label: 'Start Interview', icon: Play, action: handleStartInterview, color: 'bg-purple-600' },
-                  { label: 'Upload Resume', icon: Upload, action: () => fileRef.current?.click(), color: 'bg-indigo-600' },
-                  { label: 'Edit Profile', icon: FileText, action: () => setProfileModalOpen(true), color: 'bg-violet-600' },
-                ].map(({ label, icon: Icon, action, color }) => (
-                  <button key={label} onClick={() => { action(); setFabOpen(false); }}
+                  { label: 'Start Interview', icon: Play, actionType: 'start', color: 'bg-purple-600' },
+                  { label: 'Upload Resume', icon: Upload, actionType: 'upload', color: 'bg-indigo-600' },
+                  { label: 'Edit Profile', icon: FileText, actionType: 'edit', color: 'bg-violet-600' },
+                ].map(({ label, icon: Icon, actionType, color }) => (
+                  <button key={label} onClick={() => {
+                    if (actionType === 'start') handleStartInterview();
+                    else if (actionType === 'upload') fileRef.current?.click();
+                    else if (actionType === 'edit') setProfileModalOpen(true);
+                    setFabOpen(false);
+                  }}
                     className={`flex items-center space-x-2 ${color} text-white px-4 py-2.5 rounded-2xl font-bold text-sm shadow-lg whitespace-nowrap hover:opacity-90 transition-all`}
                     aria-label={label}>
                     <Icon size={16} /><span>{label}</span>

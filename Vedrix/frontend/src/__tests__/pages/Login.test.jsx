@@ -8,6 +8,7 @@ vi.mock('../../store/useAuthStore', () => ({
     login: vi.fn(),
     isLoading: false,
     error: null,
+    clearError: vi.fn(),
   })),
 }));
 

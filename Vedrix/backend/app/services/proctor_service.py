@@ -111,7 +111,7 @@ class ProctorService:
         await db.commit()
         await db.refresh(violation)
 
-        # AC 2: Emit HR alert when tab-switch count exceeds threshold
+        # Emit real-time HR alert
         if event_type == "tab_switch":
             count_stmt = (
                 select(func.count(ViolationRecord.id))
@@ -122,7 +122,33 @@ class ProctorService:
             tab_switch_count = count_res.scalar() or 0
 
             if tab_switch_count > tab_switch_threshold:
-                await self._emit_hr_alert(session_id, tab_switch_count)
+                await self._emit_hr_alert(
+                    session_id,
+                    "tab_switch",
+                    tab_switch_count,
+                    f"Candidate has switched tabs {tab_switch_count} times.",
+                )
+        elif event_type in ("multiple_faces", "no_face", "gaze_deviation"):
+            count_stmt = (
+                select(func.count(ViolationRecord.id))
+                .where(ViolationRecord.session_id == session_id)
+                .where(ViolationRecord.violation_type == event_type)
+            )
+            count_res = await db.execute(count_stmt)
+            v_count = count_res.scalar() or 0
+
+            labels = {
+                "multiple_faces": "Multiple people detected in camera feed",
+                "no_face": "No face detected (candidate walked away)",
+                "gaze_deviation": "Suspicious gaze deviation detected",
+            }
+            label = labels.get(event_type, event_type)
+            await self._emit_hr_alert(
+                session_id,
+                event_type,
+                v_count,
+                f"Proctor Alert: {label} (Total: {v_count}).",
+            )
 
         return violation
 
@@ -323,10 +349,15 @@ class ProctorService:
 
         return None
 
-    async def _emit_hr_alert(self, session_id: int, tab_switch_count: int) -> None:
+    async def _emit_hr_alert(
+        self,
+        session_id: int,
+        violation_type: str,
+        count: int,
+        message: str,
+    ) -> None:
         """
-        Emit a real-time alert to HR via WebSocket when tab-switch threshold
-        is exceeded.
+        Emit a real-time alert to HR via WebSocket when a proctoring violation occurs.
         """
         # Import here to avoid circular imports
         from app.api.v1.endpoints.interview import manager
@@ -334,9 +365,9 @@ class ProctorService:
         alert_msg = {
             "type": "proctor_alert",
             "session_id": str(session_id),
-            "violation_type": "tab_switch",
-            "count": tab_switch_count,
-            "message": f"Candidate has switched tabs {tab_switch_count} times.",
+            "violation_type": violation_type,
+            "count": count,
+            "message": message,
         }
         try:
             await manager.broadcast_to_hr(alert_msg, str(session_id))

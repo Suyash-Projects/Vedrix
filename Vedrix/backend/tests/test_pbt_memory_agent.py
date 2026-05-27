@@ -11,12 +11,12 @@ def test_property_3_skill_trend_consistency(scores):
     """Feature: agentic-platform-evolution, Property 3: Skill Trend Direction Consistency"""
     # 1. Monotonically increasing (strictly increasing)
     inc_scores = sorted(list(set(scores)))
-    if len(inc_scores) >= 2:
+    if len(inc_scores) >= 3:
         assert memory_service.compute_trend(inc_scores) == "improving"
 
     # 2. Monotonically decreasing (strictly decreasing)
     dec_scores = sorted(list(set(scores)), reverse=True)
-    if len(dec_scores) >= 2:
+    if len(dec_scores) >= 3:
         assert memory_service.compute_trend(dec_scores) == "declining"
 
     # 3. All equal

@@ -4,9 +4,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Mic, MicOff, Video, VideoOff, Send, Loader2, Maximize,
   CheckCircle2, Camera, User, PhoneOff, BrainCircuit, SignalHigh,
-  Play, Terminal, Save
+  Play, Terminal, Save, AudioLines
 } from 'lucide-react';
 import useAuthStore from '../store/useAuthStore';
+import useToastStore from '../store/useToastStore';
 import apiClient from '../services/api';
 import Editor from '@monaco-editor/react';
 import { useIsMobile } from '../hooks/useDeviceDetection';
@@ -132,6 +133,7 @@ const Waveform = ({ isRecording }) => {
 const InterviewRoom = () => {
   const { user } = useAuthStore();
   const navigate = useNavigate();
+  const addToast = useToastStore((s) => s.addToast);
   const [searchParams] = useSearchParams();
 
   // Phase 2.1: Mobile detection — block interviews on mobile/tablet
@@ -141,6 +143,7 @@ const InterviewRoom = () => {
     `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
   );
 
+  // All state variables
   const [ready, setReady] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -149,21 +152,131 @@ const InterviewRoom = () => {
   const [timeLeft, setTimeLeft] = useState(0); // Overall session timer
   const [voiceAvailable, setVoiceAvailable] = useState(false);
   const [questionTimeLeft, setQuestionTimeLeft] = useState(0); // Per-question countdown
-
-  // Auto-submit and timeout handling
-  // eslint-disable-next-line react-hooks/purity
-  const lastUserActivityRef = useRef(Date.now());
-  const [showTimeoutConfirm, setShowTimeoutConfirm] = useState(false);
-  const noResponseTimerRef = useRef(null);
-
-  // ... (rest of states)
-
+  const [tabSwitches, setTabSwitches] = useState(0);
   const [currentQuestion, setCurrentQuestion] = useState(null);
-  
-  // Keep refs in sync with state for useEffect closures
+  const [jobRole, setJobRole] = useState('AI Interview');
+  const [completedSessionId, setCompletedSessionId] = useState(null);
+  const [showTextInput, setShowTextInput] = useState(false);
+  const [manualText, setManualText] = useState('');
+  const [codeResult, setCodeResult] = useState(null);
+  const [copilotSuggestions, setCopilotSuggestions] = useState([]);
+  const [isCopilotLoading, setIsCopilotLoading] = useState(false);
+  const [code, setCode] = useState("# Write your solution here...\n");
+  const [isCodingMode, setIsCodingMode] = useState(false);
+  const [codeLanguage, setCodeLanguage] = useState("python");
+  const [totalQuestions] = useState(15);
+  const [skillsCovered, setSkillsCovered] = useState(0);
+  const [totalSkills] = useState(8);
+  const [advisorReady, setAdvisorReady] = useState(false);
+  const [advisorConfidence, setAdvisorConfidence] = useState(0);
+  const [connectionStatus, setConnectionStatus] = useState('connected');
+  const [queuedCount, setQueuedCount] = useState(0);
+  const [syncProgress, setSyncProgress] = useState(null);
+  const [displayReconnectAttempts, setDisplayReconnectAttempts] = useState(0);
+  const [isVideoOn, setIsVideoOn] = useState(true);
+  const [videoStream, setVideoStream] = useState(null);
+  const [remoteStream, setRemoteStream] = useState(null);
+  const [supervisorMode, setSupervisorMode] = useState('ai_only');
+  const [showTimeoutConfirm, setShowTimeoutConfirm] = useState(false);
+  const [silenceDuration, setSilenceDuration] = useState(0); // ms of current silence
+  const [isSilent, setIsSilent] = useState(false); // whether silence is being detected
+
+  // All refs
+  const audioContextRef = useRef(null);
+  const silenceIntervalRef = useRef(null);
+  const submitCodeRef = useRef(null);
+  const submitTextAnswerRef = useRef(null);
+  const isCodingModeRef = useRef(false);
+  const showTextInputRef = useRef(false);
+  const manualTextRef = useRef('');
+  const isRecordingRef = useRef(false);
+  const toggleRecordingRef = useRef(null);
+  const lastUserActivityRef = useRef(0);
+  const noResponseTimerRef = useRef(null);
+  const disconnectStartTime = useRef(null);
+  const offlineThresholdMs = 30000;
+  const ws = useRef(null);
+  const mediaRecorder = useRef(null);
+  const audioChunks = useRef([]);
+  const reconnectAttempts = useRef(0);
+  const reconnectTimer = useRef(null);
+  const socketUrlRef = useRef('');
+  const isIntentionalClose = useRef(false);
+  const pcRef = useRef(null);
+  const videoWsRef = useRef(null);
+  const videoRef = useRef(null);
+  const supervisorVideoRef = useRef(null);
+
+  // Function declarations needed before useEffects
+  const cleanupCandidateWebRTC = () => {
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    if (videoWsRef.current) {
+      videoWsRef.current.close();
+      videoWsRef.current = null;
+    }
+    setRemoteStream(null);
+  };
+
+  const updateActivity = useCallback(() => {
+    lastUserActivityRef.current = Date.now();
+    if (showTimeoutConfirm) {
+      setShowTimeoutConfirm(false);
+      clearTimeout(noResponseTimerRef.current);
+      setAgentStatus('Welcome back! Continuing interview...');
+    }
+  }, [showTimeoutConfirm]);
+
+  const submitCode = () => {
+    updateActivity();
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: 'code', data: code }));
+      setAgentStatus('AI Evaluator: Analyzing logic...');
+    } else {
+      enqueueAnswer('code', code);
+      setQueuedCount(getQueueLength());
+      setAgentStatus('Code saved locally. Will sync when reconnected.');
+    }
+  };
+
+  const submitTextAnswer = () => {
+    updateActivity();
+    if (manualText.trim() && ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: 'answer', data: manualText }));
+      setAgentStatus('Text answer submitted. Reviewing your response.');
+      setManualText('');
+      setShowTextInput(false);
+    } else if (manualText.trim()) {
+      enqueueAnswer('answer', manualText);
+      setQueuedCount(getQueueLength());
+      setAgentStatus('Answer saved locally. Will sync when reconnected.');
+      setManualText('');
+      setShowTextInput(false);
+    }
+  };
+
+  // Now, the useEffect hooks can run safely, knowing everything is defined!
+  useEffect(() => {
+    lastUserActivityRef.current = Date.now();
+  }, []);
+
   useEffect(() => {
     isRecordingRef.current = isRecording;
   }, [isRecording]);
+
+  useEffect(() => {
+    isCodingModeRef.current = isCodingMode;
+  }, [isCodingMode]);
+
+  useEffect(() => {
+    showTextInputRef.current = showTextInput;
+  }, [showTextInput]);
+
+  useEffect(() => {
+    manualTextRef.current = manualText;
+  }, [manualText]);
 
   useEffect(() => {
     let qTimer;
@@ -174,10 +287,22 @@ const InterviewRoom = () => {
         setQuestionTimeLeft(prev => {
           if (prev <= 1) {
             clearInterval(qTimer);
-            if (isRecordingRef.current) {
-              // Auto-submit when timer hits zero
+            if (isCodingModeRef.current) {
+              submitCodeRef.current?.();
+              setAgentStatus('Time up! Auto-submitting code solution...');
+            } else if (isRecordingRef.current) {
               toggleRecordingRef.current?.();
               setAgentStatus('Time up! Auto-submitting response...');
+            } else if (showTextInputRef.current) {
+              submitTextAnswerRef.current?.();
+              setAgentStatus('Time up! Auto-submitting text response...');
+            } else {
+              if (manualTextRef.current.trim()) {
+                submitTextAnswerRef.current?.();
+                setAgentStatus('Time up! Auto-submitting text response...');
+              } else {
+                setAgentStatus('Time up!');
+              }
             }
             return 0;
           }
@@ -187,47 +312,6 @@ const InterviewRoom = () => {
     }
     return () => clearInterval(qTimer);
   }, [currentQuestion]);
-  const [jobRole, setJobRole] = useState('AI Interview');
-  const [completedSessionId, setCompletedSessionId] = useState(null);
-  const [showTextInput, setShowTextInput] = useState(false);
-  const [manualText, setManualText] = useState('');
-  const [codeResult, setCodeResult] = useState(null);
-  
-  // Next-Gen Co-Pilot State
-  const [copilotSuggestions, setCopilotSuggestions] = useState([]);
-  const [isCopilotLoading, setIsCopilotLoading] = useState(false);
-  
-  // Coding State
-  const [code, setCode] = useState("# Write your solution here...\n");
-  const [isCodingMode, setIsCodingMode] = useState(false);
-  const [codeLanguage, setCodeLanguage] = useState("python");
-
-  // Phase 2.2: Progress tracking state
-  const [totalQuestions] = useState(15); // Default max questions
-  const [skillsCovered, setSkillsCovered] = useState(0);
-  const [totalSkills] = useState(8); // Default skills to cover
-  const [advisorReady, setAdvisorReady] = useState(false);
-  const [advisorConfidence, setAdvisorConfidence] = useState(0);
-
-  // Phase 2.3: Offline & Reconnection state
-  const [connectionStatus, setConnectionStatus] = useState('connected'); // 'connected' | 'reconnecting' | 'offline' | 'syncing'
-  const [queuedCount, setQueuedCount] = useState(0);
-  const [syncProgress, setSyncProgress] = useState(null);
-  const [displayReconnectAttempts, setDisplayReconnectAttempts] = useState(0);
-  const disconnectStartTime = useRef(null);
-  const offlineThresholdMs = 30000; // 30 seconds before switching to offline mode
-
-  // Video state
-  const [isVideoOn, setIsVideoOn] = useState(true);
-  const [videoStream, setVideoStream] = useState(null);
-  const videoRef = useRef(null);
-
-  // WebRTC States & Refs for Recruiter Takeover Calling
-  const [remoteStream, setRemoteStream] = useState(null);
-  const [supervisorMode, setSupervisorMode] = useState('ai_only');
-  const pcRef = useRef(null);
-  const videoWsRef = useRef(null);
-  const supervisorVideoRef = useRef(null);
 
   // Attach video stream to video element
   useEffect(() => {
@@ -289,7 +373,9 @@ const InterviewRoom = () => {
   // WebRTC Candidate Calling Effect
   useEffect(() => {
     if (supervisorMode !== 'hr_takeover') {
-      cleanupCandidateWebRTC();
+      Promise.resolve().then(() => {
+        cleanupCandidateWebRTC();
+      });
       return;
     }
 
@@ -393,28 +479,7 @@ const InterviewRoom = () => {
     };
   }, [supervisorMode, videoStream, resolvedSessionId]);
 
-  const cleanupCandidateWebRTC = () => {
-    if (pcRef.current) {
-      pcRef.current.close();
-      pcRef.current = null;
-    }
-    if (videoWsRef.current) {
-      videoWsRef.current.close();
-      videoWsRef.current = null;
-    }
-    setRemoteStream(null);
-  };
 
-  const isRecordingRef = useRef(false);
-  const toggleRecordingRef = useRef(null);
-
-  const ws = useRef(null);
-  const mediaRecorder = useRef(null);
-  const audioChunks = useRef([]);
-  const reconnectAttempts = useRef(0);
-  const reconnectTimer = useRef(null);
-  const socketUrlRef = useRef('');
-  const isIntentionalClose = useRef(false);
 
   // ── FREE TTS via Browser Web Speech API ────────────────────────────────
   const speakWithBrowserTTS = (text) => {
@@ -648,6 +713,14 @@ const InterviewRoom = () => {
       clearTimeout(reconnectTimer.current);
       ws.current?.close();
       clearInterval(timer);
+      if (silenceIntervalRef.current) {
+        clearInterval(silenceIntervalRef.current);
+        silenceIntervalRef.current = null;
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
+      }
       // Phase 2.3: Reset connection state on cleanup
       setConnectionStatus('connected');
       disconnectStartTime.current = null;
@@ -678,6 +751,15 @@ const InterviewRoom = () => {
       mediaRecorder.current?.stop();
       setIsRecording(false);
       mediaRecorder.current?.stream.getTracks().forEach(t => t.stop());
+
+      if (silenceIntervalRef.current) {
+        clearInterval(silenceIntervalRef.current);
+        silenceIntervalRef.current = null;
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
+      }
 
       // Auto-submit after short silence (1.5 seconds of no recording)
       setAgentStatus('Processing your answer...');
@@ -710,6 +792,68 @@ const InterviewRoom = () => {
         mediaRecorder.current.start();
         setIsRecording(true);
         setAgentStatus('Listening... Speak your answer.');
+
+        // Initialize silence detection
+        try {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (AudioContextClass) {
+            const audioContext = new AudioContextClass();
+            audioContextRef.current = audioContext;
+            const source = audioContext.createMediaStreamSource(stream);
+            const analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+            source.connect(analyser);
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            let silenceStart = Date.now();
+
+            const checkSilence = () => {
+              if (!isRecordingRef.current) {
+                if (silenceIntervalRef.current) {
+                  clearInterval(silenceIntervalRef.current);
+                  silenceIntervalRef.current = null;
+                }
+                setSilenceDuration(0);
+                setIsSilent(false);
+                return;
+              }
+              analyser.getByteFrequencyData(dataArray);
+              let sum = 0;
+              for (let i = 0; i < bufferLength; i++) {
+                sum += dataArray[i];
+              }
+              const average = sum / bufferLength;
+
+              // If voice level falls below noise floor, count as silence.
+              if (average < 5) {
+                const elapsed = Date.now() - silenceStart;
+                setSilenceDuration(elapsed);
+                setIsSilent(true);
+                if (elapsed > 4000) { // 4 seconds of silence
+                  if (silenceIntervalRef.current) {
+                    clearInterval(silenceIntervalRef.current);
+                    silenceIntervalRef.current = null;
+                  }
+                  setSilenceDuration(0);
+                  setIsSilent(false);
+                  if (isRecordingRef.current) {
+                    toggleRecordingRef.current?.();
+                    setAgentStatus('Silence detected. Auto-submitting response...');
+                  }
+                }
+              } else {
+                silenceStart = Date.now();
+                setSilenceDuration(0);
+                setIsSilent(false);
+              }
+            };
+            silenceIntervalRef.current = setInterval(checkSilence, 200);
+          }
+        } catch (err) {
+          console.warn("Silence detection context failed to start:", err);
+        }
+
       } catch {
         alert("Microphone access failed.");
       }
@@ -721,6 +865,81 @@ const InterviewRoom = () => {
     // eslint-disable-next-line react-hooks/immutability
     toggleRecordingRef.current = toggleRecording;
   });
+
+  useEffect(() => {
+    submitCodeRef.current = submitCode;
+  });
+
+  useEffect(() => {
+    submitTextAnswerRef.current = submitTextAnswer;
+  });
+
+  // Proctor tab switch detection
+  useEffect(() => {
+    if (!ready || !isConnected) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        setTabSwitches(prev => {
+          const nextCount = prev + 1;
+          
+          // Send to backend via websocket
+          if (ws.current?.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({
+              type: 'proctor_event',
+              event: 'tab_switch',
+              timestamp: Date.now()
+            }));
+          }
+          
+          return nextCount;
+        });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [ready, isConnected]);
+
+  // Proctor dev simulation keyboard shortcut: Ctrl+Shift+1/2/3 for simulated video proctoring events
+  useEffect(() => {
+    if (!ready || !isConnected) return;
+
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && e.shiftKey) {
+        let eventType = null;
+        if (e.key === '1') {
+          eventType = 'multiple_faces';
+        } else if (e.key === '2') {
+          eventType = 'no_face';
+        } else if (e.key === '3') {
+          eventType = 'gaze_deviation';
+        }
+
+        if (eventType && ws.current?.readyState === WebSocket.OPEN) {
+          ws.current.send(JSON.stringify({
+            type: 'proctor_event',
+            event: eventType,
+            timestamp: Date.now(),
+            confidence: 0.95,
+            duration_seconds: 2.5
+          }));
+          addToast({
+            type: 'warning',
+            title: 'Proctor Event Simulated',
+            message: `Sent simulated "${eventType}" event to proctor server.`,
+          });
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [ready, isConnected, addToast]);
 
   const handleEndInterview = useCallback(() => {
     isIntentionalClose.current = true;
@@ -761,16 +980,6 @@ const InterviewRoom = () => {
     return () => clearInterval(checkActivity);
   }, [isConnected, currentQuestion, showTimeoutConfirm, handleEndInterview]);
 
-  // Update activity timestamp on user interactions
-  const updateActivity = useCallback(() => {
-    lastUserActivityRef.current = Date.now();
-    if (showTimeoutConfirm) {
-      setShowTimeoutConfirm(false);
-      clearTimeout(noResponseTimerRef.current);
-      setAgentStatus('Welcome back! Continuing interview...');
-    }
-  }, [showTimeoutConfirm]);
-
   // Add activity listeners
   useEffect(() => {
     const handleActivity = () => updateActivity();
@@ -782,19 +991,6 @@ const InterviewRoom = () => {
     };
   }, [updateActivity]);
 
-  const submitCode = () => {
-    updateActivity();
-    // Phase 2.3: Queue code if offline, otherwise send via WS
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify({ type: 'code', data: code }));
-      setAgentStatus('AI Evaluator: Analyzing logic...');
-    } else {
-      enqueueAnswer('code', code);
-      setQueuedCount(getQueueLength());
-      setAgentStatus('Code saved locally. Will sync when reconnected.');
-    }
-  };
-
   const requestCopilotHint = () => {
     updateActivity();
     if (ws.current?.readyState === WebSocket.OPEN) {
@@ -803,23 +999,6 @@ const InterviewRoom = () => {
       ws.current.send(JSON.stringify({ type: 'copilot_request', data: code }));
     } else {
       alert("Co-Pilot unavailable: WebSocket is disconnected.");
-    }
-  };
-
-  const submitTextAnswer = () => {
-    updateActivity();
-    // Phase 2.3: Queue text answer if offline, otherwise send via WS
-    if (manualText.trim() && ws.current?.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify({ type: 'answer', data: manualText }));
-      setAgentStatus('Text answer submitted. Reviewing your response.');
-      setManualText('');
-      setShowTextInput(false);
-    } else if (manualText.trim()) {
-      enqueueAnswer('answer', manualText);
-      setQueuedCount(getQueueLength());
-      setAgentStatus('Answer saved locally. Will sync when reconnected.');
-      setManualText('');
-      setShowTextInput(false);
     }
   };
 
@@ -853,6 +1032,16 @@ const InterviewRoom = () => {
 
   return (
     <div className="fixed inset-0 bg-[#020617] text-white flex flex-col font-sans overflow-hidden">
+
+      {/* WARNING BANNER FOR TAB SWITCH */}
+      {tabSwitches > 3 && (
+        <div className="bg-red-500/10 border-b border-red-500/20 px-12 py-3 flex items-center justify-between z-40 shrink-0 backdrop-blur-md">
+          <span className="text-xs font-black uppercase tracking-widest text-red-400 flex items-center">
+            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse mr-2" />
+            Critical Proctor Warning: Excessive tab switching detected ({tabSwitches} switches). Your actions are being recorded and flagged for review.
+          </span>
+        </div>
+      )}
 
       {/* TOP NAV */}
       <div className="h-20 border-b border-white/5 bg-[#020617]/50 backdrop-blur-xl px-12 flex items-center justify-between z-50 shrink-0">
@@ -922,7 +1111,7 @@ const InterviewRoom = () => {
 
         {/* Video Preview */}
         {isVideoOn && videoStream && supervisorMode !== 'hr_takeover' && (
-          <div className="absolute top-20 right-6 w-32 h-24 rounded-xl overflow-hidden border-2 border-purple-500/30 z-20">
+          <div className="absolute top-16 right-6 w-40 h-28 rounded-2xl overflow-hidden border border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.5)] backdrop-blur-md z-20">
             <video
               ref={videoRef}
               autoPlay
@@ -930,6 +1119,9 @@ const InterviewRoom = () => {
               playsInline
               className="w-full h-full object-cover"
             />
+            <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-wider text-white">
+              You
+            </div>
           </div>
         )}
 
@@ -1019,13 +1211,17 @@ const InterviewRoom = () => {
                        </div>
                      )}
                    </div>
-                   <button 
+                   <motion.button 
                      onClick={submitCode}
-                     className="bg-purple-600 hover:bg-purple-500 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-xl flex items-center space-x-2 transition-all active:scale-95"
+                     whileHover={{ scale: 1.04, boxShadow: '0 0 40px rgba(124,58,237,0.35)' }}
+                     whileTap={{ scale: 0.96 }}
+                     className="group relative bg-gradient-to-r from-purple-600/20 to-indigo-600/20 border border-purple-500/30 text-purple-200 hover:from-purple-600 hover:to-indigo-600 hover:text-white px-7 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest shadow-[0_0_30px_rgba(124,58,237,0.15)] flex items-center space-x-2.5 transition-all backdrop-blur-xl overflow-hidden"
                    >
-                     <Play size={14} fill="currentColor" />
-                     <span>Execute & Submit</span>
-                   </button>
+                     <div className="absolute inset-0 bg-gradient-to-r from-purple-500/0 via-white/5 to-purple-500/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
+                     <Play size={15} fill="currentColor" className="relative z-10" />
+                     <span className="relative z-10">Execute & Submit</span>
+                     <Send size={13} className="relative z-10 opacity-60 group-hover:opacity-100 transition-opacity" />
+                   </motion.button>
                  </div>
               </div>
 
@@ -1106,6 +1302,56 @@ const InterviewRoom = () => {
       {/* BOTTOM RECORDING PANEL */}
       <div className="px-12 pb-10 shrink-0">
         <div className="max-w-5xl mx-auto bg-white/2 border border-white/5 rounded-[2.5rem] p-8 backdrop-blur-xl">
+
+          {/* ── COUNTDOWN PROGRESS BAR ─────────────────────────────────────── */}
+          {currentQuestion?.time_limit > 0 && (
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center space-x-3">
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${
+                    questionTimeLeft === 0 ? 'text-red-400' :
+                    questionTimeLeft < (currentQuestion.time_limit * 0.25) ? 'text-red-400' :
+                    questionTimeLeft < (currentQuestion.time_limit * 0.5) ? 'text-amber-400' :
+                    'text-emerald-400'
+                  }`}>
+                    {questionTimeLeft === 0 ? 'Auto-submitting...' : `${questionTimeLeft}s remaining`}
+                  </span>
+                  {questionTimeLeft > 0 && questionTimeLeft < 10 && (
+                    <motion.span
+                      animate={{ opacity: [1, 0.3, 1] }}
+                      transition={{ duration: 0.6, repeat: Infinity }}
+                      className="text-[9px] font-black uppercase tracking-widest text-red-500"
+                    >
+                      ⚡ Hurry up!
+                    </motion.span>
+                  )}
+                </div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                  {Math.round((questionTimeLeft / currentQuestion.time_limit) * 100)}%
+                </span>
+              </div>
+              <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                <motion.div
+                  className={`h-full rounded-full transition-colors duration-500 ${
+                    questionTimeLeft === 0 ? 'bg-red-500' :
+                    questionTimeLeft < (currentQuestion.time_limit * 0.25) ? 'bg-gradient-to-r from-red-500 to-red-400' :
+                    questionTimeLeft < (currentQuestion.time_limit * 0.5) ? 'bg-gradient-to-r from-amber-500 to-yellow-400' :
+                    'bg-gradient-to-r from-emerald-500 to-emerald-400'
+                  }`}
+                  initial={false}
+                  animate={{
+                    width: `${(questionTimeLeft / currentQuestion.time_limit) * 100}%`,
+                    ...(questionTimeLeft < 10 && questionTimeLeft > 0 ? { opacity: [1, 0.5, 1] } : {})
+                  }}
+                  transition={{
+                    width: { duration: 0.8, ease: 'easeOut' },
+                    ...(questionTimeLeft < 10 && questionTimeLeft > 0 ? { opacity: { duration: 0.5, repeat: Infinity } } : {})
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-between items-center mb-6">
             <div className="flex items-center space-x-4">
               <span className="text-sm font-black uppercase tracking-widest text-white">Your Answer</span>
@@ -1113,9 +1359,17 @@ const InterviewRoom = () => {
                 <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${isRecording ? 'bg-red-400' : voiceAvailable ? 'bg-emerald-500' : 'bg-slate-300'}`} />
                 <span>{voiceAvailable ? (isRecording ? 'Recording...' : 'Voice Ready') : 'Voice Unavailable'}</span>
               </div>
+              <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${isVideoOn ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>
+                <div className={`w-1.5 h-1.5 rounded-full ${isVideoOn ? 'bg-purple-400 animate-pulse' : 'bg-red-500'}`} />
+                <span>{isVideoOn ? 'Camera Active' : 'Camera Off'}</span>
+              </div>
               {currentQuestion?.time_limit && (
-                <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${questionTimeLeft < 10 ? 'bg-red-500/10 text-red-400 border-red-500/20 animate-pulse' : 'bg-white/5 text-slate-400 border-white/10'}`}>
-                   <span>Time Remaining: {questionTimeLeft}s</span>
+                <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+                  questionTimeLeft === 0 ? 'bg-red-500/20 text-red-300 border-red-500/30' :
+                  questionTimeLeft < 10 ? 'bg-red-500/10 text-red-400 border-red-500/20 animate-pulse' :
+                  'bg-white/5 text-slate-400 border-white/10'
+                }`}>
+                   <span>{questionTimeLeft === 0 ? 'Auto-submitting...' : `Time: ${questionTimeLeft}s`}</span>
                 </div>
               )}
               <span className="text-xs text-slate-500 font-bold uppercase tracking-widest">{agentStatus}</span>
@@ -1127,11 +1381,83 @@ const InterviewRoom = () => {
 
           <Waveform isRecording={isRecording} />
 
+          {/* ── SILENCE DETECTION VISUAL INDICATOR ─────────────────────────── */}
+          <AnimatePresence>
+            {isRecording && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mt-4 overflow-hidden"
+              >
+                <div className="flex items-center justify-center space-x-4 py-3 px-6 bg-white/[0.02] border border-white/5 rounded-2xl">
+                  {/* Pulsing microphone indicator */}
+                  <motion.div
+                    animate={{ scale: [1, 1.2, 1], opacity: [0.7, 1, 0.7] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      isSilent ? 'bg-amber-500/15 border border-amber-500/30' : 'bg-purple-500/15 border border-purple-500/30'
+                    }`}
+                  >
+                    <AudioLines size={16} className={isSilent ? 'text-amber-400' : 'text-purple-400'} />
+                  </motion.div>
+
+                  {/* Silence status text */}
+                  <div className="flex flex-col">
+                    {isSilent && silenceDuration > 500 ? (
+                      <>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">
+                          {silenceDuration > 3000
+                            ? `Auto-submitting in ${Math.max(0, Math.ceil((4000 - silenceDuration) / 1000))}s...`
+                            : 'Detecting silence...'
+                          }
+                        </span>
+                        {/* Silence threshold progress */}
+                        <div className="w-40 h-1 bg-white/5 rounded-full mt-1.5 overflow-hidden">
+                          <motion.div
+                            className="h-full rounded-full bg-gradient-to-r from-amber-500 to-red-500"
+                            animate={{ width: `${Math.min((silenceDuration / 4000) * 100, 100)}%` }}
+                            transition={{ duration: 0.2 }}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <span className="text-[10px] font-black uppercase tracking-widest text-purple-400/70">
+                        Listening actively...
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <div className="flex justify-between items-center mt-6">
-            <button onClick={toggleRecording}
-              className={`px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all ${isRecording ? 'bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500 hover:text-white' : 'bg-purple-600 text-white hover:bg-purple-500 shadow-xl shadow-purple-500/20'}`}>
-              {isRecording ? 'Stop & Send' : 'Start Responding'}
-            </button>
+            <motion.button
+              onClick={toggleRecording}
+              whileHover={{ scale: 1.05, boxShadow: isRecording ? '0 0 40px rgba(239,68,68,0.35)' : '0 0 40px rgba(124,58,237,0.35)' }}
+              whileTap={{ scale: 0.95 }}
+              className={`group relative flex items-center space-x-2.5 px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all backdrop-blur-md overflow-hidden ${
+                isRecording 
+                  ? 'bg-gradient-to-r from-red-600/20 via-rose-600/25 to-red-600/20 border border-red-500/30 text-red-400 hover:from-red-600 hover:to-rose-600 hover:text-white shadow-[0_0_30px_rgba(239,68,68,0.15)]' 
+                  : 'bg-gradient-to-r from-purple-600/20 via-indigo-600/25 to-purple-600/20 border border-purple-500/30 text-purple-300 hover:from-purple-600 hover:to-indigo-600 hover:text-white shadow-[0_0_30px_rgba(124,58,237,0.15)]'
+              }`}
+            >
+              {/* Shimmer effect */}
+              <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/5 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
+              
+              {isRecording ? (
+                <>
+                  <Send size={14} className="relative z-10 animate-pulse text-red-400 group-hover:text-white" />
+                  <span className="relative z-10">Stop & Send</span>
+                </>
+              ) : (
+                <>
+                  <Mic size={14} className="relative z-10 text-purple-400 group-hover:text-white" />
+                  <span className="relative z-10">Start Responding</span>
+                </>
+              )}
+            </motion.button>
 
             <div className="relative flex flex-col items-end space-y-2">
               <AnimatePresence>
@@ -1154,7 +1480,60 @@ const InterviewRoom = () => {
                     />
                     <div className="flex justify-end space-x-3">
                       <button onClick={() => setShowTextInput(false)} className="px-4 py-2 text-[10px] font-black uppercase text-slate-500 hover:text-white transition-colors">Cancel</button>
-                      <button onClick={submitTextAnswer} className="bg-purple-600 hover:bg-purple-500 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl">Submit</button>
+
+                      {/* ── PREMIUM SUBMIT BUTTON ──────────────────────────────── */}
+                      <motion.button
+                        onClick={submitTextAnswer}
+                        disabled={!manualText.trim()}
+                        whileHover={manualText.trim() ? { scale: 1.05, boxShadow: '0 0 50px rgba(124,58,237,0.4)' } : {}}
+                        whileTap={manualText.trim() ? { scale: 0.95 } : {}}
+                        className={`group relative flex items-center space-x-2.5 px-7 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all overflow-hidden ${
+                          manualText.trim()
+                            ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-[0_0_35px_rgba(124,58,237,0.3)] border border-purple-400/30 backdrop-blur-xl cursor-pointer'
+                            : 'bg-white/5 text-slate-600 border border-white/5 cursor-not-allowed'
+                        }`}
+                      >
+                        {/* Animated shimmer on hover */}
+                        {manualText.trim() && (
+                          <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
+                        )}
+
+                        {/* Countdown ring SVG when timer is low */}
+                        {currentQuestion?.time_limit > 0 && questionTimeLeft > 0 && questionTimeLeft < 10 && manualText.trim() && (
+                          <div className="absolute -inset-[2px] rounded-2xl overflow-hidden pointer-events-none">
+                            <svg className="w-full h-full" viewBox="0 0 100 40" preserveAspectRatio="none">
+                              <motion.rect
+                                x="1" y="1" width="98" height="38" rx="14"
+                                fill="none"
+                                stroke="url(#submitGlow)"
+                                strokeWidth="2"
+                                strokeDasharray="280"
+                                animate={{ strokeDashoffset: [280, 0] }}
+                                transition={{ duration: questionTimeLeft, ease: 'linear' }}
+                              />
+                              <defs>
+                                <linearGradient id="submitGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+                                  <stop offset="0%" stopColor="#7C3AED" />
+                                  <stop offset="50%" stopColor="#818CF8" />
+                                  <stop offset="100%" stopColor="#7C3AED" />
+                                </linearGradient>
+                              </defs>
+                            </svg>
+                          </div>
+                        )}
+
+                        {/* Pulse animation when timer < 10s */}
+                        {currentQuestion?.time_limit > 0 && questionTimeLeft > 0 && questionTimeLeft < 10 && manualText.trim() && (
+                          <motion.div
+                            className="absolute inset-0 rounded-2xl bg-purple-500/20"
+                            animate={{ opacity: [0, 0.4, 0] }}
+                            transition={{ duration: 0.8, repeat: Infinity }}
+                          />
+                        )}
+
+                        <Send size={14} className={`relative z-10 ${manualText.trim() ? 'text-white' : 'text-slate-600'}`} />
+                        <span className="relative z-10">Submit</span>
+                      </motion.button>
                     </div>
                   </motion.div>
                 )}

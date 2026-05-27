@@ -657,6 +657,7 @@ async def evaluate_answer_node(state: InterviewState) -> Dict[str, Any]:
     last_question = state.get('next_question', {})
     q_text = last_question.get('question', '') if isinstance(last_question, dict) else ''
     q_skill = last_question.get('skill_tested', 'general') if isinstance(last_question, dict) else 'general'
+    rag_context = (state.get("rag_context") or "").strip()
 
     last_message = state['messages'][-1]['content'] if state.get('messages') else ""
 
@@ -724,6 +725,9 @@ QUESTION ASKED: {q_text}
 SKILL BEING TESTED: {q_skill}
 CANDIDATE'S ANSWER: {last_message}
 
+CANDIDATE BACKGROUND CONTEXT:
+{rag_context[:1500] if rag_context else state.get('resume_text', '')[:1500]}
+
 Evaluate the answer carefully. Consider:
 1. Did they answer the question?
 2. How detailed was their response?
@@ -788,6 +792,7 @@ async def evaluate_code_node(state: InterviewState) -> Dict[str, Any]:
     code = state.get('code_snippet', "")
     question = state.get('next_question', {})
     q_text = question.get('question', '') if isinstance(question, dict) else ""
+    rag_context = (state.get("rag_context") or "").strip()
 
     last_message = state['messages'][-1]['content'] if state.get('messages') else ""
     execution_info = ""
@@ -799,6 +804,9 @@ async def evaluate_code_node(state: InterviewState) -> Dict[str, Any]:
 CHALLENGE: {q_text}
 CODE:\n{code}
 {execution_info}
+
+CANDIDATE BACKGROUND CONTEXT:
+{rag_context[:1500] if rag_context else state.get('resume_text', '')[:1500]}
 
 CRITERIA: Logic & Correctness, Time/Space Complexity, Readability, Best Practices.
 
@@ -1124,10 +1132,13 @@ async def skeptic_evaluation_node(state: InterviewState) -> Dict[str, Any]:
     q_text = last_question.get('question', '') if isinstance(last_question, dict) else ''
     last_message = state['messages'][-1]['content'] if state.get('messages') else ""
     code_snippet = state.get('code_snippet')
+    rag_context = (state.get("rag_context") or "").strip()
     
     content = f"Question: {q_text}\nAnswer: {last_message}"
     if code_snippet:
         content += f"\nSubmitted Code:\n{code_snippet}"
+    if rag_context:
+        content += f"\nCandidate Background Context:\n{rag_context[:1200]}"
         
     prompt = f"""You are a Skeptical Technical Reviewer. Criticize the following candidate response. 
 Identify logical flaws, potential bugs, edge cases they missed, or general lack of depth.
@@ -1156,10 +1167,13 @@ async def pragmatist_evaluation_node(state: InterviewState) -> Dict[str, Any]:
     q_text = last_question.get('question', '') if isinstance(last_question, dict) else ''
     last_message = state['messages'][-1]['content'] if state.get('messages') else ""
     code_snippet = state.get('code_snippet')
+    rag_context = (state.get("rag_context") or "").strip()
     
     content = f"Question: {q_text}\nAnswer: {last_message}"
     if code_snippet:
         content += f"\nSubmitted Code:\n{code_snippet}"
+    if rag_context:
+        content += f"\nCandidate Background Context:\n{rag_context[:1200]}"
         
     prompt = f"""You are a Pragmatic Tech Lead. Evaluate the candidate response for readability, production-readiness, best practices, and real-world trade-offs.
 What are the strengths and practical limitations of their approach?
@@ -1186,6 +1200,7 @@ async def bias_auditor_node(state: InterviewState) -> Dict[str, Any]:
     last_question = state.get('next_question', {})
     q_text = last_question.get('question', '') if isinstance(last_question, dict) else ''
     last_message = state['messages'][-1]['content'] if state.get('messages') else ""
+    rag_context = (state.get("rag_context") or "").strip()
     
     prompt = f"""You are a Diversity & Fairness Auditor. Analyze the candidate response.
 Your job is to identify if the response contains correct core ideas, regardless of:
@@ -1197,6 +1212,8 @@ Confirm if the candidate genuinely understands the concept. Ignore presentation 
 
 Question: {q_text}
 Candidate Answer: {last_message}
+Candidate Background Context:
+{rag_context[:1200] if rag_context else state.get('resume_text', '')[:1200]}
 
 Provide your assessment in 1-2 bullet points."""
     
@@ -1264,6 +1281,7 @@ async def consensus_synthesizer_node(state: InterviewState) -> Dict[str, Any]:
     q_skill = last_question.get('skill_tested', 'general') if isinstance(last_question, dict) else 'general'
     last_message = state['messages'][-1]['content'] if state.get('messages') else ""
     code_snippet = state.get('code_snippet')
+    rag_context = (state.get("rag_context") or "").strip()
     
     skeptic = state.get("skeptic_critique", "No critique provided.")
     pragmatist = state.get("pragmatist_critique", "No critique provided.")
@@ -1286,6 +1304,8 @@ QUESTION: {q_text}
 SKILL TESTED: {q_skill}
 CANDIDATE RESPONSE: {last_message}
 {f"CODE SUBMITTED: {code_snippet}" if code_snippet else ""}
+CANDIDATE BACKGROUND CONTEXT:
+{rag_context[:1500] if rag_context else state.get('resume_text', '')[:1500]}
 
 Compile these reviews into a unified JSON schema. Ensure the final score (0.0-10.0) is a fair reflection of the critiques, giving high weight to conceptual understanding and practical scaling while ignoring linguistic biases.
 

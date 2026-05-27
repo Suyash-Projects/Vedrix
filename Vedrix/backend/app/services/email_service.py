@@ -1,10 +1,17 @@
 import smtplib
 import asyncio
 import logging
+import base64
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Optional, List, Dict, Any
+from email.mime.base import MIMEBase
+from email import encoders
+from typing import Optional, List, Dict, Any, Protocol, runtime_checkable
+import httpx
+from email_validator import validate_email, EmailNotValidError
 from app.core.config import settings
+from app.core.metrics import email_sent_total
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -384,48 +391,184 @@ def _build_report_hr(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  SEND ENGINE
+#  SEND ENGINE (Strategy Pattern)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _send_sync(to: str, subject: str, html: str) -> None:
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = f"{settings.MAIL_FROM_NAME} <{settings.MAIL_USERNAME}>"
-    msg["To"] = to
-    msg.attach(MIMEText(html, "html"))
+@runtime_checkable
+class EmailBackend(Protocol):
+    async def send(self, to: str, subject: str, html: str, attachments: Optional[List[Dict[str, Any]]] = None) -> None:
+        """Send email to recipient, with optional attachments."""
+        ...
 
-    mail_server = settings.MAIL_SERVER
-    mail_port = settings.MAIL_PORT
-    
-    # Handle SSL (port 465) vs TLS (port 587)
-    if mail_port == 465:
-        with smtplib.SMTP_SSL(mail_server, mail_port) as server:
-            server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
-            server.sendmail(settings.MAIL_USERNAME, to, msg.as_string())
-    else:
-        with smtplib.SMTP(mail_server, mail_port) as server:
-            server.ehlo()
-            try:
-                server.starttls()
+
+class ConsoleBackend:
+    async def send(self, to: str, subject: str, html: str, attachments: Optional[List[Dict[str, Any]]] = None) -> None:
+        att_preview = ""
+        if attachments:
+            att_preview = "\n  Attachments:\n" + "\n".join(f"    - {att['filename']} ({att['content_type']})" for att in attachments)
+        logger.info(
+            f"\n"
+            f"========================================================================\n"
+            f"  [Console Email Backend]\n"
+            f"  To:      {to}\n"
+            f"  Subject: {subject}{att_preview}\n"
+            f"------------------------------------------------------------------------\n"
+            f"  Body (Preview):\n"
+            f"  {html[:300]}...\n"
+            f"========================================================================\n"
+        )
+
+
+class SMTPBackend:
+    def _send_sync(self, to: str, subject: str, html: str, attachments: Optional[List[Dict[str, Any]]] = None) -> None:
+        if attachments:
+            msg = MIMEMultipart("mixed")
+            body_part = MIMEMultipart("alternative")
+            body_part.attach(MIMEText(html, "html"))
+            msg.attach(body_part)
+            
+            for att in attachments:
+                part = MIMEBase(*att["content_type"].split("/"))
+                part.set_payload(att["content"])
+                encoders.encode_base64(part)
+                part.add_header(
+                    "Content-Disposition",
+                    f"attachment; filename={att['filename']}",
+                )
+                msg.attach(part)
+        else:
+            msg = MIMEMultipart("alternative")
+            msg.attach(MIMEText(html, "html"))
+            
+        msg["Subject"] = subject
+        msg["From"] = f"{settings.MAIL_FROM_NAME} <{settings.MAIL_USERNAME}>"
+        msg["To"] = to
+
+        mail_server = settings.MAIL_SERVER
+        mail_port = settings.MAIL_PORT
+        
+        # Handle SSL (port 465) vs TLS (port 587)
+        if mail_port == 465:
+            with smtplib.SMTP_SSL(mail_server, mail_port) as server:
+                server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
+                server.sendmail(settings.MAIL_USERNAME, to, msg.as_string())
+        else:
+            with smtplib.SMTP(mail_server, mail_port) as server:
                 server.ehlo()
-            except smtplib.SMTPNotSupportedError:
-                # Server doesn't support STARTTLS, continue without encryption
-                pass
-            server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
-            server.sendmail(settings.MAIL_USERNAME, to, msg.as_string())
+                try:
+                    server.starttls()
+                    server.ehlo()
+                except smtplib.SMTPNotSupportedError:
+                    # Server doesn't support STARTTLS, continue without encryption
+                    pass
+                server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
+                server.sendmail(settings.MAIL_USERNAME, to, msg.as_string())
 
-
-async def _send(to: str, subject: str, html: str) -> None:
-    """Non-blocking send — runs SMTP in a thread so it never blocks the event loop."""
-    if not settings.MAIL_USERNAME or not settings.MAIL_PASSWORD:
-        logger.warning(f"[Email] Skipped (no credentials) → {subject} → {to}")
-        return
-    try:
+    async def send(self, to: str, subject: str, html: str, attachments: Optional[List[Dict[str, Any]]] = None) -> None:
+        if not settings.MAIL_USERNAME or not settings.MAIL_PASSWORD:
+            logger.warning(f"[SMTP Email] Skipped (no credentials) → {subject} → {to}")
+            return
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, _send_sync, to, subject, html)
-        logger.info(f"[Email] Sent → {subject} → {to}")
-    except Exception as e:
-        logger.error(f"[Email] Failed → {subject} → {to} | Error: {e}")
+        await loop.run_in_executor(None, self._send_sync, to, subject, html, attachments)
+
+
+class SendGridBackend:
+    async def send(self, to: str, subject: str, html: str, attachments: Optional[List[Dict[str, Any]]] = None) -> None:
+        if not settings.SENDGRID_API_KEY:
+            logger.warning(f"[SendGrid Email] Skipped (no API key) → {subject} → {to}")
+            return
+        
+        url = "https://api.sendgrid.com/v3/mail/send"
+        headers = {
+            "Authorization": f"Bearer {settings.SENDGRID_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        from_email = settings.MAIL_USERNAME or "no-reply@vedrix.ai"
+        payload = {
+            "personalizations": [
+                {
+                    "to": [{"email": to}]
+                }
+            ],
+            "from": {
+                "email": from_email,
+                "name": settings.MAIL_FROM_NAME or "Vedrix AI"
+            },
+            "subject": subject,
+            "content": [
+                {
+                    "type": "text/html",
+                    "value": html
+                }
+            ]
+        }
+        
+        if attachments:
+            payload["attachments"] = [
+                {
+                    "content": base64.b64encode(att["content"]).decode("utf-8"),
+                    "type": att["content_type"],
+                    "filename": att["filename"],
+                    "disposition": "attachment"
+                }
+                for att in attachments
+            ]
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(url, headers=headers, json=payload)
+            if response.status_code >= 300:
+                raise Exception(f"SendGrid API error: {response.status_code} - {response.text}")
+
+
+def get_email_backend() -> EmailBackend:
+    backend_type = settings.EMAIL_BACKEND.lower()
+    if backend_type == "smtp":
+        return SMTPBackend()
+    elif backend_type == "sendgrid":
+        return SendGridBackend()
+    else:
+        return ConsoleBackend()
+
+
+async def _send_with_retry(to: str, subject: str, html: str, attachments: Optional[List[Dict[str, Any]]] = None) -> None:
+    # Validate email format
+    try:
+        validate_email(to, check_deliverability=False)
+    except EmailNotValidError as e:
+        logger.error(f"[Email Validation Failed] To: {to} | Error: {e}")
+        email_sent_total.labels(status="failure").inc()
+        return
+
+    backend = get_email_backend()
+    retries = 3
+    backoff = [1.0, 2.0, 4.0]
+
+    for attempt in range(retries + 1):
+        try:
+            await backend.send(to, subject, html, attachments)
+            logger.info(f"[Email Sent] To: {to} | Subject: {subject} | Backend: {settings.EMAIL_BACKEND}")
+            email_sent_total.labels(status="success").inc()
+            return
+        except Exception as e:
+            if attempt < retries:
+                sleep_time = backoff[attempt]
+                logger.warning(
+                    f"[Email Attempt {attempt + 1} Failed] To: {to} | Subject: {subject} | "
+                    f"Error: {e} | Retrying in {sleep_time}s..."
+                )
+                await asyncio.sleep(sleep_time)
+            else:
+                logger.error(
+                    f"[Email Failed permanently] To: {to} | Subject: {subject} | "
+                    f"All {retries} retries exhausted. Error: {e}"
+                )
+                email_sent_total.labels(status="failure").inc()
+
+
+async def _send(to: str, subject: str, html: str, attachments: Optional[List[Dict[str, Any]]] = None) -> None:
+    """Entry point for all email sends (runs with validation and retry)."""
+    await _send_with_retry(to, subject, html, attachments)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -548,30 +691,30 @@ async def send_credentials_email(to: str, first_name: str, username: str, passwo
 def _build_password_reset_email(first_name: str, reset_token: str, frontend_url: str) -> str:
     """Build HTML email for password reset."""
     reset_link = f"{frontend_url}/reset-password?token={reset_token}"
-    return (
-        f"""
-        <div style="font-family:system-ui,sans-serif;max-width:480px;margin:auto;">
-          <h2 style="color:#1e293b;">Reset Your Password</h2>
-          <p>Hi {first_name},</p>
-          <p>We received a request to reset your password. Click the button below to create a new one:</p>
-          <a href="{reset_link}"
-             style="display:inline-block;padding:12px 24px;background:#7c3aed;color:#fff;
-                    text-decoration:none;border-radius:8px;font-weight:bold;margin:16px 0;">
-            Reset Password
-          </a>
-          <p style="color:#64748b;font-size:13px;">
-            Or copy this link:<br>
-            <code style="background:#f1f5f9;padding:4px 8px;border-radius:4px;word-break:break-all;">
-              {reset_link}
-            </code>
-          </p>
-          <p style="color:#64748b;font-size:13px;">This link expires in <strong>1 hour</strong>.</p>
-          <p style="color:#64748b;font-size:12px;margin-top:24px;">
-            If you didn't request this, you can safely ignore this email.
-          </p>
-        </div>
-        """
-    )
+    body = f"""
+<p style="margin:0 0 8px;color:#64748b;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;">Security Request</p>
+<h1 style="margin:0 0 24px;color:#f8fafc;font-size:28px;font-weight:900;line-height:1.2;">Reset your password 🔒</h1>
+<p style="margin:0 0 24px;color:#94a3b8;font-size:15px;line-height:1.7;">
+  Hello {first_name},<br/><br/>
+  We received a request to reset your password for your Vedrix account. 
+  Click the button below to set up a new password.
+</p>
+
+{_btn("Reset Password", reset_link)}
+
+<div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:12px;padding:16px 20px;margin:24px 0;">
+  <p style="margin:0;color:#fbbf24;font-size:12px;font-weight:700;">
+    ⏰ This link is valid for <strong>1 hour</strong>. If you did not request a password reset, you can safely ignore this email.
+  </p>
+</div>
+
+<p style="margin:24px 0 0;color:#475569;font-size:12px;line-height:1.6;">
+  Or copy and paste this link into your browser:<br/>
+  <code style="display:block;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);padding:12px;border-radius:8px;color:#a78bfa;word-break:break-all;font-size:11px;margin-top:8px;">
+    {reset_link}
+  </code>
+</p>"""
+    return _base("Reset Your Vedrix Password", body)
 
 
 async def send_password_reset_email(to: str, first_name: str, reset_token: str, frontend_url: str) -> None:
@@ -627,3 +770,73 @@ async def send_coaching_plan_email(to: str, first_name: str, top_gaps: List[Dict
         "Your Personalized Learning Plan is Ready! 🚀",
         _build_coaching_plan_email(first_name, top_gaps, plan_id)
     )
+
+
+def _build_booking_confirmation(first_name: str, job_role: str, start_time_str: str) -> str:
+    body = f"""
+<p style="margin:0 0 8px;color:#64748b;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;">Booking Confirmed</p>
+<h1 style="margin:0 0 24px;color:#f8fafc;font-size:28px;font-weight:900;line-height:1.2;">Your interview is scheduled! \ud83d\uddd3\ufe0f</h1>
+<p style="margin:0 0 24px;color:#94a3b8;font-size:15px;line-height:1.7;">
+  Hello {first_name},<br/><br/>
+  Your interview for the position of <strong style="color:#a78bfa;">{job_role}</strong> has been successfully scheduled.
+  We have attached a calendar invite (.ics) to this email for your convenience.
+</p>
+
+<div style="background:rgba(124,58,237,0.06);border:1px solid rgba(124,58,237,0.2);border-radius:20px;padding:28px 32px;margin:24px 0;">
+  <table cellpadding="0" cellspacing="0" width="100%">
+    <tr>
+      <td>
+        <p style="margin:0 0 4px;color:#64748b;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;">Time</p>
+        <p style="margin:0;color:#f8fafc;font-size:16px;font-weight:700;">{start_time_str} (UTC)</p>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<p style="color:#64748b;font-size:13px;line-height:1.6;">
+  Please ensure you are in a quiet environment with a working microphone and camera before starting the session.
+</p>
+"""
+    return _base("Interview Confirmed — Vedrix", body)
+
+
+def _build_interview_reminder(first_name: str, job_role: str, start_time_str: str) -> str:
+    body = f"""
+<p style="margin:0 0 8px;color:#64748b;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;">Upcoming Interview</p>
+<h1 style="margin:0 0 24px;color:#f8fafc;font-size:28px;font-weight:900;line-height:1.2;">Reminder: Interview in 24 hours \u23f0</h1>
+<p style="margin:0 0 24px;color:#94a3b8;font-size:15px;line-height:1.7;">
+  Hello {first_name},<br/><br/>
+  This is a reminder that your AI-powered interview for the position of <strong style="color:#a78bfa;">{job_role}</strong> is scheduled in less than 24 hours.
+</p>
+
+<div style="background:rgba(124,58,237,0.06);border:1px solid rgba(124,58,237,0.2);border-radius:20px;padding:28px 32px;margin:24px 0;">
+  <p style="margin:0 0 4px;color:#64748b;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;">Time</p>
+  <p style="margin:0;color:#f8fafc;font-size:16px;font-weight:700;">{start_time_str} (UTC)</p>
+</div>
+
+<p style="color:#64748b;font-size:13px;line-height:1.6;">
+  To join the interview, please log into your candidate dashboard.
+</p>
+"""
+    return _base("Interview Reminder — Vedrix", body)
+
+
+async def send_booking_confirmation_email(to: str, first_name: str, job_role: str, start_time: datetime, end_time: datetime, ics_content: bytes) -> None:
+    """Send interview booking confirmation email with attached calendar invite."""
+    start_time_str = start_time.strftime("%A, %B %d, %Y at %I:%M %p")
+    html_content = _build_booking_confirmation(first_name, job_role, start_time_str)
+    
+    attachments = [{
+        "filename": "invite.ics",
+        "content": ics_content,
+        "content_type": "text/calendar"
+    }]
+    
+    await _send(to, f"Interview Scheduled: {job_role} — Vedrix", html_content, attachments=attachments)
+
+
+async def send_interview_reminder_email(to: str, first_name: str, job_role: str, start_time: datetime) -> None:
+    """Send interview reminder email when start_time is within 24 hours."""
+    start_time_str = start_time.strftime("%A, %B %d, %Y at %I:%M %p")
+    html_content = _build_interview_reminder(first_name, job_role, start_time_str)
+    await _send(to, f"Reminder: Upcoming Interview for {job_role} — Vedrix", html_content)

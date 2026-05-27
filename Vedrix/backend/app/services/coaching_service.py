@@ -321,20 +321,13 @@ class CoachingService:
 
         async def _llm_call() -> Dict[str, Any]:
             """The actual LLM call wrapped for circuit breaker."""
-            return await asyncio.wait_for(
-                self._recommend_resources_llm(gaps),
-                timeout=15.0,
-            )
-
-        async def _fallback_call() -> Dict[str, Any]:
-            """Static fallback when LLM is unavailable."""
-            return self._get_static_resources(gaps)
+            return await self._recommend_resources_llm(gaps)
 
         try:
             plan_data = await execute_with_circuit_breaker(
                 provider="groq",
                 func=_llm_call,
-                fallback=_fallback_call,
+                timeout=15.0,
             )
         except Exception as e:
             logger.warning(

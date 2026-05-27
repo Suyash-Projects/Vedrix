@@ -39,22 +39,19 @@ const CommandPalette = () => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
-  const [recents, setRecents] = useState([]);
+  const [recents, setRecents] = useState(() => {
+    try {
+      const stored = localStorage.getItem(RECENTS_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
   const inputRef = useRef(null);
   const listRef = useRef(null);
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuthStore();
   const addToast = useToastStore((s) => s.addToast);
-
-  // Load recents from localStorage
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(RECENTS_KEY);
-      if (stored) setRecents(JSON.parse(stored));
-    } catch {
-      // ignore
-    }
-  }, []);
 
   const persistRecent = useCallback((id) => {
     setRecents((prev) => {
@@ -364,7 +361,9 @@ const CommandPalette = () => {
 
   // Reset active index when filter changes
   useEffect(() => {
-    setActiveIndex(0);
+    Promise.resolve().then(() => {
+      setActiveIndex(0);
+    });
   }, [query, open]);
 
   // Open/close hotkey
@@ -386,7 +385,9 @@ const CommandPalette = () => {
       // Defer to next tick so animation kicks in cleanly
       setTimeout(() => inputRef.current?.focus(), 30);
     } else {
-      setQuery('');
+      Promise.resolve().then(() => {
+        setQuery('');
+      });
     }
   }, [open]);
 

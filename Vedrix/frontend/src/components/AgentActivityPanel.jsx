@@ -59,11 +59,11 @@ const seedAgents = () =>
 const AgentActivityPanel = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [agents, setAgents] = useState(seedAgents);
-  const [tick, setTick] = useState(0);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   // Force a re-render every few seconds so relative times update
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 5000);
+    const id = setInterval(() => setCurrentTime(Date.now()), 5000);
     return () => clearInterval(id);
   }, []);
 
@@ -95,7 +95,7 @@ const AgentActivityPanel = () => {
       initial={false}
       animate={{ width: collapsed ? 56 : 280 }}
       transition={{ type: 'spring', damping: 26, stiffness: 240 }}
-      className="fixed top-24 right-4 z-40 bg-[#0a0f1e]/85 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden hidden lg:block"
+      className="fixed top-[calc(var(--nav-height)+1rem)] right-[var(--floating-panel-right)] z-40 bg-[#0a0f1e]/85 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden hidden lg:block"
       aria-label="Agent activity panel"
     >
       {/* Header */}
@@ -137,11 +137,11 @@ const AgentActivityPanel = () => {
             transition={{ duration: 0.22 }}
             className="overflow-hidden"
           >
-            <ul className="max-h-[calc(100vh-12rem)] overflow-y-auto py-1.5">
+            <ul className="max-h-[calc(100svh-var(--nav-height)-8rem)] overflow-y-auto py-1.5">
               {agents.map((agent) => {
                 const Icon = agent.icon;
                 const cfg = STATUS_COLORS[agent.status] || STATUS_COLORS.idle;
-                const elapsed = Date.now() - agent.lastActionAt;
+                const elapsed = currentTime - agent.lastActionAt;
                 return (
                   <li key={agent.id}>
                     <div className="flex items-center gap-2.5 px-3 py-2 hover:bg-white/[0.03] transition-colors">
@@ -164,8 +164,6 @@ const AgentActivityPanel = () => {
                         </div>
                         <p className="text-[10px] text-slate-500 truncate">
                           {agent.action} · <span className={cfg.label}>{formatRelative(elapsed)}</span>
-                          {/* tick subscribers for re-render */}
-                          <span className="hidden">{tick}</span>
                         </p>
                       </div>
                     </div>

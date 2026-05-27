@@ -3,6 +3,43 @@ import math
 import json
 from fpdf import FPDF
 
+def _clean_unicode(text: str) -> str:
+    """
+    Replaces common unsupported unicode characters with ASCII equivalents or sanitizes them
+    to prevent fpdf/latin-1 crashes.
+    """
+    if not isinstance(text, str):
+        return ""
+    replacements = {
+        '\u2013': '-',   # en dash
+        '\u2014': '-',   # em dash
+        '\u2018': "'",   # left single quote
+        '\u2019': "'",   # right single quote
+        '\u201c': '"',   # left double quote
+        '\u201d': '"',   # right double quote
+        '\u2022': '*',   # bullet point
+        '\u2026': '...', # ellipsis
+        '\xa0': ' ',     # non-breaking space
+        '🚀': '[Rocket]',
+        '🎯': '[Target]',
+        '🎙️': '[Mic]',
+        '🎙': '[Mic]',
+        '👋': '[Hello]',
+        '✓': '[Yes]',
+        '✔': '[Yes]',
+        '→': '->',
+        '✅': '[Check]',
+        '❌': '[Cross]',
+        '🧠': '[Brain]',
+        '💻': '[Code]',
+        '📊': '[Chart]',
+        '🏆': '[Cup]'
+    }
+    for orig, rep in replacements.items():
+        text = text.replace(orig, rep)
+    # Final encoding fallback to latin-1
+    return text.encode('latin-1', 'replace').decode('latin-1')
+
 def _draw_radar_chart(pdf, cx: float, cy: float, radius: float, skills: Dict[str, float]):
     """
     Draws a premium vector radar chart representing candidate skills directly in the PDF.
@@ -78,7 +115,7 @@ def _draw_radar_chart(pdf, cx: float, cy: float, radius: float, skills: Dict[str
         lx = cx + label_dist * math.cos(angle)
         ly = cy + label_dist * math.sin(angle)
         
-        label_text = f"{skill_name}: {score:.1f}"
+        label_text = _clean_unicode(f"{skill_name}: {score:.1f}")
         text_w = pdf.get_string_width(label_text)
         
         # Calculate alignment adjustments
@@ -131,12 +168,12 @@ def generate_interview_pdf(
     pdf.set_text_color(0, 0, 0)
     pdf.cell(40, 8, "Candidate:")
     pdf.set_font("helvetica", "", 12)
-    pdf.cell(0, 8, candidate_name, new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 8, _clean_unicode(candidate_name), new_x="LMARGIN", new_y="NEXT")
 
     pdf.set_font("helvetica", "B", 12)
     pdf.cell(40, 8, "Role:")
     pdf.set_font("helvetica", "", 12)
-    pdf.cell(0, 8, job_role, new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 8, _clean_unicode(job_role), new_x="LMARGIN", new_y="NEXT")
 
     pdf.set_font("helvetica", "B", 12)
     pdf.cell(40, 8, "Score:")
@@ -148,7 +185,7 @@ def generate_interview_pdf(
     pdf.set_text_color(0, 0, 0)
     pdf.cell(40, 8, "Decision:")
     pdf.set_font("helvetica", "B", 12)
-    pdf.cell(0, 8, str(report.get('hire_recommendation', 'N/A')).upper(), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 8, _clean_unicode(str(report.get('hire_recommendation', 'N/A')).upper()), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(10)
 
     # Score Breakdown
@@ -233,10 +270,15 @@ def generate_interview_pdf(
         # Advance the PDF y cursor past the chart area
         pdf.set_y(cy + 25.0 + 12.0)
     else:
-        # Fallback if too few dimensions
-        pdf.set_font("helvetica", "I", 10)
-        pdf.set_text_color(100, 100, 100)
-        pdf.cell(0, 10, "Skill matrix detail not available for this session.", new_x="LMARGIN", new_y="NEXT")
+        # Tabular breakdown
+        pdf.set_font("helvetica", "B", 10)
+        pdf.set_text_color(0, 0, 0)
+        pdf.cell(100, 8, "Skill / Competency", border=1)
+        pdf.cell(40, 8, "Score", border=1, align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("helvetica", "", 10)
+        for skill_name, score in final_skills.items():
+            pdf.cell(100, 8, _clean_unicode(skill_name), border=1)
+            pdf.cell(40, 8, f"{score:.1f} / 10.0", border=1, align="C", new_x="LMARGIN", new_y="NEXT")
         pdf.ln(5)
 
     pdf.add_page() # Executive Summary starts on Page 2
@@ -248,7 +290,7 @@ def generate_interview_pdf(
     pdf.ln(3)
     pdf.set_font("helvetica", "I", 11)
     pdf.set_text_color(50, 50, 50)
-    pdf.multi_cell(0, 6, str(report.get('summary', 'No summary available.')), new_x="LMARGIN", new_y="NEXT")
+    pdf.multi_cell(0, 6, _clean_unicode(str(report.get('summary', 'No summary available.'))), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(8)
 
     # Strengths
@@ -260,7 +302,7 @@ def generate_interview_pdf(
     pdf.set_text_color(0, 0, 0)
     for s in report.get("strengths", []):
         pdf.cell(5, 6, "-", new_x="RIGHT")
-        pdf.multi_cell(0, 6, str(s), new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(0, 6, _clean_unicode(str(s)), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(5)
 
     # Weaknesses
@@ -272,7 +314,7 @@ def generate_interview_pdf(
     pdf.set_text_color(0, 0, 0)
     for w in report.get("weaknesses", []):
         pdf.cell(5, 6, "-", new_x="RIGHT")
-        pdf.multi_cell(0, 6, str(w), new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(0, 6, _clean_unicode(str(w)), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(5)
 
     # Transcript
@@ -299,10 +341,7 @@ def generate_interview_pdf(
         pdf.set_font("helvetica", "", 10)
         pdf.set_text_color(50, 50, 50)
         
-        # simple sanitization of unicode chars that might crash fpdf basic fonts
-        content = content.encode('latin-1', 'replace').decode('latin-1')
-        
-        pdf.multi_cell(0, 5, content, new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(0, 5, _clean_unicode(content), new_x="LMARGIN", new_y="NEXT")
         pdf.ln(4)
 
     return bytes(pdf.output())

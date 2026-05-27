@@ -6,6 +6,7 @@ import os
 class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "Vedrix"
+    APP_VERSION: str = "1.0.0"
     
     # Security
     SECRET_KEY: str = "change-me-in-production-use-env-file"
@@ -32,6 +33,8 @@ class Settings(BaseSettings):
     APIFREE_BASE_URL: str = "https://apifreellm.com/api/v1"
 
     # Email
+    EMAIL_BACKEND: str = "console"  # Options: 'console', 'smtp', 'sendgrid'
+    SENDGRID_API_KEY: str = ""
     MAIL_SERVER: str = "smtp.gmail.com"
     MAIL_PORT: int = 587
     MAIL_USERNAME: str = ""
@@ -59,6 +62,9 @@ class Settings(BaseSettings):
     
     LINKEDIN_CLIENT_ID: str = ""
     LINKEDIN_CLIENT_SECRET: str = ""
+
+    # CORS
+    ALLOWED_ORIGINS: str = ""  # Comma-separated origins, e.g. "http://localhost:5173,https://vedrix.io"
 
     # Environment
     ENVIRONMENT: str = "development"  # "development" or "production"

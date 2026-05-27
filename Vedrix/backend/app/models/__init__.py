@@ -11,3 +11,6 @@ from .violation_record import ViolationRecord
 from .coaching_plan import CoachingPlan
 from .match_result import MatchResult
 from .candidate_workflow import CandidateWorkflow
+from .password_reset import PasswordResetToken
+from .scheduling import InterviewSlot, SlotBooking
+from .config import PlatformConfig, ConfigChangeLog

@@ -1,6 +1,7 @@
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 import json
 import asyncio
 import logging
@@ -24,6 +25,7 @@ import base64
 from app.services.evaluation_service import evaluation_service
 from app.services.code_execution_service import code_execution_service
 from app.services.rag_service import rag_service
+from app.services.memory_service import memory_service
 from app.services.email_service import (
     send_interview_started_email,
     send_report_to_candidate,
@@ -36,6 +38,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import async_session, get_session
 from app.models.trace_entry import TraceEntryRead
 from app.api import deps
+from app.schemas.scheduling import BookingCreate, BookingRead
+from app.services.scheduling_service import SchedulingService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -100,6 +104,126 @@ def _verify_ws_token(token: str) -> Optional[int]:
         return None
 
 
+def _build_student_profile_context(profile: Optional[StudentProfile]) -> str:
+    """Build compact candidate context from profile fields available at session start."""
+    if not profile:
+        return ""
+
+    profile_parts = []
+    if profile.university:
+        profile_parts.append(f"University: {profile.university}")
+    if profile.degree:
+        grad = f" (Graduation: {profile.graduation_year})" if profile.graduation_year else ""
+        profile_parts.append(f"Degree: {profile.degree}{grad}")
+    if profile.major:
+        profile_parts.append(f"Major: {profile.major}")
+    if profile.gpa:
+        profile_parts.append(f"GPA: {profile.gpa}")
+    if profile.skills:
+        profile_parts.append(f"Skills: {profile.skills}")
+    if profile.work_experience:
+        profile_parts.append(f"Work Experience: {profile.work_experience}")
+    if profile.internships:
+        profile_parts.append(f"Internships: {profile.internships}")
+    if profile.projects:
+        profile_parts.append(f"Projects: {profile.projects}")
+    if profile.certifications:
+        profile_parts.append(f"Certifications: {profile.certifications}")
+    if profile.languages:
+        profile_parts.append(f"Languages: {profile.languages}")
+    if profile.github_url:
+        profile_parts.append(f"GitHub: {profile.github_url}")
+    if profile.linkedin_url:
+        profile_parts.append(f"LinkedIn: {profile.linkedin_url}")
+    if profile.portfolio_url:
+        profile_parts.append(f"Portfolio: {profile.portfolio_url}")
+    if profile.hackathons:
+        profile_parts.append(f"Hackathons: {profile.hackathons}")
+    if profile.interests:
+        profile_parts.append(f"Interests: {profile.interests}")
+    if profile.experience_level:
+        profile_parts.append(f"Experience Level: {profile.experience_level}")
+    if profile.availability:
+        profile_parts.append(f"Availability: {profile.availability}")
+    if profile.expected_salary:
+        profile_parts.append(f"Expected Salary: {profile.expected_salary}")
+    if profile.preferred_locations:
+        profile_parts.append(f"Preferred Locations: {profile.preferred_locations}")
+
+    return " | ".join(profile_parts)
+
+
+async def _load_candidate_context(
+    db: AsyncSession,
+    candidate_id: Optional[int],
+    base_resume_text: str,
+) -> Dict[str, Any]:
+    """
+    Load profile, resume, and longitudinal memory context for a candidate.
+
+    Returns a conservative context bundle. Missing profile/memory is normal and
+    falls back to the caller-provided resume/job context.
+    """
+    context: Dict[str, Any] = {
+        "resume_text": base_resume_text,
+        "profile_context": "",
+        "memory_context": "",
+        "rag_seed_context": base_resume_text,
+        "github_url": None,
+        "profile": None,
+    }
+    if not candidate_id:
+        return context
+
+    profile_res = await db.execute(
+        select(StudentProfile).where(StudentProfile.user_id == candidate_id)
+    )
+    profile = profile_res.scalars().first()
+    context["profile"] = profile
+
+    profile_context = _build_student_profile_context(profile)
+    if profile:
+        context["github_url"] = profile.github_url
+        candidate_resume = profile.resume_text or profile_context
+        context["resume_text"] = "\n\n".join(
+            part for part in [base_resume_text, candidate_resume] if part
+        ) or base_resume_text
+        context["profile_context"] = profile_context
+
+    try:
+        memory_profile = await memory_service.get_profile_for_planner(candidate_id=candidate_id, db=db)
+    except Exception as e:
+        logger.warning("Failed to load longitudinal memory for candidate %s: %s", candidate_id, e)
+        memory_profile = None
+
+    if memory_profile:
+        scores = memory_profile.get("skill_scores") or {}
+        trends = memory_profile.get("growth_trends") or {}
+        memory_parts = []
+        if scores:
+            score_text = ", ".join(
+                f"{skill}: {score:.1f}" if isinstance(score, (int, float)) else f"{skill}: {score}"
+                for skill, score in list(scores.items())[:8]
+            )
+            memory_parts.append(f"Prior skill averages: {score_text}")
+        if trends:
+            trend_text = ", ".join(f"{skill}: {trend}" for skill, trend in list(trends.items())[:8])
+            memory_parts.append(f"Growth trends: {trend_text}")
+        context["memory_context"] = " | ".join(memory_parts)
+
+    seed_parts = [
+        part for part in [
+            f"Session context: {base_resume_text}" if base_resume_text else "",
+            context["resume_text"],
+            f"Candidate profile: {context['profile_context']}" if context["profile_context"] else "",
+            f"Interview history: {context['memory_context']}" if context["memory_context"] else "",
+        ]
+        if part
+    ]
+    context["rag_seed_context"] = "\n\n".join(seed_parts)
+    return context
+
+
 @router.websocket("/ws/{session_id}")
 async def websocket_endpoint(
     websocket: WebSocket,
@@ -119,6 +243,8 @@ async def websocket_endpoint(
     hr_email: Optional[str] = None
     hr_name: Optional[str] = None
     drive_title: Optional[str] = None
+    candidate_id: Optional[int] = None
+    candidate_context: Dict[str, Any] = {}
 
     try:
         # Validate that authentication parameters are provided
@@ -197,6 +323,9 @@ async def websocket_endpoint(
                         if hr_user:
                             hr_email, hr_name = hr_user.email, hr_user.first_name
 
+                candidate_context = await _load_candidate_context(db, candidate_id, resume_text)
+                resume_text = candidate_context["resume_text"]
+
                 new_session = InterviewSession(
                     candidate_id=candidate_id, job_drive_id=drive_id,
                     session_type="actual", status="in_progress",
@@ -273,6 +402,7 @@ async def websocket_endpoint(
 
                 candidate_name = user.first_name
                 candidate_email = user.email
+                candidate_id = user_id
 
                 if scheduled_session_id:
                     # Use existing scheduled session
@@ -302,55 +432,13 @@ async def websocket_endpoint(
                         if drive:
                             job_role = drive.job_role
                             resume_text = f"Applying for: {drive.job_role}. Required skills: {drive.skills_required or 'General'}"
+                    candidate_context = await _load_candidate_context(db, user_id, resume_text)
+                    resume_text = candidate_context["resume_text"]
                 else:
-                    # Fetch full student profile for practice interview
-                    profile_res = await db.execute(select(StudentProfile).where(StudentProfile.user_id == user_id))
-                    profile = profile_res.scalars().first()
+                    candidate_context = await _load_candidate_context(db, user_id, resume_text)
+                    resume_text = candidate_context["resume_text"]
+                    profile = candidate_context.get("profile")
                     if profile:
-                        # Build comprehensive profile context for the interview agent
-                        profile_parts = []
-                        if profile.university:
-                            profile_parts.append(f"University: {profile.university}")
-                        if profile.degree:
-                            profile_parts.append(f"Degree: {profile.degree} (Graduation: {profile.graduation_year})")
-                        if profile.major:
-                            profile_parts.append(f"Major: {profile.major}")
-                        if profile.gpa:
-                            profile_parts.append(f"GPA: {profile.gpa}")
-                        if profile.skills:
-                            profile_parts.append(f"Skills: {profile.skills}")
-                        if profile.work_experience:
-                            profile_parts.append(f"Work Experience: {profile.work_experience}")
-                        if profile.internships:
-                            profile_parts.append(f"Internships: {profile.internships}")
-                        if profile.projects:
-                            profile_parts.append(f"Projects: {profile.projects}")
-                        if profile.certifications:
-                            profile_parts.append(f"Certifications: {profile.certifications}")
-                        if profile.languages:
-                            profile_parts.append(f"Languages: {profile.languages}")
-                        if profile.github_url:
-                            profile_parts.append(f"GitHub: {profile.github_url}")
-                        if profile.linkedin_url:
-                            profile_parts.append(f"LinkedIn: {profile.linkedin_url}")
-                        if profile.portfolio_url:
-                            profile_parts.append(f"Portfolio: {profile.portfolio_url}")
-                        if profile.hackathons:
-                            profile_parts.append(f"Hackathons: {profile.hackathons}")
-                        if profile.interests:
-                            profile_parts.append(f"Interests: {profile.interests}")
-                        if profile.experience_level:
-                            profile_parts.append(f"Experience Level: {profile.experience_level}")
-                        if profile.availability:
-                            profile_parts.append(f"Availability: {profile.availability}")
-                        if profile.expected_salary:
-                            profile_parts.append(f"Expected Salary: {profile.expected_salary}")
-                        if profile.preferred_locations:
-                            profile_parts.append(f"Preferred Locations: {profile.preferred_locations}")
-
-                        full_profile_context = " | ".join(profile_parts) if profile_parts else "No profile information available"
-                        resume_text = profile.resume_text or full_profile_context
-
                         # Create better job role from profile
                         skills = profile.skills or "General"
                         job_role = f"Candidate for {profile.degree or 'Software'} role (Skills: {skills})"
@@ -373,24 +461,15 @@ async def websocket_endpoint(
         # Register session with AI Supervisor
         supervisor_registry.register(str(db_session_id or session_id), control_mode="suggest")
 
+        rag_seed_context = candidate_context.get("rag_seed_context") or resume_text
+
         # Background index candidate context in ChromaDB
         if db_session_id:
             try:
-                # Resolve github url for this user if student profile exists
                 async def _index_task():
-                    g_url = None
-                    try:
-                        async with async_session() as db:
-                            uid = candidate_id if 'candidate_id' in locals() else user_id if 'user_id' in locals() else None
-                            if uid:
-                                profile_res = await db.execute(select(StudentProfile).where(StudentProfile.user_id == uid))
-                                profile = profile_res.scalars().first()
-                                if profile and profile.github_url:
-                                    g_url = profile.github_url
-                    except Exception as e:
-                        logger.warning(f"Failed to query student profile: {e}")
-                    
-                    await rag_service.index_resume(str(db_session_id), resume_text)
+                    g_url = candidate_context.get("github_url")
+
+                    await rag_service.index_resume(str(db_session_id), rag_seed_context)
                     if g_url:
                         await rag_service.index_github_profile(str(db_session_id), g_url)
                         
@@ -448,11 +527,28 @@ async def websocket_endpoint(
             "copilot_request_pending": False,
             "hr_whisper_instructions": None,
             "empathy_metrics": {"stress_level": 0.0, "hesitation_rating": 0.0, "typing_speed": 0.0},
-            "rag_context": None,
+            "stress_history": [],
+            "empathy_timeline": [],
+            "rag_context": rag_seed_context[:2500] if rag_seed_context else None,
             "debate_rounds": None,
             "skeptic_critique": None,
             "pragmatist_critique": None,
             "bias_auditor_critique": None,
+            "interview_plan": None,
+            "plan_phase_index": 0,
+            "consecutive_low_quality": 0,
+            "qa_regeneration_count": 0,
+            "qa_session_quality_score": 1.0,
+            "qa_flags": [],
+            "qa_total_questions": 0,
+            "qa_flagged_questions": 0,
+            "qa_paused": False,
+            "advisor_ready_to_close": False,
+            "advisor_confidence": None,
+            "advisor_reason": None,
+            "advisor_reason_category": None,
+            "advisor_notified": False,
+            "advisor_action_taken": False,
         }
 
         # ── 3. Start Interview ────────────────────────────────────────────
@@ -527,7 +623,7 @@ async def websocket_endpoint(
                         # Message format: {"type": "proctor_event", "event": "tab_switch"|"paste"|"keystroke", ...}
                         from app.services.proctor_service import proctor_service
                         event = payload.get("event", "")
-                        if db_session_id and event in ("tab_switch", "paste", "keystroke"):
+                        if db_session_id and event in ("tab_switch", "paste", "keystroke", "multiple_faces", "no_face", "gaze_deviation"):
                             async with async_session() as db:
                                 # Fetch session to get status and consent
                                 sess_res = await db.execute(
@@ -549,6 +645,12 @@ async def websocket_endpoint(
                                         }
                                     elif event == "keystroke":
                                         event_payload = {"timestamps": payload.get("timestamps", [])}
+                                    elif event in ("multiple_faces", "no_face", "gaze_deviation"):
+                                        event_payload = {
+                                            "timestamp": payload.get("timestamp"),
+                                            "confidence": payload.get("confidence", 1.0),
+                                            "duration_seconds": payload.get("duration_seconds", 0.0),
+                                        }
                                     else:
                                         event_payload = {}
 
@@ -557,6 +659,9 @@ async def websocket_endpoint(
                                         "tab_switch": "tab_switch",
                                         "paste": "paste_detected",
                                         "keystroke": "anomalous_typing",
+                                        "multiple_faces": "multiple_faces",
+                                        "no_face": "no_face",
+                                        "gaze_deviation": "gaze_deviation",
                                     }
                                     violation_type = event_type_map.get(event, event)
 
@@ -739,6 +844,8 @@ async def websocket_endpoint(
                             )
                         except Exception as e:
                             logger.warning(f"Failed to query RAG context: {e}")
+                    if not rag_context:
+                        rag_context = rag_seed_context[:2500] if rag_seed_context else ""
 
                     update = (
                         {"code_snippet": user_code, "messages": [{"role": "user", "content": "[Code Submitted]"}, {"role": "system", "content": "[Evaluation debate in progress...]"}], "rag_context": rag_context}
@@ -1138,6 +1245,114 @@ async def get_session_explanation(
         entries = await obs_service.query(session_id=session_id, requester_role="hr")
 
     return entries
+
+
+@router.get("/{session_id}/report/pdf")
+async def download_interview_report_pdf(
+    session_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(deps.get_current_user),
+) -> StreamingResponse:
+    """
+    Download a high-fidelity PDF report of the candidate evaluation.
+    Only accessible by the candidate who owns the session, management HR, or an administrator.
+    """
+    from fastapi.responses import StreamingResponse
+    import io
+    from app.services.pdf_service import generate_interview_pdf
+    from app.core.metrics import pdf_generated_total
+
+    # 1. Fetch the interview session and candidate
+    stmt = (
+        select(InterviewSession, User)
+        .join(User, InterviewSession.candidate_id == User.id)
+        .where(InterviewSession.id == session_id)
+    )
+    res = await db.execute(stmt)
+    row = res.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+
+    session_record, candidate = row
+
+    # 2. Access Control
+    if current_user.user_type == "admin":
+        pass
+    elif current_user.user_type == "student":
+        if session_record.candidate_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Access denied. You do not own this session.")
+    elif current_user.user_type == "hr":
+        if not session_record.job_drive_id:
+            raise HTTPException(status_code=403, detail="Access denied. You do not manage this practice session.")
+        drive_res = await db.execute(
+            select(JobDrive).join(HRProfile).where(
+                JobDrive.id == session_record.job_drive_id,
+                HRProfile.user_id == current_user.id
+            )
+        )
+        if not drive_res.scalars().first():
+            raise HTTPException(status_code=403, detail="Access denied. You do not manage this session.")
+    else:
+        raise HTTPException(status_code=403, detail="Role not authorized to access this report.")
+
+    # 3. Check if evaluation is complete
+    if session_record.status != "completed" or session_record.overall_score is None or not session_record.ai_feedback:
+        raise HTTPException(status_code=404, detail="Evaluation is incomplete or report is not ready yet.")
+
+    # 4. Resolve job role
+    job_role = "Practice Candidate"
+    if session_record.job_drive_id:
+        drive_res = await db.execute(select(JobDrive).where(JobDrive.id == session_record.job_drive_id))
+        drive = drive_res.scalars().first()
+        if drive:
+            job_role = drive.job_role
+
+    # 5. Generate PDF
+    pdf_bytes = await asyncio.to_thread(
+        generate_interview_pdf,
+        candidate_name=f"{candidate.first_name} {candidate.last_name}",
+        job_role=job_role,
+        report=session_record.ai_feedback,
+        transcript=session_record.responses or [],
+        skill_matrix=session_record.skill_matrix
+    )
+
+    # 6. Increment PDF generated total counter
+    pdf_generated_total.inc()
+
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename=Vedrix_Report_{session_id}.pdf"
+        }
+    )
+
+
+@router.post("/schedule", response_model=BookingRead)
+async def schedule_interview_slot(
+    payload: BookingCreate,
+    current_user: User = Depends(deps.get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """
+    Allow a candidate to book a specific interview slot.
+    Enforces capacity checks and double-booking prevention.
+    """
+    from fastapi import status
+
+    if current_user.user_type != "student":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only candidates can book interview slots."
+        )
+
+    sched_service = SchedulingService(db)
+    booking = await sched_service.book_slot(
+        candidate_id=current_user.id,
+        slot_id=payload.slot_id
+    )
+    return booking
 
 
 # ── Video Interview WebRTC Signaling ─────────────────────────────────────────

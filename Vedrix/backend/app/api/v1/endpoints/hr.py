@@ -1493,6 +1493,95 @@ class BulkWorkflowTransitionRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+def _format_duration_since(value: Optional[datetime]) -> str:
+    if value is None:
+        return "—"
+
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+
+    delta = datetime.now(timezone.utc) - value
+    if delta.days > 0:
+        return f"{delta.days}d"
+
+    hours = int(delta.total_seconds() // 3600)
+    if hours > 0:
+        return f"{hours}h"
+
+    minutes = max(1, int(delta.total_seconds() // 60))
+    return f"{minutes}m"
+
+
+@router.get("/drives/{drive_id}/pipeline")
+async def get_drive_pipeline(
+    drive_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr),
+) -> Any:
+    """
+    Return all candidate workflow cards for a drive-level HR pipeline board.
+
+    HR access only — validates that the HR user manages the drive.
+    """
+    hr_profile = await _get_hr_profile(db, current_hr.id)
+
+    drive_res = await db.execute(
+        select(JobDrive).where(JobDrive.id == drive_id, JobDrive.hr_id == hr_profile.id)
+    )
+    drive = drive_res.scalars().first()
+    if not drive:
+        raise HTTPException(status_code=404, detail="Drive not found")
+
+    from app.models.candidate_workflow import CandidateWorkflow
+    from app.models.match_result import MatchResult
+    from app.services.orchestrator_service import WORKFLOW_TRANSITIONS
+
+    workflow_res = await db.execute(
+        select(CandidateWorkflow, User)
+        .join(User, User.id == CandidateWorkflow.candidate_id)
+        .where(CandidateWorkflow.job_drive_id == drive_id)
+        .order_by(CandidateWorkflow.updated_at.desc())
+    )
+    workflow_rows = workflow_res.all()
+
+    candidate_ids = [workflow.candidate_id for workflow, _ in workflow_rows]
+    score_by_candidate = {}
+    if candidate_ids:
+        match_res = await db.execute(
+            select(MatchResult).where(
+                MatchResult.job_drive_id == drive_id,
+                MatchResult.candidate_id.in_(candidate_ids),
+            )
+        )
+        for match in match_res.scalars().all():
+            if match.candidate_id not in score_by_candidate:
+                score_by_candidate[match.candidate_id] = match.match_score
+
+    candidates = []
+    for workflow, candidate in workflow_rows:
+        name = f"{candidate.first_name or ''} {candidate.last_name or ''}".strip()
+        candidates.append({
+            "candidate_id": workflow.candidate_id,
+            "name": name or candidate.email,
+            "email": candidate.email,
+            "state": workflow.current_state,
+            "score": score_by_candidate.get(workflow.candidate_id),
+            "time_in_state": _format_duration_since(workflow.updated_at),
+            "transition_history": workflow.transition_history or [],
+            "available_transitions": WORKFLOW_TRANSITIONS.get(workflow.current_state, {}),
+            "decision": workflow.decision,
+            "updated_at": workflow.updated_at,
+        })
+
+    return {
+        "drive_id": drive_id,
+        "drive_title": drive.title,
+        "candidates": candidates,
+        "states": list(WORKFLOW_TRANSITIONS.keys()),
+        "transitions": WORKFLOW_TRANSITIONS,
+    }
+
+
 @router.get("/drives/{drive_id}/workflow/{candidate_id}")
 async def get_candidate_workflow(
     drive_id: int,
@@ -1711,3 +1800,58 @@ async def get_candidate_match_detail(
         "computed_at": match_result.computed_at,
         "created_at": match_result.created_at,
     }
+
+
+# ── HR Slot Booking Management ────────────────────────────────────────────────
+from app.schemas.scheduling import SlotCreateBulk, SlotRead
+from app.services.scheduling_service import SchedulingService
+
+@router.post("/drives/{drive_id}/slots", response_model=List[SlotRead])
+async def hr_create_slots(
+    drive_id: int,
+    payload: SlotCreateBulk,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr)
+) -> Any:
+    """
+    HR creates multiple interview slots for a recruitment drive.
+    """
+    hr_profile = await _get_hr_profile(db, current_hr.id)
+
+    # Verify drive exists and belongs to this HR
+    drive_res = await db.execute(
+        select(JobDrive).where(JobDrive.id == drive_id, JobDrive.hr_id == hr_profile.id)
+    )
+    drive = drive_res.scalars().first()
+    if not drive:
+        raise HTTPException(status_code=404, detail="Drive not found or you don't have access")
+
+    sched_service = SchedulingService(db)
+    slots_list = [{"start_time": s.start_time, "end_time": s.end_time, "max_candidates": s.max_candidates} for s in payload.slots]
+    created_slots = await sched_service.create_slots(drive_id, slots_list)
+    return created_slots
+
+
+@router.get("/drives/{drive_id}/slots", response_model=List[SlotRead])
+async def hr_get_slots(
+    drive_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr)
+) -> Any:
+    """
+    HR views all slots and booking status for a recruitment drive.
+    """
+    hr_profile = await _get_hr_profile(db, current_hr.id)
+
+    # Verify drive exists and belongs to this HR
+    drive_res = await db.execute(
+        select(JobDrive).where(JobDrive.id == drive_id, JobDrive.hr_id == hr_profile.id)
+    )
+    drive = drive_res.scalars().first()
+    if not drive:
+        raise HTTPException(status_code=404, detail="Drive not found or you don't have access")
+
+    sched_service = SchedulingService(db)
+    slots = await sched_service.get_drive_slots(drive_id)
+    return slots
+

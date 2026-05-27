@@ -39,7 +39,11 @@ const EnrichmentSummary = () => {
     }
   }, [candidateId]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      fetchData();
+    });
+  }, [fetchData]);
 
   if (loading) {
     return (

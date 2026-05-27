@@ -44,7 +44,8 @@ const Schedule = () => {
   const fetchInterviews = useCallback(async () => {
     try {
       const res = await apiClient.get('/hr/interviews');
-      setInterviews(res.data.interviews || []);
+      const allInterviews = Array.isArray(res.data) ? res.data : (res.data?.interviews ?? []);
+      setInterviews(allInterviews);
     } catch {
       setError('Failed to fetch interviews');
     } finally {
@@ -78,12 +79,19 @@ const Schedule = () => {
     return days;
   };
 
+  const getLocalDateString = (d) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const getInterviewsForDate = (date) => {
     if (!date) return [];
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = getLocalDateString(date);
     return interviews.filter(interview => {
       if (!interview.scheduled_time) return false;
-      const interviewDate = new Date(interview.scheduled_time).toISOString().split('T')[0];
+      const interviewDate = getLocalDateString(new Date(interview.scheduled_time));
       return interviewDate === dateStr;
     });
   };
@@ -101,7 +109,7 @@ const Schedule = () => {
       setSelectedDate(date);
       setFormData(prev => ({
         ...prev,
-        scheduled_time: date.toISOString().split('T')[0] + 'T10:00',
+        scheduled_time: getLocalDateString(date) + 'T10:00',
       }));
       setShowModal(true);
     }
