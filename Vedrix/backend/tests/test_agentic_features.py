@@ -128,8 +128,15 @@ async def test_rag_service():
     session_id = "test_session_rag_456"
     resume = "Candidate is an expert in Docker, Kubernetes, and Golang backend development."
     
-    # Clean chroma files if exist
+    # Clean chroma persistent directory to avoid stale data corruption
     db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app", "db", "chroma")
+    if os.path.exists(db_path):
+        shutil.rmtree(db_path)
+    os.makedirs(db_path, exist_ok=True)
+    # Reset singleton state so _ensure_initialized() creates a fresh client
+    rag_service._initialized = False
+    rag_service.client = None
+    rag_service.collection = None
     
     try:
         # Index resume

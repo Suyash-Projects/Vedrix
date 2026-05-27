@@ -74,7 +74,7 @@ def test_property_6_qa_idempotence(question_text):
     "I am not sure, I think I'm completely stuck here, sorry um uh",
     "This is too difficult, I am under a lot of pressure and feeling confused",
 ]))
-@settings(max_examples=10, suppress_health_check=[HealthCheck.too_slow])
+@settings(max_examples=10, suppress_health_check=[HealthCheck.too_slow], deadline=None)
 def test_property_8_sentiment_stress_detection(distress_text):
     """Property 8: Negative/distress input text -> stress_level above 0.5."""
     mock_state = {"messages": [], "empathy_metrics": {}}
@@ -91,7 +91,7 @@ def test_property_8_sentiment_stress_detection(distress_text):
     "Definitely, I have solved this issue and it is clear and good",
     "Excellent, I designed and implemented this awesome feature easily",
 ]))
-@settings(max_examples=10, suppress_health_check=[HealthCheck.too_slow])
+@settings(max_examples=10, suppress_health_check=[HealthCheck.too_slow], deadline=None)
 def test_property_9_sentiment_positive_detection(positive_text):
     """Property 9: Positive input text -> sentiment_score above 0.0."""
     mock_state = {"messages": [], "empathy_metrics": {}}

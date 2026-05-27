@@ -23,7 +23,19 @@ class DetailedEvaluationSchema(BaseModel):
 class EvaluationService:
 
     def __init__(self):
-        self.llm = get_report_llm()
+        self._llm = None
+
+    @property
+    def llm(self):
+        """Lazily initialize the report generation LLM on first use."""
+        if self._llm is None:
+            self._llm = get_report_llm()
+        return self._llm
+
+    @llm.setter
+    def llm(self, value):
+        """Allow injection of mock LLM for testing."""
+        self._llm = value
 
     async def generate_final_report(
         self, job_role: str, history: List[Dict[str, str]]

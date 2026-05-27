@@ -862,7 +862,6 @@ const InterviewRoom = () => {
 
   // Sync toggleRecording into ref after it is defined
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/immutability
     toggleRecordingRef.current = toggleRecording;
   });
 
