@@ -1,5 +1,5 @@
 # Frontend Dockerfile
-FROM node:20-slim AS build
+FROM node:26-slim AS build
 
 WORKDIR /app
 
@@ -19,7 +19,7 @@ COPY . .
 RUN npm run build
 
 # Development stage for docker-compose.yml
-FROM node:20-slim AS dev
+FROM node:26-slim AS dev
 
 WORKDIR /app
 
