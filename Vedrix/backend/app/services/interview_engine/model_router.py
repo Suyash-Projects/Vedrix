@@ -86,9 +86,18 @@ def is_provider_configured(provider: str) -> bool:
     if not config:
         return False
 
-    return _setting_has_value(config["api_key_attr"]) and _setting_has_value(
-        config["base_url_attr"]
-    )
+    has_key = _setting_has_value(config["api_key_attr"])
+    has_url = _setting_has_value(config["base_url_attr"])
+    if not (has_key and has_url):
+        return False
+
+    # Check if the key is a placeholder
+    key_val = str(getattr(settings, config["api_key_attr"], "") or "").strip()
+    placeholders = ["your-", "your_", "change-me", "change_me", "placeholder", "sk-or-your", "nvapi-your"]
+    if any(p in key_val.lower() for p in placeholders):
+        return False
+
+    return True
 
 
 def get_provider_statuses() -> dict[str, dict[str, Any]]:

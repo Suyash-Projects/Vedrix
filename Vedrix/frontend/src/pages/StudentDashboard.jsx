@@ -271,7 +271,7 @@ const StudentDashboard = () => {
 
         {/* Stats row */}
         {!loading && stats && (
-          <motion.div variants={itemVariants} className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { label: 'Total Sessions', val: stats.total_interviews ?? 0, icon: BarChart3, color: 'text-purple-400' },
               { label: 'Completed', val: stats.completed_interviews ?? 0, icon: CheckCircle2, color: 'text-emerald-400' },
@@ -527,7 +527,7 @@ const StudentDashboard = () => {
               </div>
               <div className="space-y-4">
                 <h3 className="text-xs font-black uppercase text-purple-400 tracking-widest">Academic</h3>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <input type="text" placeholder="University" value={editProfile.university} onChange={e => setEditProfile({...editProfile, university: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />
                   <input type="text" placeholder="Major" value={editProfile.major} onChange={e => setEditProfile({...editProfile, major: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />
                   <input type="text" placeholder="Degree" value={editProfile.degree} onChange={e => setEditProfile({...editProfile, degree: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />
@@ -538,7 +538,7 @@ const StudentDashboard = () => {
               </div>
               <div className="space-y-4">
                 <h3 className="text-xs font-black uppercase text-purple-400 tracking-widest">Skills & Experience</h3>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <input type="text" placeholder="Technical Skills" value={editProfile.skills} onChange={e => setEditProfile({...editProfile, skills: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none col-span-2" />
                   <select value={editProfile.experience_level} onChange={e => setEditProfile({...editProfile, experience_level: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-purple-500 outline-none">
                     <option value="">Experience Level</option>
@@ -553,7 +553,7 @@ const StudentDashboard = () => {
               </div>
               <div className="space-y-4">
                 <h3 className="text-xs font-black uppercase text-purple-400 tracking-widest">Projects & Links</h3>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <input type="text" placeholder="Projects" value={editProfile.projects} onChange={e => setEditProfile({...editProfile, projects: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none col-span-2" />
                   <input type="text" placeholder="Certifications" value={editProfile.certifications} onChange={e => setEditProfile({...editProfile, certifications: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />
                   <input type="text" placeholder="Hackathons" value={editProfile.hackathons} onChange={e => setEditProfile({...editProfile, hackathons: e.target.value})} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:ring-2 focus:ring-purple-500 outline-none" />

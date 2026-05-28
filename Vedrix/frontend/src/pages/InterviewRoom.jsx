@@ -747,7 +747,7 @@ const InterviewRoom = () => {
     clearTimeout(noResponseTimerRef.current);
 
     if (isRecording) {
-      // Stop recording - auto-submit after silence detection
+      // Stop recording - this will trigger the onstop event handler defined below
       mediaRecorder.current?.stop();
       setIsRecording(false);
       mediaRecorder.current?.stream.getTracks().forEach(t => t.stop());
@@ -760,24 +760,6 @@ const InterviewRoom = () => {
         audioContextRef.current.close().catch(() => {});
         audioContextRef.current = null;
       }
-
-      // Auto-submit after short silence (1.5 seconds of no recording)
-      setAgentStatus('Processing your answer...');
-      setTimeout(() => {
-        const blob = new Blob(audioChunks.current, { type: 'audio/webm' });
-        // Phase 2.3: Queue audio answer if offline, otherwise send via WS
-        if (ws.current?.readyState === WebSocket.OPEN && audioChunks.current.length > 0) {
-          ws.current.send(blob);
-          audioChunks.current = [];
-          setAgentStatus('Answer submitted. Reviewing your response...');
-        } else if (audioChunks.current.length > 0) {
-          // Offline — queue the audio answer as text placeholder
-          enqueueAnswer('audio_pending', { size: blob.size, type: blob.type });
-          audioChunks.current = [];
-          setQueuedCount(getQueueLength());
-          setAgentStatus('Answer saved locally. Will sync when reconnected.');
-        }
-      }, 1500);
     } else {
       audioChunks.current = [];
       try {
@@ -787,7 +769,23 @@ const InterviewRoom = () => {
           if (e.data.size > 0) audioChunks.current.push(e.data);
         };
         mediaRecorder.current.onstop = () => {
-          // Audio captured - will be sent when recording stops
+          setAgentStatus('Processing and submitting your answer...');
+          if (audioChunks.current.length > 0) {
+            const blob = new Blob(audioChunks.current, { type: 'audio/webm' });
+            if (ws.current?.readyState === WebSocket.OPEN) {
+              ws.current.send(blob);
+              audioChunks.current = [];
+              setAgentStatus('Answer submitted. Reviewing your response...');
+            } else {
+              // Offline — queue the audio answer as text placeholder
+              enqueueAnswer('audio_pending', { size: blob.size, type: blob.type });
+              audioChunks.current = [];
+              setQueuedCount(getQueueLength());
+              setAgentStatus('Answer saved locally. Will sync when reconnected.');
+            }
+          } else {
+            setAgentStatus('No audio recorded.');
+          }
         };
         mediaRecorder.current.start();
         setIsRecording(true);
@@ -1171,7 +1169,7 @@ const InterviewRoom = () => {
             </div>
           ) : (
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} 
-              className="w-full h-[520px] grid grid-cols-10 gap-6">
+              className="w-full h-[60vh] min-h-[450px] grid grid-cols-10 gap-6">
               
               {/* Left Sandbox (7 cols) */}
               <div className="col-span-7 bg-[#0a0f1e] border border-white/10 rounded-[2.5rem] overflow-hidden shadow-2xl relative flex flex-col">

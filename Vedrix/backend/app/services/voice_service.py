@@ -38,6 +38,28 @@ class VoiceService:
 
     # ── STT ──────────────────────────────────────────────────────────────────
 
+    def _prepare_audio(self, audio_bytes: bytes) -> tuple[io.BytesIO, str]:
+        """
+        Attempt to normalize audio using pydub.
+        If pydub/ffmpeg fails, returns the raw bytes with a webm extension.
+        Returns a tuple of (buffer, filename).
+        """
+        try:
+            audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
+            if len(audio) < 100:  # Less than 100ms
+                return None, "audio.mp3"
+            buffer = io.BytesIO()
+            audio.export(buffer, format="mp3", bitrate="64k")
+            buffer.seek(0)
+            return buffer, "audio.mp3"
+        except Exception as e:
+            logger.warning(
+                f"Audio normalization failed (likely missing ffmpeg): {e}. "
+                f"Falling back to raw audio transmission."
+            )
+            # Return the raw audio bytes as a BytesIO stream
+            return io.BytesIO(audio_bytes), "audio.webm"
+
     async def transcribe_audio(self, audio_bytes: bytes) -> str:
         """
         Transcribe audio bytes → text via Groq Whisper Large V3.
@@ -50,27 +72,14 @@ class VoiceService:
             logger.warning("Groq not configured for STT. Trying OpenAI Whisper fallback directly.")
             return await self._transcribe_openai_fallback(audio_bytes, Exception("Groq not configured"))
 
-        def _prepare_audio():
-            try:
-                audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
-                if len(audio) < 100:  # Less than 100ms
-                    return None
-                buffer = io.BytesIO()
-                audio.export(buffer, format="mp3", bitrate="64k")
-                buffer.seek(0)
-                return buffer
-            except Exception as e:
-                logger.error(f"Audio normalization failed: {e}")
-                return None
-
         loop = asyncio.get_running_loop()
-        buffer = await loop.run_in_executor(None, _prepare_audio)
+        buffer, filename = await loop.run_in_executor(None, self._prepare_audio, audio_bytes)
         if not buffer:
             return ""
 
         def _run_groq():
             result = self._groq.audio.transcriptions.create(
-                file=("audio.mp3", buffer),
+                file=(filename, buffer),
                 model="whisper-large-v3",
                 response_format="json",
                 language="en",
@@ -95,27 +104,15 @@ class VoiceService:
 
         start_time = time.monotonic()
         try:
-            def _prepare_audio():
-                try:
-                    audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
-                    if len(audio) < 100:
-                        return None
-                    buffer = io.BytesIO()
-                    audio.export(buffer, format="mp3", bitrate="64k")
-                    buffer.seek(0)
-                    return buffer
-                except Exception:
-                    return None
-
             loop = asyncio.get_running_loop()
-            buffer = await loop.run_in_executor(None, _prepare_audio)
+            buffer, filename = await loop.run_in_executor(None, self._prepare_audio, audio_bytes)
             if not buffer:
                 return ""
 
             # OpenAI audio transcription is async under AsyncOpenAI
             response = await self._openai.audio.transcriptions.create(
                 model="whisper-1",
-                file=("audio.mp3", buffer),
+                file=(filename, buffer),
                 response_format="json",
                 language="en",
                 temperature=0.0,

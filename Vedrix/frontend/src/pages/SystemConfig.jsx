@@ -206,7 +206,7 @@ const SystemConfig = () => {
     <div className="min-h-screen bg-[#020617] text-white">
       <div className="max-w-5xl mx-auto px-8 py-10">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight">System Configuration</h1>
             <p className="text-slate-500 mt-1">Manage global AI services, limits, proctoring thresholds, and security</p>
@@ -562,7 +562,7 @@ const SystemConfig = () => {
         </div>
 
         {/* Action Buttons */}
-        <div className="mt-8 flex justify-end space-x-3">
+        <div className="mt-8 flex flex-col-reverse sm:flex-row justify-end gap-3">
           <button
             onClick={handleReset}
             disabled={saving}

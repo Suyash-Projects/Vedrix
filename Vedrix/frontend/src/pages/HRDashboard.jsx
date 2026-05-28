@@ -5,7 +5,7 @@ import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import {
   Briefcase, Plus, Link as LinkIcon, Activity,
   ChevronRight, Copy, CheckCircle2, Clock, LayoutDashboard,
-  LogOut, Settings, MoreVertical, X, Loader2, Mail, Send,
+  LogOut, Settings, MoreVertical, X, Loader2, Mail, Send, Menu,
   ChevronDown, Radio, MessageSquareText, Home, Download,
   Play, Target, AlertTriangle, Brain, TrendingUp, Users, Layers
 } from 'lucide-react';
@@ -1171,6 +1171,7 @@ const HRDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [profileCompletion, setProfileCompletion] = useState(0);
   const [activeTab, setActiveTab] = useState('Active Drives');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editDrive, setEditDrive] = useState(null);
   const [deleteDrive, setDeleteDrive] = useState(null);
@@ -1356,14 +1357,32 @@ const HRDashboard = () => {
         />
       ))}
 
+      {/* Sidebar Overlay Backdrop on Mobile */}
+      {isSidebarOpen && (
+        <div 
+          onClick={() => setIsSidebarOpen(false)} 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] lg:hidden"
+        />
+      )}
+
       {/* Sidebar */}
-      <div className="w-72 bg-[#0a0f1e] border-r border-white/5 p-8 flex-col space-y-10 hidden lg:flex">
-        <Link to="/home" className="flex items-center space-x-3 hover:opacity-80 transition-opacity">
-          <div className="w-10 h-10 bg-gradient-to-tr from-purple-600 to-indigo-400 rounded-xl flex items-center justify-center text-white shadow-lg shadow-purple-900/30">
-            <Briefcase size={20} />
-          </div>
-          <span className="text-xl font-bold tracking-tight text-white">Vedrix <span className="text-purple-400">HR</span></span>
-        </Link>
+      <div className={`w-72 bg-[#0a0f1e] border-r border-white/5 p-8 flex-col space-y-10 fixed inset-y-0 left-0 z-[100] lg:relative lg:translate-x-0 transition-transform duration-300 lg:flex ${
+        isSidebarOpen ? 'translate-x-0 flex' : '-translate-x-full lg:flex hidden'
+      }`}>
+        <div className="flex justify-between items-center lg:block">
+          <Link to="/home" className="flex items-center space-x-3 hover:opacity-80 transition-opacity">
+            <div className="w-10 h-10 bg-gradient-to-tr from-purple-600 to-indigo-400 rounded-xl flex items-center justify-center text-white shadow-lg shadow-purple-900/30">
+              <Briefcase size={20} />
+            </div>
+            <span className="text-xl font-bold tracking-tight text-white">Vedrix <span className="text-purple-400">HR</span></span>
+          </Link>
+          <button 
+            onClick={() => setIsSidebarOpen(false)} 
+            className="lg:hidden p-2 text-slate-400 hover:text-white bg-white/5 rounded-xl border border-white/10"
+          >
+            <X size={16} />
+          </button>
+        </div>
 
         <nav className="flex-1 space-y-2">
           <Link to="/home"
@@ -1379,7 +1398,7 @@ const HRDashboard = () => {
             { label: 'Drive Settings', icon: Settings },
           ].map(item => (
             <button key={item.label}
-              onClick={() => setActiveTab(item.label)}
+              onClick={() => { setActiveTab(item.label); setIsSidebarOpen(false); }}
               className={`w-full flex items-center space-x-3 px-5 py-4 rounded-2xl transition-all text-sm font-bold ${
                 activeTab === item.label ? 'bg-purple-600/10 text-purple-400 border border-purple-500/20' : 'text-slate-500 hover:text-white hover:bg-white/5'
               }`}>
@@ -1407,14 +1426,22 @@ const HRDashboard = () => {
         <div className="fixed top-0 right-0 w-[40%] h-[40%] bg-purple-600/5 blur-[150px] rounded-full pointer-events-none" />
 
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6 relative">
-          <div>
-            <h1 className="text-4xl font-extrabold text-white tracking-tight">
-              {activeTab === 'Active Drives' ? 'Recruitment Orchestration' : 
-               activeTab === 'Live Monitoring' ? 'Live Session Oversight' : 
-               activeTab === 'Evaluation Reports' ? 'Assessment Insights' :
-               activeTab === 'Skill Matrix' ? 'Skill Matrix Analytics' : 'HR Profile Settings'}
-            </h1>
-            <p className="text-slate-500 text-lg mt-1 font-medium italic">Welcome back, {user?.first_name}</p>
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setIsSidebarOpen(true)}
+              className="lg:hidden p-3 bg-white/5 border border-white/10 rounded-2xl text-slate-400 hover:text-white transition-all"
+            >
+              <Menu size={20} />
+            </button>
+            <div>
+              <h1 className="text-4xl font-extrabold text-white tracking-tight">
+                {activeTab === 'Active Drives' ? 'Recruitment Orchestration' : 
+                 activeTab === 'Live Monitoring' ? 'Live Session Oversight' : 
+                 activeTab === 'Evaluation Reports' ? 'Assessment Insights' :
+                 activeTab === 'Skill Matrix' ? 'Skill Matrix Analytics' : 'HR Profile Settings'}
+              </h1>
+              <p className="text-slate-500 text-lg mt-1 font-medium italic">Welcome back, {user?.first_name}</p>
+            </div>
           </div>
           {activeTab === 'Active Drives' && (
             <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3">
@@ -1648,87 +1675,89 @@ const HRDashboard = () => {
                 <span>Export CSV</span>
               </button>
             </div>
-            <div className="bg-white/2 border border-white/5 rounded-[2.5rem] overflow-hidden">
-              <div className="px-8 py-6 border-b border-white/5 bg-white/2">
-              <div className="grid grid-cols-12 gap-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 items-center">
-                <div className="col-span-3">Candidate</div>
-                <div className="col-span-2">Role / Drive</div>
-                <div className="col-span-1 text-center cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('overall_score')}>Score {sortConfig.key === 'overall_score' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
-                <div className="col-span-1 text-center cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('technical_accuracy')}>Tech</div>
-                <div className="col-span-1 text-center cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('communication_clarity')}>Comm</div>
-                <div className="col-span-1 text-center">Actions</div>
-                <div className="col-span-3"></div>
+            <div className="bg-white/2 border border-white/5 rounded-[2.5rem] overflow-hidden overflow-x-auto scrollbar-thin">
+              <div className="min-w-[900px] lg:min-w-0">
+                <div className="px-8 py-6 border-b border-white/5 bg-white/2">
+                  <div className="grid grid-cols-12 gap-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 items-center">
+                    <div className="col-span-3">Candidate</div>
+                    <div className="col-span-2">Role / Drive</div>
+                    <div className="col-span-1 text-center cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('overall_score')}>Score {sortConfig.key === 'overall_score' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</div>
+                    <div className="col-span-1 text-center cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('technical_accuracy')}>Tech</div>
+                    <div className="col-span-1 text-center cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('communication_clarity')}>Comm</div>
+                    <div className="col-span-1 text-center">Actions</div>
+                    <div className="col-span-3"></div>
+                  </div>
+                </div>
+                <div className="divide-y divide-white/5">
+                  {sortedInterviews.length === 0 ? (
+                    <div className="p-20 text-center">
+                      <p className="text-slate-500 font-medium">No evaluation reports generated yet.</p>
+                    </div>
+                  ) : (
+                    sortedInterviews.map(interview => (
+                      <div key={interview.id} className="px-8 py-6 grid grid-cols-12 gap-4 items-center hover:bg-white/5 transition-all group">
+                        <div className="col-span-3 flex items-center space-x-4">
+                          <div className="w-10 h-10 bg-purple-600/10 border border-purple-500/20 rounded-2xl flex items-center justify-center text-purple-400 font-black text-sm shrink-0">
+                            {(interview.candidate_name || interview.candidate_email || '#').charAt(0).toUpperCase()}
+                          </div>
+                          <div className="truncate">
+                            <p className="text-white font-bold text-sm truncate">{interview.candidate_name || 'Guest Candidate'}</p>
+                            <p className="text-[10px] text-slate-500 font-medium truncate">{interview.candidate_email || `ID #${interview.candidate_id}`}</p>
+                          </div>
+                        </div>
+                        <div className="col-span-2 truncate">
+                          <p className="text-slate-300 font-bold text-xs truncate">{interview.job_role || 'Unknown Role'}</p>
+                          <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest mt-0.5 truncate">{interview.drive_title || 'Unknown Drive'}</p>
+                        </div>
+                        <div className="col-span-1 text-center">
+                          <span className={`text-lg font-black ${
+                            interview.overall_score >= 8 ? 'text-emerald-400' : 
+                            interview.overall_score >= 5 ? 'text-purple-400' : 'text-amber-400'
+                          }`}>
+                            {interview.overall_score?.toFixed(1) || '—'}
+                          </span>
+                        </div>
+                        <div className="col-span-1 text-center">
+                          <span className="text-sm font-bold text-slate-300">
+                            {interview.ai_feedback?.technical_accuracy?.toFixed(1) || '—'}
+                          </span>
+                        </div>
+                        <div className="col-span-1 text-center">
+                          <span className="text-sm font-bold text-slate-300">
+                            {interview.ai_feedback?.communication_clarity?.toFixed(1) || '—'}
+                          </span>
+                        </div>
+                        <div className="col-span-1 text-center">
+                          <div className="flex items-center justify-center space-x-1">
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); handleViewReplay(interview.id); }}
+                              className="p-1.5 bg-white/5 border border-white/10 rounded-lg text-slate-400 hover:text-blue-400 hover:bg-blue-600/10 transition-all"
+                              title="Replay"
+                            >
+                              <Play size={12} />
+                            </button>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); handleViewSkillGap(interview.id); }}
+                              className="p-1.5 bg-white/5 border border-white/10 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-amber-600/10 transition-all"
+                              title="Skill Gap"
+                            >
+                              <Target size={12} />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="col-span-3 text-right">
+                          <button 
+                            onClick={() => handleViewReport(interview.id)}
+                            className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white hover:bg-purple-600 transition-all text-xs font-bold">
+                            View Report
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
-            <div className="divide-y divide-white/5">
-              {sortedInterviews.length === 0 ? (
-                <div className="p-20 text-center">
-                  <p className="text-slate-500 font-medium">No evaluation reports generated yet.</p>
-                </div>
-              ) : (
-                sortedInterviews.map(interview => (
-                  <div key={interview.id} className="px-8 py-6 grid grid-cols-12 gap-4 items-center hover:bg-white/5 transition-all group">
-                    <div className="col-span-3 flex items-center space-x-4">
-                      <div className="w-10 h-10 bg-purple-600/10 border border-purple-500/20 rounded-2xl flex items-center justify-center text-purple-400 font-black text-sm shrink-0">
-                        {(interview.candidate_name || interview.candidate_email || '#').charAt(0).toUpperCase()}
-                      </div>
-                      <div className="truncate">
-                        <p className="text-white font-bold text-sm truncate">{interview.candidate_name || 'Guest Candidate'}</p>
-                        <p className="text-[10px] text-slate-500 font-medium truncate">{interview.candidate_email || `ID #${interview.candidate_id}`}</p>
-                      </div>
-                    </div>
-                    <div className="col-span-2 truncate">
-                      <p className="text-slate-300 font-bold text-xs truncate">{interview.job_role || 'Unknown Role'}</p>
-                      <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest mt-0.5 truncate">{interview.drive_title || 'Unknown Drive'}</p>
-                    </div>
-                    <div className="col-span-1 text-center">
-                      <span className={`text-lg font-black ${
-                        interview.overall_score >= 8 ? 'text-emerald-400' : 
-                        interview.overall_score >= 5 ? 'text-purple-400' : 'text-amber-400'
-                      }`}>
-                        {interview.overall_score?.toFixed(1) || '—'}
-                      </span>
-                    </div>
-                    <div className="col-span-1 text-center">
-                      <span className="text-sm font-bold text-slate-300">
-                        {interview.ai_feedback?.technical_accuracy?.toFixed(1) || '—'}
-                      </span>
-                    </div>
-                    <div className="col-span-1 text-center">
-                      <span className="text-sm font-bold text-slate-300">
-                        {interview.ai_feedback?.communication_clarity?.toFixed(1) || '—'}
-                      </span>
-                    </div>
-                    <div className="col-span-1 text-center">
-                      <div className="flex items-center justify-center space-x-1">
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); handleViewReplay(interview.id); }}
-                          className="p-1.5 bg-white/5 border border-white/10 rounded-lg text-slate-400 hover:text-blue-400 hover:bg-blue-600/10 transition-all"
-                          title="Replay"
-                        >
-                          <Play size={12} />
-                        </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); handleViewSkillGap(interview.id); }}
-                          className="p-1.5 bg-white/5 border border-white/10 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-amber-600/10 transition-all"
-                          title="Skill Gap"
-                        >
-                          <Target size={12} />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="col-span-3 text-right">
-                      <button 
-                        onClick={() => handleViewReport(interview.id)}
-                        className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white hover:bg-purple-600 transition-all text-xs font-bold">
-                        View Report
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
           </div>
         ) : activeTab === 'Skill Matrix' ? (
           <SkillMatrixTab interviews={interviews} />

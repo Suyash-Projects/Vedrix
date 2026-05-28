@@ -247,6 +247,12 @@ async def websocket_endpoint(
     candidate_context: Dict[str, Any] = {}
 
     try:
+        # Fallback to cookies if parameters are not provided
+        if not auth_token:
+            cookie_token = websocket.cookies.get("access_token")
+            if cookie_token:
+                auth_token = cookie_token
+
         # Validate that authentication parameters are provided
         if not (drive_id and token) and not auth_token:
             await manager.send_json({"type": "error", "data": "Authentication parameters missing or invalid."}, session_id)

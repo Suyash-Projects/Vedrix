@@ -26,7 +26,6 @@ const InterviewProgressBar = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const questionProgress = (currentQuestion / totalQuestions) * 100;
   const skillProgress = totalSkills > 0 ? (skillsCovered / totalSkills) * 100 : 0;
 
   return (
@@ -36,7 +35,7 @@ const InterviewProgressBar = ({
         <div className="flex items-center gap-2">
           <Target className="w-4 h-4 text-purple-400" />
           <span className="text-sm font-bold text-white">
-            Question {currentQuestion} of {totalQuestions}
+            Question {currentQuestion} <span className="text-purple-400/80 text-xs font-medium ml-1.5">(Adaptive Session)</span>
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -47,12 +46,12 @@ const InterviewProgressBar = ({
         </div>
       </div>
 
-      {/* Question progress bar */}
+      {/* Skills progress bar */}
       <div className="w-full bg-white/5 rounded-full h-2 mb-4 overflow-hidden">
         <motion.div
-          className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full"
+          className="h-full bg-gradient-to-r from-purple-500 to-emerald-500 rounded-full"
           initial={{ width: 0 }}
-          animate={{ width: `${questionProgress}%` }}
+          animate={{ width: `${Math.max(5, skillProgress)}%` }}
           transition={{ duration: 0.5, ease: 'easeOut' }}
         />
       </div>
