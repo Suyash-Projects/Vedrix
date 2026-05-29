@@ -115,7 +115,7 @@ const HRMatchingDashboard = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#020617] text-white">
-        <div className="max-w-5xl mx-auto px-8 py-12 space-y-4">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-4">
           <div className="h-8 bg-white/5 rounded w-1/3 animate-pulse" />
           {[...Array(5)].map((_, i) => <SkeletonRow key={i} />)}
         </div>
@@ -143,7 +143,7 @@ const HRMatchingDashboard = () => {
     <div className="min-h-screen bg-[#020617] text-white font-sans">
       <div className="fixed bottom-0 right-[-10%] w-[40%] h-[50%] bg-indigo-900/10 blur-[150px] rounded-full pointer-events-none" />
 
-      <div className="max-w-5xl mx-auto px-8 py-12 space-y-8 relative z-10">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8 relative z-10">
         <motion.div initial="hidden" animate="visible" custom={0} variants={fadeUp}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">

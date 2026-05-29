@@ -112,7 +112,7 @@ const ObservabilityPanel = () => {
     <div className="min-h-screen bg-[#020617] text-white font-sans">
       <div className="fixed bottom-0 left-[-5%] w-[30%] h-[40%] bg-indigo-900/10 blur-[150px] rounded-full pointer-events-none" />
 
-      <div className="max-w-7xl mx-auto px-8 py-12 space-y-8 relative z-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8 relative z-10">
         {/* Header */}
         <motion.div variants={fadeUp} initial="hidden" animate="visible">
           <div className="flex items-center justify-between flex-wrap gap-4">

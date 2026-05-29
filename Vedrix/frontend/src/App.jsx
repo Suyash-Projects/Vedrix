@@ -29,6 +29,7 @@ import SettingsPage from './pages/SettingsPage';
 import LandingPage from './pages/LandingPage';
 import SupervisorDashboard from './pages/SupervisorDashboard';
 import CandidateProfilePage from './pages/CandidateProfilePage';
+import ProfilePage from './pages/ProfilePage';
 import CoachingPlanPage from './pages/CoachingPlanPage';
 import HRMatchingDashboard from './pages/HRMatchingDashboard';
 import WorkflowKanban from './pages/WorkflowKanban';
@@ -221,6 +222,13 @@ function App() {
             <Route path="/settings" element={
               <ProtectedRoute>
                 <SettingsPage />
+              </ProtectedRoute>
+            } />
+
+            {/* Dedicated Profile Route (all authenticated roles) */}
+            <Route path="/profile" element={
+              <ProtectedRoute>
+                <ProfilePage />
               </ProtectedRoute>
             } />
 

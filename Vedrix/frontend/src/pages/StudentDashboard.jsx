@@ -250,7 +250,7 @@ const StudentDashboard = () => {
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="max-w-6xl mx-auto px-8 py-12 space-y-10 relative z-10"
+        className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8 sm:space-y-10 relative z-10"
       >
         {/* Welcome + Streak */}
         <motion.div variants={itemVariants} className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">

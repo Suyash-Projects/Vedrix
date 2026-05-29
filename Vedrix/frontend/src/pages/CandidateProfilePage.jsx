@@ -87,7 +87,7 @@ const CandidateProfilePage = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#020617] text-white">
-        <div className="max-w-6xl mx-auto px-8 py-12 space-y-6">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-6">
           <div className="h-8 bg-white/5 rounded w-1/4 animate-pulse" />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {[...Array(4)].map((_, i) => <SkeletonCard key={i} />)}
@@ -118,7 +118,7 @@ const CandidateProfilePage = () => {
     <div className="min-h-screen bg-[#020617] text-white font-sans">
       <div className="fixed top-0 right-0 w-[40%] h-[40%] bg-purple-600/5 blur-[150px] rounded-full pointer-events-none" />
 
-      <div className="max-w-6xl mx-auto px-8 py-12 space-y-10 relative z-10">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8 sm:space-y-10 relative z-10">
         {/* Header */}
         <motion.div initial="hidden" animate="visible" custom={0} variants={fadeUp}>
           <div className="flex items-center gap-4 mb-2">
@@ -126,7 +126,7 @@ const CandidateProfilePage = () => {
               <User size={24} className="text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-black text-white tracking-tight">Skill Profile</h1>
+              <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Skill Profile</h1>
               <p className="text-slate-500 text-sm">Track your skill progression over time</p>
             </div>
           </div>
@@ -135,7 +135,7 @@ const CandidateProfilePage = () => {
         {/* Radar Chart */}
         {radarData.length > 0 && (
           <motion.div initial="hidden" animate="visible" custom={1} variants={fadeUp}
-            className="bg-white/[0.03] border border-white/5 rounded-3xl p-8"
+            className="bg-white/[0.03] border border-white/5 rounded-3xl p-5 sm:p-8"
           >
             <h2 className="text-xs font-black uppercase text-purple-400 tracking-widest mb-6">Skill Overview</h2>
             <div className="h-[300px]" role="img" aria-label="Radar chart showing skill averages">

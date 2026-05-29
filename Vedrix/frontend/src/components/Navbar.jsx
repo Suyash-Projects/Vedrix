@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Cpu, LogOut, Menu, X, ChevronDown, Bell, LayoutDashboard, Settings } from 'lucide-react';
+import { Cpu, LogOut, Menu, X, ChevronDown, Bell, LayoutDashboard, Settings, User } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import useAuthStore from '../store/useAuthStore';
@@ -271,6 +271,9 @@ const Navbar = () => {
                           <span className="flex items-center gap-2"><LayoutDashboard size={14} /> Dashboard</span>
                           <kbd className="text-[9px] bg-white/5 border border-white/10 px-1.5 py-0.5 rounded text-slate-500">Ctrl+D</kbd>
                         </Link>
+                        <Link to="/profile" onClick={() => setUserMenuOpen(false)} className="flex items-center justify-between px-4 py-2.5 text-slate-300 hover:text-white hover:bg-white/5 rounded-lg text-sm font-bold transition-all">
+                          <span className="flex items-center gap-2"><User size={14} /> My Profile</span>
+                        </Link>
                         <Link to="/settings" onClick={() => setUserMenuOpen(false)} className="flex items-center justify-between px-4 py-2.5 text-slate-300 hover:text-white hover:bg-white/5 rounded-lg text-sm font-bold transition-all">
                           <span className="flex items-center gap-2"><Settings size={14} /> Settings</span>
                         </Link>
@@ -330,15 +333,19 @@ const Navbar = () => {
                 </div>
 
                 {isAuthenticated && (
-                  <div className="flex items-center space-x-3 bg-white/5 border border-white/10 rounded-2xl p-4 mb-6">
+                  <Link
+                    to="/profile"
+                    onClick={() => setIsOpen(false)}
+                    className="flex items-center space-x-3 bg-white/5 border border-white/10 rounded-2xl p-4 mb-6 hover:bg-white/10 transition-all"
+                  >
                     <div className="w-10 h-10 bg-gradient-to-tr from-purple-600 to-indigo-400 rounded-xl flex items-center justify-center text-white font-black">
                       {userInitial}
                     </div>
-                    <div>
-                      <p className="text-white font-bold text-sm">{user?.first_name} {user?.last_name}</p>
-                      <p className="text-slate-500 text-xs capitalize">{user?.user_type}</p>
+                    <div className="min-w-0">
+                      <p className="text-white font-bold text-sm truncate">{user?.first_name} {user?.last_name}</p>
+                      <p className="text-slate-500 text-xs capitalize">{user?.user_type} · View profile</p>
                     </div>
-                  </div>
+                  </Link>
                 )}
 
                 <Link onClick={() => setIsOpen(false)} to="/home"
@@ -347,6 +354,8 @@ const Navbar = () => {
                   <>
                     <Link onClick={() => setIsOpen(false)} to={getDashboardPath()}
                       className="block text-slate-300 hover:text-white font-bold text-sm py-3 px-4 rounded-xl hover:bg-white/5 transition-all">Dashboard</Link>
+                    <Link onClick={() => setIsOpen(false)} to="/profile"
+                      className="block text-slate-300 hover:text-white font-bold text-sm py-3 px-4 rounded-xl hover:bg-white/5 transition-all">My Profile</Link>
                     {user?.user_type === 'student' && (
                       <>
                         <Link onClick={() => setIsOpen(false)} to="/dashboard/profile"

@@ -344,7 +344,7 @@ const AdminDashboard = () => {
       {/* Subtle grid pattern */}
       <div className="fixed inset-0 bg-grid-pattern pointer-events-none opacity-30" />
 
-      <div className="max-w-7xl mx-auto px-8 py-10 relative z-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 relative z-10">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>

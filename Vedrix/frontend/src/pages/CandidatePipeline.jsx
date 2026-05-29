@@ -162,7 +162,7 @@ const CandidatePipeline = () => {
 
   return (
     <div className="min-h-screen bg-[#020617] text-white">
-      <div className="max-w-7xl mx-auto px-8 py-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>

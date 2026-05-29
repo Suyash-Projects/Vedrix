@@ -92,7 +92,7 @@ const ViolationMonitor = () => {
     <div className="min-h-screen bg-[#020617] text-white font-sans">
       <div className="fixed top-0 right-0 w-[30%] h-[40%] bg-red-900/5 blur-[150px] rounded-full pointer-events-none" />
 
-      <div className="max-w-6xl mx-auto px-8 py-12 space-y-8 relative z-10">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8 relative z-10">
         {/* Header */}
         <motion.div variants={fadeUp} initial="hidden" animate="visible">
           <div className="flex items-center gap-4">
