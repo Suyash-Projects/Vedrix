@@ -164,7 +164,6 @@ const InterviewRoom = () => {
   const [code, setCode] = useState("# Write your solution here...\n");
   const [isCodingMode, setIsCodingMode] = useState(false);
   const [codeLanguage, setCodeLanguage] = useState("python");
-  const [totalQuestions] = useState(15);
   const [skillsCovered, setSkillsCovered] = useState(0);
   const [totalSkills] = useState(8);
   const [advisorReady, setAdvisorReady] = useState(false);
@@ -1065,7 +1064,6 @@ const InterviewRoom = () => {
           <div className="w-80">
             <InterviewProgressBar
               currentQuestion={currentQuestion?.id || 1}
-              totalQuestions={totalQuestions}
               skillsCovered={skillsCovered}
               totalSkills={totalSkills}
               timeElapsed={timeLeft}

@@ -12,7 +12,6 @@ import { Clock, Target, Award } from 'lucide-react';
  */
 const InterviewProgressBar = ({
   currentQuestion = 1,
-  totalQuestions = 15,
   skillsCovered = 0,
   totalSkills = 8,
   timeElapsed = 0,
