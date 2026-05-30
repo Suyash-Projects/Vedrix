@@ -160,6 +160,9 @@ test.db
 static/uploads/
 uploads/
 
+# ChromaDB runtime / vector store data (regenerated at runtime)
+Vedrix/backend/app/db/chroma/
+
 # IDE files
 .vscode/
 .idea/
