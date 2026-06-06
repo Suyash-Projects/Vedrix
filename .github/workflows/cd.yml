@@ -52,7 +52,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push backend
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./Vedrix/backend
           file: ./Vedrix/backend/Dockerfile
@@ -63,7 +63,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build and push frontend
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./Vedrix/frontend
           file: ./Vedrix/frontend/Dockerfile
