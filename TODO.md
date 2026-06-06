@@ -1,2 +1,4 @@
 - [x] Fix GitHub CI/CD pipeline by aligning backend Docker image Python version with CI (Python 3.12)
+- [x] Fix Alembic migration so `interview_session` table is created before altering JSON columns (CI `UndefinedTableError`)
+- [x] Add missing `hypothesis` dependency so PBT tests import during CI
 - [ ] Validate by building backend Docker image locally: `docker build -t vedrix-backend:test Vedrix/backend`
