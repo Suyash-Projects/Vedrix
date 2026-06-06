@@ -2,9 +2,9 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from .state import InterviewState
 from .nodes import (
-    generate_question_node, 
-    evaluate_answer_node, 
-    evaluate_code_node, 
+    generate_question_node,
+    evaluate_answer_node,
+    evaluate_code_node,
     update_memory_node,
     empathy_analyzer_node,
     skeptic_evaluation_node,
@@ -18,6 +18,24 @@ from .supervisor_node import supervisor_node  # Phase 1B: AI Supervisor (replace
 from .planner_node import planner_node
 from .sentiment_node import sentiment_node
 from .qa_node import qa_agent_node
+from .react_nodes import (
+    react_interviewer_node,
+    react_evaluator_node,
+    react_supervisor_node,
+)
+import os
+
+# Feature flag: when VEDRIX_REACT_GRAPH=1 (default), the graph uses the ReAct
+# wrappers (which themselves fall back to the deterministic nodes on failure).
+# Set to "0" to force the original nodes.
+_USE_REACT_GRAPH = os.environ.get("VEDRIX_REACT_GRAPH", "1").lower() not in (
+    "0", "false", "no", "off"
+)
+
+# Node references the graph will actually use.
+_question_node = react_interviewer_node if _USE_REACT_GRAPH else generate_question_node
+_evaluator_node = react_evaluator_node if _USE_REACT_GRAPH else evaluate_answer_node
+_supervisor_node = react_supervisor_node if _USE_REACT_GRAPH else supervisor_node
 
 
 def should_continue(state: InterviewState):
@@ -51,7 +69,7 @@ def create_interview_graph():
     workflow = StateGraph(InterviewState)
 
     workflow.add_node("planner", planner_node)
-    workflow.add_node("generate_question", generate_question_node)
+    workflow.add_node("generate_question", _question_node)
     workflow.add_node("qa_agent", qa_agent_node)
     workflow.add_node("sentiment", sentiment_node)
     workflow.add_node("empathy_analyzer", empathy_analyzer_node)
@@ -62,7 +80,7 @@ def create_interview_graph():
     workflow.add_node("bias_auditor", bias_auditor_node)
     workflow.add_node("consensus_synthesizer", consensus_synthesizer_node)
     workflow.add_node("update_memory", update_memory_node)
-    workflow.add_node("supervisor", supervisor_node)  # Phase 1B: AI Supervisor
+    workflow.add_node("supervisor", _supervisor_node)  # Phase 1B: AI Supervisor (ReAct-wrapped by default)
 
     workflow.set_entry_point("planner")
     workflow.add_edge("planner", "generate_question")

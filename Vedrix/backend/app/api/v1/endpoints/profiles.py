@@ -1,15 +1,50 @@
+import asyncio
+import logging
 from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.api import deps
-from app.db.session import get_session
+from app.db.session import async_session, get_session
 from app.models.user import User
 from app.models.profile import StudentProfile, HRProfile
 from pydantic import BaseModel
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+async def _trigger_profile_enrichment(candidate_id: int) -> None:
+    """
+    Background task: run the Research Agent to enrich a newly created profile.
+
+    Opens its own async DB session (the request-scoped session is closed once
+    the response is returned) and only enriches when a GitHub or LinkedIn URL
+    is present on the candidate's profile.
+
+    Requirements: 9.1, 9.2, 9.5
+    """
+    try:
+        from app.services.research_service import research_service
+
+        async with async_session() as db:
+            result = await db.execute(
+                select(StudentProfile).where(StudentProfile.user_id == candidate_id)
+            )
+            profile = result.scalars().first()
+            if not profile:
+                return
+            if not (profile.github_url or profile.linkedin_url):
+                return
+
+            await research_service.enrich_profile(candidate_id, profile, db=db)
+    except Exception as exc:  # noqa: BLE001 — background task must not crash the loop
+        logger.warning(
+            "Research Agent enrichment failed for candidate_id=%s: %s",
+            candidate_id,
+            exc,
+        )
 
 class StudentProfileCreate(BaseModel):
     # Academic
@@ -81,6 +116,7 @@ async def create_student_profile(
     result = await db.execute(select(StudentProfile).where(StudentProfile.user_id == current_user.id))
     db_profile = result.scalars().first()
     
+    is_new_profile = db_profile is None
     if db_profile:
         for field, value in profile_in.model_dump(exclude_unset=True).items():
             setattr(db_profile, field, value)
@@ -90,6 +126,13 @@ async def create_student_profile(
         db.add(db_profile)
     
     await db.commit()
+
+    # Research Agent: enrich a newly created profile in the background when it
+    # carries a GitHub or LinkedIn URL. Uses asyncio.create_task with its own DB
+    # session so it survives after the request-scoped session is closed.
+    if is_new_profile and (db_profile.github_url or db_profile.linkedin_url):
+        asyncio.create_task(_trigger_profile_enrichment(current_user.id))
+
     return {"status": "success", "message": "Student profile updated"}
 
 @router.put("/student", response_model=dict)

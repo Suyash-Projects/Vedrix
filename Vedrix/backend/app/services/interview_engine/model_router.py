@@ -49,7 +49,7 @@ PROVIDER_CONFIG = {
     "groq": {
         "base_url_attr": "GROQ_BASE_URL",
         "api_key_attr": "GROQ_API_KEY",
-        "capabilities": ["chat", "stt"],
+        "capabilities": ["chat", "stt", "tts"],
     },
     "nvidia": {
         "base_url_attr": "NVIDIA_BASE_URL",
@@ -60,16 +60,6 @@ PROVIDER_CONFIG = {
         "base_url_attr": "OPENROUTER_BASE_URL",
         "api_key_attr": "OPENROUTER_API_KEY",
         "capabilities": ["chat"],
-    },
-    "apifree": {
-        "base_url_attr": "APIFREE_BASE_URL",
-        "api_key_attr": "APIFREE_API_KEY",
-        "capabilities": ["chat"],
-    },
-    "openai": {
-        "base_url_attr": None,
-        "api_key_attr": "OPENAI_API_KEY",
-        "capabilities": ["stt", "tts"],
     },
 }
 
@@ -150,13 +140,11 @@ def _make_llm(spec: ModelSpec) -> BaseChatModel:
         "groq": settings.GROQ_BASE_URL,
         "nvidia": settings.NVIDIA_BASE_URL,
         "openrouter": settings.OPENROUTER_BASE_URL,
-        "apifree": settings.APIFREE_BASE_URL,
     }
     provider_keys = {
         "groq": settings.GROQ_API_KEY,
         "nvidia": settings.NVIDIA_API_KEY,
         "openrouter": settings.OPENROUTER_API_KEY,
-        "apifree": settings.APIFREE_API_KEY,
     }
 
     base_url = provider_urls.get(spec.provider)
@@ -247,7 +235,6 @@ def _get_routes() -> dict[TaskType, TaskRoute]:
             chain=[
                 ModelSpec("groq", "llama-3.1-8b-instant", temperature=0.7),
                 ModelSpec("nvidia", "meta/llama-3.1-8b-instruct", temperature=0.7),
-                ModelSpec("apifree", "meta-llama/llama-3.1-8b-instruct", temperature=0.7),
             ],
         ),
         TaskType.DEEP_FOLLOWUP: TaskRoute(

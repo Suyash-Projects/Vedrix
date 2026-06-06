@@ -1802,6 +1802,46 @@ async def get_candidate_match_detail(
     }
 
 
+# ── Research Agent: Profile Enrichment Summary ────────────────────────────────
+
+@router.get("/candidates/{candidate_id}/enrichment")
+async def get_candidate_enrichment(
+    candidate_id: int,
+    db: AsyncSession = Depends(get_session),
+    current_hr: User = Depends(deps.get_current_hr),
+) -> Any:
+    """
+    Return the Research Agent data-sources enrichment summary for a candidate.
+
+    Shows which external sources (GitHub, LinkedIn) were successfully enriched,
+    which failed, and the enrichment timestamp for each source.
+    HR access only.
+
+    Requirements: 9.1, 9.2, 9.5, 9.10
+    """
+    # Ensure the HR user has a profile (consistent RBAC with other HR endpoints)
+    await _get_hr_profile(db, current_hr.id)
+
+    # Verify the candidate exists
+    user_res = await db.execute(select(User).where(User.id == candidate_id))
+    candidate = user_res.scalars().first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    from app.services.research_service import research_service
+
+    summary = await research_service.get_enrichment_summary(candidate_id, db=db)
+
+    return {
+        "candidate_id": candidate_id,
+        "candidate_email": candidate.email,
+        "candidate_name": f"{candidate.first_name or ''} {candidate.last_name or ''}".strip()
+        or candidate.email,
+        "sources": summary.get("sources", []),
+        "last_enriched_at": summary.get("last_enriched_at"),
+    }
+
+
 # ── HR Slot Booking Management ────────────────────────────────────────────────
 from app.schemas.scheduling import SlotCreateBulk, SlotRead
 from app.services.scheduling_service import SchedulingService

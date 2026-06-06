@@ -31,6 +31,41 @@ class InterviewPlanSchema(BaseModel):
     phases: List[PhaseDetail] = Field(description="Chronological list of interview phases")
 
 class PlannerNode:
+    @staticmethod
+    def assign_difficulty(score: Optional[float]) -> str:
+        """
+        Map a candidate's prior average score for a skill to a starting difficulty.
+
+        Rules (Requirements 2.4, 2.5, 2.6):
+          * score strictly above 8.0          -> "hard"
+          * 0.0 < score < 5.0                  -> "easy"
+          * score == 0.0 or no prior (None)    -> "medium" (no prior data)
+          * any other score (e.g. 5.0–8.0)     -> "medium"
+
+        Parameters
+        ----------
+        score : Optional[float]
+            The candidate's prior average score for the skill, or None if no
+            prior data exists.
+
+        Returns
+        -------
+        str
+            One of "hard", "easy", or "medium".
+        """
+        if score is None:
+            return "medium"
+        if score > 8.0:
+            return "hard"
+        if 0.0 < score < 5.0:
+            return "easy"
+        return "medium"
+
+    @staticmethod
+    def _difficulty_rank(difficulty: str) -> int:
+        """Ordinal rank of a difficulty label for averaging/ordering comparisons."""
+        return {"easy": 1, "medium": 2, "hard": 3}.get(difficulty, 2)
+
     async def __call__(self, state: InterviewState) -> Dict[str, Any]:
         """
         LangGraph node entry point. Opens a DB session and delegates to the decorated helper.
@@ -83,15 +118,7 @@ class PlannerNode:
         skill_difficulties = {}
         for skill in skills_required:
             score = prior_averages.get(skill)
-            if score is None:
-                difficulty = "medium"
-            elif score > 8.0:
-                difficulty = "hard"
-            elif 0.0 < score < 5.0:
-                difficulty = "easy"
-            else:
-                difficulty = "medium"
-            skill_difficulties[skill] = difficulty
+            skill_difficulties[skill] = self.assign_difficulty(score)
 
         start_time_ms = int(time.time() * 1000)
 

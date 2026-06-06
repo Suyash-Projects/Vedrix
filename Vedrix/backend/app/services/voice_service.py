@@ -5,7 +5,6 @@ import base64
 import logging
 import time
 from groq import Groq
-from openai import AsyncOpenAI
 from pydub import AudioSegment
 from app.core.config import settings
 
@@ -15,26 +14,20 @@ logger = logging.getLogger(__name__)
 class VoiceService:
     """
     Speech-to-Text : Groq Whisper Large V3   (~300ms, fastest available)
-    Text-to-Speech : OpenAI TTS with Browser Fallback
+    Text-to-Speech : Groq PlayAI TTS         (free, no OpenAI key required)
 
     STT uses pydub to normalize audio and runs in a thread executor
     because the Groq SDK call is synchronous.
-    TTS uses AsyncOpenAI for non-blocking audio generation.
+    TTS uses Groq's PlayAI TTS endpoint (Orion / Arista voices).
     """
 
     def __init__(self):
         self._groq = None
-        self._openai = None
 
         if settings.GROQ_API_KEY:
             self._groq = Groq(api_key=settings.GROQ_API_KEY)
         else:
-            logger.warning("VoiceService: GROQ_API_KEY not set — STT disabled")
-
-        if settings.OPENAI_API_KEY:
-            self._openai = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        else:
-            logger.warning("VoiceService: OPENAI_API_KEY not set — OpenAI TTS disabled")
+            logger.warning("VoiceService: GROQ_API_KEY not set — STT and TTS disabled")
 
     # ── STT ──────────────────────────────────────────────────────────────────
 
@@ -57,20 +50,19 @@ class VoiceService:
                 f"Audio normalization failed (likely missing ffmpeg): {e}. "
                 f"Falling back to raw audio transmission."
             )
-            # Return the raw audio bytes as a BytesIO stream
             return io.BytesIO(audio_bytes), "audio.webm"
 
     async def transcribe_audio(self, audio_bytes: bytes) -> str:
         """
         Transcribe audio bytes → text via Groq Whisper Large V3.
         Uses pydub to ensure compatible format and normalize audio.
-        Falls back to OpenAI Whisper if Groq fails or is unavailable.
+        Returns empty string if Groq is not configured.
         """
         start_time = time.monotonic()
 
         if not self._groq:
-            logger.warning("Groq not configured for STT. Trying OpenAI Whisper fallback directly.")
-            return await self._transcribe_openai_fallback(audio_bytes, Exception("Groq not configured"))
+            logger.warning("Groq not configured for STT — transcription unavailable")
+            return ""
 
         loop = asyncio.get_running_loop()
         buffer, filename = await loop.run_in_executor(None, self._prepare_audio, audio_bytes)
@@ -88,40 +80,12 @@ class VoiceService:
             return result.text or ""
 
         try:
-            # Groq API call is synchronous, run in executor
             text = await loop.run_in_executor(None, _run_groq)
             return text
         except Exception as e:
-            logger.error(f"Primary Groq STT failed: {e}. Attempting OpenAI fallback.")
+            logger.error(f"Groq STT failed: {e}")
             duration_ms = int((time.monotonic() - start_time) * 1000)
             await self._log_stt_failure_trace("groq_whisper_failed", e, duration_ms)
-            return await self._transcribe_openai_fallback(audio_bytes, e)
-
-    async def _transcribe_openai_fallback(self, audio_bytes: bytes, original_error: Exception) -> str:
-        if not self._openai:
-            logger.warning("OpenAI fallback STT not configured")
-            return ""
-
-        start_time = time.monotonic()
-        try:
-            loop = asyncio.get_running_loop()
-            buffer, filename = await loop.run_in_executor(None, self._prepare_audio, audio_bytes)
-            if not buffer:
-                return ""
-
-            # OpenAI audio transcription is async under AsyncOpenAI
-            response = await self._openai.audio.transcriptions.create(
-                model="whisper-1",
-                file=(filename, buffer),
-                response_format="json",
-                language="en",
-                temperature=0.0,
-            )
-            return response.text or ""
-        except Exception as oe:
-            logger.error(f"OpenAI fallback STT failed: {oe}")
-            duration_ms = int((time.monotonic() - start_time) * 1000)
-            await self._log_stt_failure_trace("openai_whisper_fallback_failed", oe, duration_ms)
             return ""
 
     async def _log_stt_failure_trace(self, action_type: str, error: Exception, duration_ms: int):
@@ -136,34 +100,61 @@ class VoiceService:
                     action_type=action_type,
                     input_summary="audio_bytes",
                     reasoning_summary=f"STT call failed: {str(error)[:300]}",
-                    output_summary="Failed transcription, attempting fallback/exiting",
+                    output_summary="Failed transcription, returning empty string",
                     confidence_score=0.0,
                     duration_ms=duration_ms,
                 ))
         except Exception as trace_err:
             logger.error(f"Failed to record TraceEntry for STT failure: {trace_err}")
 
-    # ── TTS ──────────────────────────────────────────────────────────────────
+    # ── TTS (Groq PlayAI) ────────────────────────────────────────────────────
 
-    async def speak_text(self, text: str) -> str:
+    async def speak_text(self, text: str, voice: str = "Arista-PlayAI") -> str:
         """
-        Convert text -> base64-encoded MP3 audio via OpenAI TTS.
-        If OpenAI is not configured, returns empty string to allow frontend fallback.
+        Convert text -> base64-encoded WAV audio via Groq PlayAI TTS.
+
+        Groq's PlayAI TTS supports voices: Arista-PlayAI, Atlas-PlayAI,
+        Basil-PlayAI, Briggs-PlayAI, Calum-PlayAI, Celeste-PlayAI,
+        Cheyenne-PlayAI, Chip-PlayAI, Cillian-PlayAI, Deedee-PlayAI,
+        Eleanor-PlayAI, Fritz-PlayAI, Gail-PlayAI, Indigo-PlayAI,
+        Jennifer-PlayAI, Jupiter-PlayAI, Kara-PlayAI, Liam-PlayAI,
+        Linda-PlayAI, Madison-PlayAI, Maya-PlayAI, Mei-PlayAI,
+        Mikael-PlayAI, Miles-PlayAI, Mia-PlayAI, Orion-PlayAI,
+        Quinn-PlayAI, Royce-PlayAI, Samson-PlayAI, Seth-PlayAI,
+        Stella-PlayAI, Thor-PlayAI, Titus-PlayAI, Valkyrie-PlayAI.
+
+        Returns empty string if Groq is not configured or TTS fails —
+        frontend should fall back to browser SpeechSynthesis API.
         """
-        if not self._openai:
+        if not self._groq:
+            logger.warning("Groq not configured for TTS — frontend will use browser fallback")
+            return ""
+
+        if not text or not text.strip():
             return ""
 
         try:
-            response = await self._openai.audio.speech.create(
-                model="tts-1",
-                voice="alloy",
-                input=text,
-            )
-            # OpenAI response content can be read asynchronously
-            audio_data = await response.aread()
-            return base64.b64encode(audio_data).decode("utf-8")
+            loop = asyncio.get_running_loop()
+
+            def _run_playai():
+                response = self._groq.audio.speech.create(
+                    model="playai-tts",
+                    voice=voice,
+                    input=text,
+                    response_format="wav",
+                )
+                # Groq returns binary content synchronously
+                buffer = io.BytesIO()
+                for chunk in response.iter_bytes(chunk_size=4096):
+                    buffer.write(chunk)
+                return buffer.getvalue()
+
+            audio_bytes = await loop.run_in_executor(None, _run_playai)
+            if not audio_bytes:
+                return ""
+            return base64.b64encode(audio_bytes).decode("utf-8")
         except Exception as e:
-            logger.error(f"TTS error: {e}")
+            logger.error(f"Groq PlayAI TTS error: {e}")
             return ""
 
 
