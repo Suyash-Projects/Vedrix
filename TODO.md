@@ -1,0 +1,2 @@
+- [x] Fix GitHub CI/CD pipeline by aligning backend Docker image Python version with CI (Python 3.12)
+- [ ] Validate by building backend Docker image locally: `docker build -t vedrix-backend:test Vedrix/backend`
