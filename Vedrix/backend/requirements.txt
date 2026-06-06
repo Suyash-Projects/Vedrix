@@ -52,7 +52,7 @@ pydantic_core==2.46.3
 pydub==0.25.1
 PyMuPDF==1.23.22
 PyMuPDFb==1.23.22
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 python-jose==3.3.0
 python-multipart==0.0.9
 PyYAML==6.0.3
