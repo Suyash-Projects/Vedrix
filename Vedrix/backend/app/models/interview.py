@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional, List, Any, TYPE_CHECKING
 from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import Column, JSON, Text, Index
+from sqlalchemy import Column, JSON, Text, Index, Integer, ForeignKey
 from app.core.encryption import EncryptedJSON
 
 if TYPE_CHECKING:
@@ -93,7 +93,14 @@ class InterviewSession(SQLModel, table=True):
     deleted_at: Optional[datetime] = Field(default=None)
 
     # Agentic Platform: planner / orchestrator / proctor / sentiment / QA fields
-    interview_plan_id: Optional[int] = Field(default=None, foreign_key="interview_plan.id")
+    interview_plan_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(
+            Integer,
+            ForeignKey("interview_plan.id", use_alter=True, name="fk_interview_session_plan_id"),
+            nullable=True,
+        ),
+    )
     workflow_state: Optional[str] = None
     empathy_timeline: Optional[Any] = Field(default=None, sa_column=Column(JSON))
     qa_quality_score: Optional[float] = None

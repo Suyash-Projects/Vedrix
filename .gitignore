@@ -5,7 +5,9 @@ __pycache__/
 plan
 plan/
 .kiro
-
+.opencode/
+.git/
+.github/
 # C extensions
 *.so
 College Documentation

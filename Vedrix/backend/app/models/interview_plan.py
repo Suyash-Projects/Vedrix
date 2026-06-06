@@ -1,12 +1,21 @@
 from datetime import datetime, timezone
 from typing import Optional, Any
 from sqlmodel import SQLModel, Field, Column, JSON
+from sqlalchemy import ForeignKey, Integer
 
 class InterviewPlan(SQLModel, table=True):
     __tablename__ = "interview_plan"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    session_id: int = Field(foreign_key="interview_session.id", unique=True, nullable=False, index=True)
+    session_id: int = Field(
+        sa_column=Column(
+            Integer,
+            ForeignKey("interview_session.id", use_alter=True, name="fk_interview_plan_session_id"),
+            unique=True,
+            nullable=False,
+            index=True,
+        ),
+    )
     job_drive_id: Optional[int] = Field(default=None, foreign_key="job_drive.id")
     candidate_id: int = Field(foreign_key="user.id", nullable=False)
 
