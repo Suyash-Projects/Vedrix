@@ -12,14 +12,22 @@ on:
           - staging
           - production
 
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
 jobs:
   # Build and Push Docker Images
   build-and-push:
     name: Build and Push Images
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
@@ -81,6 +89,9 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     if: github.event.inputs.environment == 'staging'
+    environment:
+      name: staging
+    timeout-minutes: 15
 
     steps:
       - name: Deploy to staging server
@@ -101,6 +112,9 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     if: github.event.inputs.environment == 'production'
+    environment:
+      name: production
+    timeout-minutes: 15
 
     steps:
       - name: Deploy to production server
@@ -115,15 +129,47 @@ jobs:
             docker-compose -f docker-compose.prod.yml up -d
             docker system prune -f
 
+  # Run DB migrations on the deployed stack
+  db-migrate:
+    name: Run Database Migrations
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: always() && !cancelled()
+    timeout-minutes: 10
+
+    steps:
+      - name: Run Alembic migrations (staging)
+        if: github.event.inputs.environment == 'staging'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd /opt/vedrix
+            docker-compose -f docker-compose.staging.yml run --rm backend alembic upgrade head
+
+      - name: Run Alembic migrations (production)
+        if: github.event.inputs.environment == 'production'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            cd /opt/vedrix
+            docker-compose -f docker-compose.prod.yml run --rm backend alembic upgrade head
+
   # Notify on deployment
   notify:
     name: Notify
-    needs: [deploy-staging, deploy-production]
+    needs: [deploy-staging, deploy-production, db-migrate]
     runs-on: ubuntu-latest
     if: always()
     continue-on-error: true
+    timeout-minutes: 5
 
     steps:
       - name: Send deployment notification
         run: |
-          echo "Deployment completed with status: ${{ needs.deploy-staging.result || needs.deploy-production.result }}"
+          echo "Deployment status: deploy-staging=${{ needs.deploy-staging.result }}, deploy-production=${{ needs.deploy-production.result }}, db-migrate=${{ needs.db-migrate.result }}"
