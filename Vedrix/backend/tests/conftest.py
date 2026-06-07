@@ -2,7 +2,6 @@
 Pytest configuration and fixtures for Vedrix backend E2E tests.
 """
 import pytest
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -20,14 +19,6 @@ TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
 
 
 @pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest.fixture(scope="session")
 def test_engine():
     """Create a test database engine."""
     engine = create_async_engine(TEST_DATABASE_URL, echo=False)
@@ -41,7 +32,6 @@ async def test_session_factory(test_engine):
         await conn.run_sync(SQLModel.metadata.create_all)
     factory = sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     yield factory
-    # Cleanup: drop all tables after test session
     async with test_engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.drop_all)
 
@@ -150,7 +140,7 @@ def mock_groq_stt():
 @pytest.fixture
 def mock_groq_llm():
     """Mock Groq LLM for interview engine."""
-    with patch('app.services.interview_engine.providers.ChatOpenAI') as mock:
+    with patch('app.services.interview_engine.model_router.ChatOpenAI') as mock:
         instance = AsyncMock()
         response = MagicMock()
         response.content = '{"id": 1, "question": "Tell me about your Python experience", "category": "technical", "difficulty": "medium", "time_limit": 120, "skill_tested": "python", "follow_up_topic": "frameworks"}'
@@ -162,7 +152,7 @@ def mock_groq_llm():
 @pytest.fixture
 def mock_strong_llm():
     """Mock strong LLM for evaluation."""
-    with patch('app.services.interview_engine.providers.ChatOpenAI') as mock:
+    with patch('app.services.interview_engine.model_router.ChatOpenAI') as mock:
         instance = AsyncMock()
         response = MagicMock()
         response.content = '{"score": 7.5, "metrics": {"accuracy": 8.0, "clarity": 7.5, "depth": 7.0, "communication": 7.5}, "feedback": "Good technical answer", "topic": "python", "skill_category": "technical", "should_deep_dive": true, "is_coding_challenge": false, "needs_easier": false, "low_effort": false, "skill_identified": "python"}'
