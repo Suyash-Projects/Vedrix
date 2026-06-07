@@ -1,6 +1,7 @@
 """
 Pytest configuration and fixtures for Vedrix backend E2E tests.
 """
+import os
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import ASGITransport, AsyncClient
@@ -15,7 +16,13 @@ from app.models.profile import StudentProfile, HRProfile
 from app.models.interview import JobDrive, InterviewSession, DriveInviteToken, ScenarioTemplate
 
 
-TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
+# When running under pytest-xdist, give each worker its own SQLite file
+# to avoid cross-process locking and stale-data failures.
+_WORKER_ID = os.environ.get("PYTEST_XDIST_WORKER", "")
+if _WORKER_ID and _WORKER_ID != "master":
+    TEST_DATABASE_URL = f"sqlite+aiosqlite:///./test_{_WORKER_ID}.db"
+else:
+    TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
 
 
 @pytest.fixture(scope="session")

@@ -55,7 +55,7 @@ jobs:
             --ignore=tests/test_agentic_features.py \
             --ignore=tests/test_pbt_agents.py \
             --ignore=tests/test_temp.py \
-            --timeout=60 \
+            -n 2 --timeout=60 \
             --tb=short -q
 
       - name: Upload coverage report
@@ -152,7 +152,7 @@ jobs:
             --ignore=tests/test_agentic_features.py \
             --ignore=tests/test_pbt_agents.py \
             --ignore=tests/test_temp.py \
-            --timeout=60 \
+            -n 2 --timeout=60 \
             --tb=short -q
 
   frontend-tests:
