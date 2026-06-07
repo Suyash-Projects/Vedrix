@@ -23,25 +23,15 @@ pool_config = {
 }
 
 # ── SSL/TLS Configuration ───────────────────────────────────────────────────────
-# PostgreSQL SSL settings for encrypted data transit
+# PostgreSQL SSL settings for encrypted data transit.
+# Local Postgres (CI service container, docker-compose dev) is plaintext;
+# production must set DB_SSL_MODE=require (or verify-full) via env var.
 connect_args = {}
 
 if settings.DATABASE_URL.startswith("postgresql"):
-    # Local Postgres (CI service container, docker-compose dev) is plaintext.
-    # Production deployments must point at a non-local host, in which case
-    # we honor DB_SSL_MODE (defaults to "require" in config.py).
-    is_local = "localhost" in settings.DATABASE_URL or "127.0.0.1" in settings.DATABASE_URL
-    ssl_mode = getattr(settings, "DB_SSL_MODE", None) or "require"
-
-    if is_local:
-        # Local Postgres — skip SSL entirely unless user explicitly opted out of skip
-        if ssl_mode and ssl_mode not in ("", "disable"):
-            # User explicitly asked for SSL even on localhost (rare); honor it
-            connect_args["sslmode"] = ssl_mode
-    else:
-        # Remote Postgres — honor DB_SSL_MODE (default "require")
-        if ssl_mode and ssl_mode != "disable":
-            connect_args["sslmode"] = ssl_mode
+    ssl_mode = getattr(settings, "DB_SSL_MODE", None)
+    if ssl_mode and ssl_mode != "disable":
+        connect_args["sslmode"] = ssl_mode
 elif settings.DATABASE_URL.startswith("sqlite"):
     # SQLite-specific security settings
     connect_args = {

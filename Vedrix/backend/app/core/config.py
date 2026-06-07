@@ -17,7 +17,10 @@ class Settings(BaseSettings):
     
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./vedrix.db"
-    DB_SSL_MODE: str = "require"  # PostgreSQL SSL mode: "disable", "require", "verify-full"
+    # PostgreSQL SSL mode: "disable", "require", "verify-full".
+    # Default is empty so local Postgres (CI, docker-compose dev) is plaintext;
+    # production must override via env var (DB_SSL_MODE=require or verify-full).
+    DB_SSL_MODE: str = ""
     
     # AI API Keys
     GROQ_API_KEY: str = ""
