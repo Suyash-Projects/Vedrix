@@ -85,7 +85,7 @@ fastapi-sso==0.16.0
 
 # Monitoring & Metrics
 prometheus-client==0.25.0
-redis==5.2.1
+redis==8.0.0
 
 # Security & Encryption
 
